@@ -6,6 +6,32 @@ umask 077
 # through SSH/rsync; snapshot creation, verification, rename and retention
 # all happen locally on the NAS.
 
+# The settings page persists only non-secret pull policy. An operator exports
+# that policy with `/app/api --export-nas-config` to a root-owned 0600 file;
+# this script consumes the resulting fixed variables but never stores an SSH
+# private key or evaluates arbitrary shell from the database.
+if [[ -n "${NAS_CONFIG_FILE:-}" ]]; then
+  [[ -f "$NAS_CONFIG_FILE" ]] || { printf 'nas backup pull: NAS_CONFIG_FILE not found\n' >&2; exit 1; }
+  [[ ! -L "$NAS_CONFIG_FILE" ]] || { printf 'nas backup pull: NAS_CONFIG_FILE must not be a symlink\n' >&2; exit 1; }
+  mode="$(stat -c '%a' -- "$NAS_CONFIG_FILE")"
+  [[ "$mode" == "600" || "$mode" == "400" ]] || { printf 'nas backup pull: NAS_CONFIG_FILE permissions must be 0600 or 0400\n' >&2; exit 1; }
+  declare -A loaded_config_keys=()
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *=* ]] || { printf 'nas backup pull: malformed NAS_CONFIG_FILE line\n' >&2; exit 1; }
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "$key" in
+      SOURCE_HOST|SOURCE_PATH|DEST_PATH|RETENTION_DAYS) ;;
+      *) printf 'nas backup pull: unsupported NAS_CONFIG_FILE key\n' >&2; exit 1 ;;
+    esac
+    [[ -z "${loaded_config_keys[$key]+x}" ]] || { printf 'nas backup pull: duplicate NAS_CONFIG_FILE key\n' >&2; exit 1; }
+    loaded_config_keys["$key"]=1
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$NAS_CONFIG_FILE"
+fi
+
 : "${SOURCE_HOST:?set SOURCE_HOST to the read-only backup host}"
 : "${SOURCE_PATH:?set SOURCE_PATH to the source backup directory}"
 : "${DEST_PATH:?set DEST_PATH to the NAS snapshot directory}"

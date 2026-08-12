@@ -21,6 +21,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set}
       ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET:?set}
       TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?set}
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:?set}
       ACCOUNT_RECOVERY_KEY_BOOTSTRAP: ${ACCOUNT_RECOVERY_KEY_BOOTSTRAP:-}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
       MEDIA_ROOT: /srv/timeline/media
@@ -40,6 +41,7 @@ services:
       MEDIA_ROOT: /srv/timeline/media
       EXPORT_ROOT: /srv/timeline/exports
       APP_ENV: production
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:?set}
     healthcheck: {test: ["CMD", "/app/worker", "--healthcheck"], interval: 15s, timeout: 5s, retries: 6, start_period: 10s}
     volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
     depends_on: {postgres: {condition: service_healthy}}

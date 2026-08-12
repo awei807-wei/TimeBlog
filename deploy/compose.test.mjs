@@ -19,3 +19,8 @@ test('web binds Next.js to all interfaces for the loopback healthcheck', () => {
   assert.match(service('web'), /^      HOSTNAME: 0\.0\.0\.0$/m);
   assert.match(service('web'), /fetch\('http:\/\/127\.0\.0\.1:3000\/'\)/);
 });
+
+test('api and worker receive the independent integration encryption key', () => {
+  assert.match(service('api'), /^      CONFIG_ENCRYPTION_KEY: \$\{CONFIG_ENCRYPTION_KEY:\?set\}$/m);
+  assert.match(service('worker'), /^      CONFIG_ENCRYPTION_KEY: \$\{CONFIG_ENCRYPTION_KEY:\?set\}$/m);
+});

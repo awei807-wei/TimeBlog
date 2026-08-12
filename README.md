@@ -24,6 +24,10 @@ API 健康检查：`GET /health/live`、`GET /health/ready`。
 
 媒体与导入大小限制由 `MAX_UPLOAD_BYTES` 控制（字节，默认 200 MiB，允许范围 1 MiB–2 GiB）；超出范围的配置会安全回退到默认值。ZIP 导入总包上限仍为 256 MiB。
 
+登录后的“内容管理 → 设置”可持久化外部图床和 NAS pull 策略。外部图床使用蓝图定义的 `custom_public` 边界：规范原件仍留在本地媒体卷，Token 使用独立 `CONFIG_ENCRYPTION_KEY` 加密且不会回显。当前已知上传端点为 `https://image.cainiao.me/api/uploads`，但尚无官方 API 文档可确认认证头、上传字段、响应和删除协议，因此配置状态保持 `configured_unverified`，系统不会把文件发送到外部图床；“测试”只执行不携带 Token 的 HEAD 可达性探测。
+
+NAS 设置只保存 `SOURCE_HOST`、`SOURCE_PATH`、`DEST_PATH` 和 `RETENTION_DAYS`，不保存 SSH 私钥或 `known_hosts`。保存后由运维者执行 `/app/api --export-nas-config` 将固定字段导出为 NAS 上权限 `0600` 的环境文件，再由 `deploy/nas-pull-backup.sh` 通过 `NAS_CONFIG_FILE` 消费；因此页面会明确显示“待导出应用”。
+
 可用 `go run ./services/core --generate-recovery-key` 生成一次性高熵码（仅打印到当前终端，不写日志）；恢复完成后保存响应中的新码并清理旧 bootstrap 配置。
 
 当前已落地：公开时间线与日期页、双因素登录和会话安全、工作草稿与冲突检测、公开/私人占位、Asia/Shanghai 日期、断点媒体上传和范围请求、PostgreSQL 持久化、公开/完整 ZIP 导入导出（SHA-256 清单校验、媒体双副本校验、冲突策略、分类/标签/关系/版本/工作副本元数据）、导出后台任务、部署与备份恢复脚本。生产部署使用 `deploy/compose.yaml`，PostgreSQL 迁移位于 `services/core/db/migrations`。

@@ -470,6 +470,43 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '405': {description: 方法不允许}
 
+  /admin/integrations/external_image_host:
+    get:
+      tags: [settings]
+      operationId: getExternalImageHostConfig
+      security: [SessionCookie: []]
+      responses: {'200': {description: 图床配置；Token 仅返回掩码状态, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostConfig'}}}}}
+    patch:
+      tags: [settings]
+      operationId: updateExternalImageHostConfig
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostPatch'}}}}
+      responses: {'200': {description: 配置已加密入库；协议未验证前不会用于发布}, '400': {$ref: '#/components/responses/BadRequest'}}
+
+  /admin/integrations/external_image_host/test:
+    post:
+      tags: [settings]
+      operationId: probeExternalImageHost
+      description: 仅执行不携带 Token 的 HEAD 可达性与认证挑战探测，不上传或删除文件。
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 探测结果；protocolStatus 始终为 unverified}}
+
+  /admin/integrations/nas_backup:
+    get:
+      tags: [settings]
+      operationId: getNASBackupConfig
+      security: [SessionCookie: []]
+      responses: {'200': {description: NAS pull 策略, content: {application/json: {schema: {$ref: '#/components/schemas/NASBackupConfig'}}}}}
+    patch:
+      tags: [settings]
+      operationId: updateNASBackupConfig
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/NASBackupPatch'}}}}
+      responses: {'200': {description: NAS pull 策略已入库，等待安全导出应用}, '400': {$ref: '#/components/responses/BadRequest'}}
+
   /health/live:
     get:
       tags: [health]
@@ -522,6 +559,57 @@ components:
         defaultVisibility: {type: string, enum: [public, private]}
         feedEnabled: {type: boolean}
         theme: {type: string}
+    SecretMutation:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: {type: string, enum: [keep, replace, clear]}
+        value: {type: string, writeOnly: true, maxLength: 8192}
+    ExternalImageHostPatch:
+      type: object
+      additionalProperties: false
+      required: [enabled, endpoint, token]
+      properties:
+        enabled: {type: boolean}
+        endpoint: {type: string, format: uri, default: 'https://image.cainiao.me/api/uploads'}
+        token: {$ref: '#/components/schemas/SecretMutation'}
+    ExternalImageHostConfig:
+      type: object
+      additionalProperties: false
+      required: [provider, enabled, endpoint, tokenConfigured, tokenMasked, protocolStatus, status]
+      properties:
+        provider: {type: string, enum: [custom_public]}
+        enabled: {type: boolean}
+        endpoint: {type: string, format: uri}
+        tokenConfigured: {type: boolean}
+        tokenMasked: {type: string, enum: ['', '********']}
+        protocolStatus: {type: string, enum: [unverified]}
+        status: {type: string}
+        statusMessage: {type: string}
+        lastTestedAt: {type: [string, 'null'], format: date-time}
+        updatedAt: {type: string, format: date-time}
+    NASBackupPatch:
+      type: object
+      additionalProperties: false
+      required: [enabled, sourceHost, sourcePath, destinationPath, retentionDays]
+      properties:
+        enabled: {type: boolean}
+        sourceHost: {type: string, maxLength: 255}
+        sourcePath: {type: string, maxLength: 1024}
+        destinationPath: {type: string, maxLength: 1024}
+        retentionDays: {type: integer, minimum: 1, maximum: 3650}
+    NASBackupConfig:
+      allOf:
+        - {$ref: '#/components/schemas/NASBackupPatch'}
+        - type: object
+          required: [applyStatus, status]
+          properties:
+            applyStatus: {type: string, enum: [pending_export]}
+            status: {type: string}
+            statusMessage: {type: string}
+            lastTestedAt: {type: [string, 'null'], format: date-time}
+            updatedAt: {type: string, format: date-time}
     RuntimeStatus:
       type: object
       additionalProperties: false
@@ -541,9 +629,12 @@ components:
         externalImageHost:
           type: object
           additionalProperties: false
-          required: [provider, status]
+          required: [provider, configured, enabled, protocolStatus, status]
           properties:
-            provider: {type: string, enum: [not_connected]}
+            provider: {type: string, enum: [custom_public]}
+            configured: {type: boolean}
+            enabled: {type: boolean}
+            protocolStatus: {type: string, enum: [unverified]}
             status: {type: string}
         security:
           type: object
@@ -558,10 +649,11 @@ components:
         nasBackup:
           type: object
           additionalProperties: false
-          required: [managedExternally, statusAvailable, status]
+          required: [configured, enabled, applyStatus, status]
           properties:
-            managedExternally: {type: boolean}
-            statusAvailable: {type: boolean}
+            configured: {type: boolean}
+            enabled: {type: boolean}
+            applyStatus: {type: string}
             status: {type: string}
     ConfiguredStatus:
       type: object

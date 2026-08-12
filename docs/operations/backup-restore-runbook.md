@@ -30,6 +30,8 @@
 
 可从 [`deploy/nas-backup.env.example`](../../deploy/nas-backup.env.example) 创建 `/etc/timeblog/nas-backup.env`，权限设为 `0600`。
 
+也可以先在“内容管理 → 设置”保存 pull 策略，再由受控运维终端从 API 容器执行 `--export-nas-config`，把标准输出原子写入 NAS 的 `/etc/timeblog/nas-backup.env` 并设置为 `0600`。导出内容仅包含脚本消费的四个非敏感字段；SSH identity 与 `known_hosts` 仍需在 NAS 的 `timeblog-backup` 系统账户中单独配置。不要把命令输出写入日志或 Git。
+
 ```sh
 SOURCE_HOST=backup-source \
 SOURCE_PATH=/srv/timeblog/backups \

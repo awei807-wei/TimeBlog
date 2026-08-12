@@ -15,6 +15,7 @@ func TestPostgresMigrationSmoke(t *testing.T) {
 	os.Setenv("ADMIN_PASSWORD", "integration-password")
 	os.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	os.Setenv("TOTP_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	os.Setenv("CONFIG_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	os.Setenv("ACCOUNT_RECOVERY_KEY_BOOTSTRAP", "integration-recovery-key-very-long")
 	db, err := openPersistentDatabase(context.Background(), url)
 	if err != nil {
@@ -38,6 +39,7 @@ func TestPostgresMediaRefsAndExpiredPurge(t *testing.T) {
 	os.Setenv("ADMIN_PASSWORD", "integration-password")
 	os.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	os.Setenv("TOTP_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	os.Setenv("CONFIG_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	os.Setenv("ACCOUNT_RECOVERY_KEY_BOOTSTRAP", "integration-recovery-key-very-long")
 	db, err := openPersistentDatabase(context.Background(), url)
 	if err != nil {
@@ -86,6 +88,7 @@ func TestPostgresImportEntryConflictPolicies(t *testing.T) {
 	os.Setenv("ADMIN_PASSWORD", "integration-password")
 	os.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	os.Setenv("TOTP_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	os.Setenv("CONFIG_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	os.Setenv("ACCOUNT_RECOVERY_KEY_BOOTSTRAP", "integration-recovery-key-very-long")
 	db, err := openPersistentDatabase(context.Background(), url)
 	if err != nil {

@@ -30,6 +30,12 @@ func main() {
 		_ = resp.Body.Close()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--export-nas-config" {
+		if err := exportNASConfig(context.Background(), os.Stdout); err != nil {
+			log.Fatalf("NAS config export failed: %v", err)
+		}
+		return
+	}
 	addr := getenv("API_ADDR", ":8080")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

@@ -1557,13 +1557,24 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	externalStatus := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": "unverified", "status": "未配置"}
+	nasStatus := map[string]any{"configured": false, "enabled": false, "applyStatus": "not_configured", "status": "未配置"}
+	if srv.store.persistent && srv.store.database != nil {
+		if record, err := integrationRecordByName(r.Context(), srv.store.database, externalImageHostName); err == nil {
+			config := externalImageHostConfig{}
+			_ = json.Unmarshal(record.Config, &config)
+			externalStatus = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": "unverified", "status": record.TestStatus}
+		}
+		if record, err := integrationRecordByName(r.Context(), srv.store.database, nasBackupName); err == nil {
+			config := nasBackupConfig{}
+			_ = json.Unmarshal(record.Config, &config)
+			nasStatus = map[string]any{"configured": true, "enabled": config.Enabled, "applyStatus": "pending_export", "status": record.TestStatus}
+		}
+	}
 	jsonResponse(w, http.StatusOK, map[string]any{
-		"updatedAt": time.Now().UTC().Format(time.RFC3339),
-		"media":     srv.mediaCapabilityStatus(),
-		"externalImageHost": map[string]any{
-			"provider": "not_connected",
-			"status":   "未接入；本地媒体卷可直接使用",
-		},
+		"updatedAt":         time.Now().UTC().Format(time.RFC3339),
+		"media":             srv.mediaCapabilityStatus(),
+		"externalImageHost": externalStatus,
 		"security": map[string]any{
 			"adminPassword":      map[string]any{"configured": adminPassword, "managedBy": "account_recovery"},
 			"adminTotpSecret":    map[string]any{"configured": adminTOTP, "managedBy": "account_recovery"},
@@ -1571,7 +1582,7 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 			"databaseConnection": map[string]any{"configured": databaseURL, "managedBy": "vps_environment"},
 			"accountRecoveryKey": map[string]any{"configured": recoveryHash, "managedBy": "account_recovery"},
 		},
-		"nasBackup": map[string]any{"managedExternally": true, "statusAvailable": false, "status": "状态未接入"},
+		"nasBackup": nasStatus,
 	})
 }
 

@@ -10,6 +10,7 @@ env:
   ADMIN_PASSWORD: integration-password
   ADMIN_TOTP_SECRET: JBSWY3DPEHPK3PXP
   TOTP_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+  CONFIG_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 
 jobs:
   api:
@@ -30,6 +31,7 @@ jobs:
           test -f db/migrations/001_init.sql
           test -f db/migrations/002_incremental.sql
           test -f db/migrations/003_media_refs.sql
+          test -f db/migrations/006_integration_settings.sql
           python3 -c "from pathlib import Path; s=Path('db/migrations/001_init.sql').read_text(); assert s.index('CREATE TABLE IF NOT EXISTS media (') < s.index('CREATE TABLE IF NOT EXISTS media_refs')"
         working-directory: services/core
       - name: OpenAPI contract checks
@@ -43,7 +45,7 @@ jobs:
       - name: Compose config
         run: docker compose -f deploy/compose.yaml config
       - name: Deployment static checks
-        run: node --test deploy/compose.test.mjs
+        run: node --test deploy/compose.test.mjs deploy/nas-config-contract.test.mjs
       - name: Start Postgres
         run: docker compose -f deploy/compose.yaml up -d --wait postgres
       - name: Postgres integration tests

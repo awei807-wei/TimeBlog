@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -38,12 +39,22 @@ func (srv *Server) mediaCapability(w http.ResponseWriter, r *http.Request) {
 func (srv *Server) mediaCapabilityStatus() map[string]any {
 	provider := "local_private"
 	writable := checkWritableDirectory(srv.mediaRoot) == nil
+	externalProvider := customPublicProvider{}
+	external := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": externalProvider.ProtocolStatus(), "publishEnabled": externalProvider.PublishEnabled()}
+	if srv.store.persistent && srv.store.database != nil {
+		if record, err := integrationRecordByName(context.Background(), srv.store.database, externalImageHostName); err == nil {
+			config := externalImageHostConfig{}
+			_ = json.Unmarshal(record.Config, &config)
+			external = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": externalProvider.ProtocolStatus(), "publishEnabled": externalProvider.PublishEnabled()}
+		}
+	}
 	return map[string]any{
 		"provider":              provider,
 		"writable":              writable,
 		"imageUploadEnabled":    writable,
 		"nonImageUploadEnabled": writable,
 		"maxUploadBytes":        configuredMaxUploadBytes(),
+		"externalPublic":        external,
 	}
 }
 

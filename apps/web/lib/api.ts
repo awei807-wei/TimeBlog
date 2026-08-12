@@ -25,12 +25,20 @@ export type Version = { version: number; createdAt: string; snapshot: Record<str
 export type Media = { id: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' | 'private'; status: 'uploading' | 'ready' | 'failed' | 'deleting' | 'deleted'; createdAt?: string };
 export type ExportJob = { id: string; type: 'public' | 'full'; status: 'queued' | 'running' | 'ready' | 'failed'; downloadUrl?: string; sha256?: string };
 export type SiteSettings = { siteTitle?: string; siteDescription?: string; timezone?: string; defaultVisibility?: 'public' | 'private'; feedEnabled?: boolean; theme?: string };
+export type ExternalImageHostConfig = {
+  provider: 'custom_public'; enabled: boolean; endpoint: string; tokenConfigured: boolean; tokenMasked: '' | '********';
+  protocolStatus: 'unverified'; status: string; statusMessage?: string; lastTestedAt?: string | null; updatedAt?: string;
+};
+export type NASBackupConfig = {
+  enabled: boolean; sourceHost: string; sourcePath: string; destinationPath: string; retentionDays: number;
+  applyStatus: 'pending_export'; status: string; statusMessage?: string; lastTestedAt?: string | null; updatedAt?: string;
+};
 export type RuntimeStatus = {
   updatedAt: string;
   media: { provider: 'local_private'; writable: boolean; imageUploadEnabled: boolean; nonImageUploadEnabled: boolean; maxUploadBytes: number };
-  externalImageHost: { provider: 'not_connected'; status: string };
+  externalImageHost: { provider: 'custom_public'; configured: boolean; enabled: boolean; protocolStatus: 'unverified'; status: string };
   security: Record<string, { configured: boolean; managedBy: string }>;
-  nasBackup: { managedExternally: boolean; statusAvailable: boolean; status: string };
+  nasBackup: { configured: boolean; enabled: boolean; applyStatus: string; status: string };
 };
 export type AdminCalendarDay = { public: number; private: number; draft: number; trashed: number };
 export type AdminCalendarResponse = { year: string; includeDrafts: boolean; days: Record<string, AdminCalendarDay> };
@@ -108,6 +116,14 @@ export async function getSettings(): Promise<SiteSettings> {
 
 export async function getRuntimeStatus(): Promise<RuntimeStatus> {
   return getJSON('/admin/runtime-status', { cache: 'no-store' });
+}
+
+export async function getExternalImageHostConfig(): Promise<ExternalImageHostConfig> {
+  return getJSON('/admin/integrations/external_image_host', { cache: 'no-store' });
+}
+
+export async function getNASBackupConfig(): Promise<NASBackupConfig> {
+  return getJSON('/admin/integrations/nas_backup', { cache: 'no-store' });
 }
 
 export async function getAdminCalendar(year: string, includeDrafts = false): Promise<AdminCalendarResponse> {

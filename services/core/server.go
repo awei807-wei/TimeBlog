@@ -82,6 +82,8 @@ func (srv *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/admin/media/upload-ticket", admin(srv.mediaTicket))
 	mux.HandleFunc("/api/v1/admin/media/capability", admin(srv.mediaCapability))
 	mux.HandleFunc("/api/v1/admin/runtime-status", admin(srv.runtimeStatus))
+	mux.HandleFunc("/api/v1/admin/integrations/external_image_host/test", admin(srv.integrationTestEndpoint))
+	mux.HandleFunc("/api/v1/admin/integrations/", admin(srv.integrationSettingsEndpoint))
 	mux.HandleFunc("/api/v1/admin/media/", admin(srv.mediaEndpoint))
 	mux.HandleFunc("/api/v1/admin/media", admin(srv.mediaCollection))
 	mux.HandleFunc("/api/v1/admin/categories", admin(srv.taxonomyCategories))
