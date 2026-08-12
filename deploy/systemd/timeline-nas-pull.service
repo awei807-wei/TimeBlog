@@ -1,0 +1,14 @@
+[Unit]
+Description=Pull Timeline backup to NAS (read-only source)
+
+[Service]
+Type=oneshot
+User=timeblog-backup
+Group=timeblog-backup
+WorkingDirectory=/opt/timeblog
+EnvironmentFile=/etc/timeblog/nas-backup.env
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ReadWritePaths=/srv/timeblog/nas-snapshots
+ExecStart=/usr/bin/bash /opt/timeblog/deploy/nas-pull-backup.sh

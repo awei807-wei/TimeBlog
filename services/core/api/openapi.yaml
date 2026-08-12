@@ -1,0 +1,596 @@
+openapi: 3.0.3
+info:
+  title: Personal Timeline API
+  version: 0.2.0
+  description: |
+    个人时间线博客 REST API。OpenAPI 是前后端唯一接口合同。
+    写入接口使用同源 HttpOnly session cookie，并要求 X-CSRF-Token；创建、提交、导出和上传终结支持 Idempotency-Key。
+servers:
+  - url: /api/v1
+tags:
+  - name: health
+  - name: public
+  - name: auth
+  - name: writing
+  - name: taxonomy
+  - name: media
+  - name: exports
+  - name: settings
+paths:
+  /public/timeline:
+    get:
+      tags: [public]
+      operationId: getPublicTimeline
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200': {description: 按天分组的公开时间线, content: {application/json: {schema: {$ref: '#/components/schemas/TimelineResponse'}}}}
+        default: {$ref: '#/components/responses/Problem'}
+  /public/days/{date}:
+    get:
+      tags: [public]
+      operationId: getPublicDay
+      parameters:
+        - $ref: '#/components/parameters/Date'
+      responses:
+        '200': {description: 某天公开内容和私人占位, content: {application/json: {schema: {$ref: '#/components/schemas/DayResponse'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /public/articles/{slug}:
+    get:
+      tags: [public]
+      operationId: getPublicArticle
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200': {description: 公开文章, content: {application/json: {schema: {$ref: '#/components/schemas/PublicEntry'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /public/calendar:
+    get:
+      tags: [public]
+      operationId: getPublicCalendar
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema: {type: string, pattern: '^\\d{4}-\\d{2}$'}
+      responses:
+        '200': {description: 每日公开内容与私人占位的合计, content: {application/json: {schema: {$ref: '#/components/schemas/CalendarResponse'}}}}
+  /public/categories:
+    get:
+      tags: [public]
+      operationId: listPublicCategories
+      responses:
+        '200': {description: 公开分类, content: {application/json: {schema: {$ref: '#/components/schemas/PublicCategoriesResponse'}}}}
+  /public/categories/{slug}/entries:
+    get:
+      tags: [public]
+      operationId: listPublicCategoryEntries
+      parameters: [{$ref: '#/components/parameters/Slug'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: 分类公开内容, content: {application/json: {schema: {$ref: '#/components/schemas/EntryListResponse'}}}}
+  /public/tags/{slug}/entries:
+    get:
+      tags: [public]
+      operationId: listPublicTagEntries
+      parameters: [{$ref: '#/components/parameters/Slug'}, {$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}]
+      responses:
+        '200': {description: 标签公开内容, content: {application/json: {schema: {$ref: '#/components/schemas/EntryListResponse'}}}}
+  /public/search:
+    get:
+      tags: [public]
+      operationId: searchPublicEntries
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 200}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200': {description: 公开搜索结果, content: {application/json: {schema: {$ref: '#/components/schemas/EntryListResponse'}}}}
+  /public/feed:
+    get:
+      tags: [public]
+      operationId: getPublicFeed
+      responses:
+        '200': {description: Atom feed, content: {application/atom+xml: {schema: {type: string}}}}
+
+  /auth/login/password:
+    post:
+      tags: [auth]
+      operationId: loginPassword
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PasswordLoginRequest'}}}}
+      responses:
+        '200': {description: 短时 MFA challenge, content: {application/json: {schema: {$ref: '#/components/schemas/MFAChallengeResponse'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/login/totp:
+    post:
+      tags: [auth]
+      operationId: loginTotp
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TOTPLoginRequest'}}}}
+      responses:
+        '200':
+          description: 创建登录 session
+          headers:
+            Set-Cookie: {$ref: '#/components/headers/SessionCookie'}
+          content: {application/json: {schema: {$ref: '#/components/schemas/SessionResponse'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'200': {description: 已注销, content: {application/json: {schema: {$ref: '#/components/schemas/OKResponse'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/CSRF'}}
+  /auth/session:
+    get:
+      tags: [auth]
+      operationId: getAuthSession
+      security: [SessionCookie: []]
+      responses: {'200': {description: 当前 session, content: {application/json: {schema: {$ref: '#/components/schemas/SessionResponse'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}}
+  /auth/sessions:
+    get:
+      tags: [auth]
+      operationId: listAuthSessions
+      security: [SessionCookie: []]
+      responses: {'200': {description: 活动设备, content: {application/json: {schema: {$ref: '#/components/schemas/SessionListResponse'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}}
+  /auth/sessions/{id}:
+    delete:
+      tags: [auth]
+      operationId: revokeSession
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/SessionID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 已撤销}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/CSRF'}, '404': {$ref: '#/components/responses/NotFound'}}
+  /auth/sessions/revoke-others:
+    post:
+      tags: [auth]
+      operationId: revokeOtherSessions
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'200': {description: 已撤销其他设备}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/CSRF'}}
+  /auth/recovery/account:
+    post:
+      tags: [auth]
+      operationId: recoverAccount
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecoveryRequest'}}}}
+      responses: {'200': {description: 恢复成功并返回一次性新恢复码与 TOTP setup URI, content: {application/json: {schema: {$ref: '#/components/schemas/RecoveryResponse'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '429': {description: 尝试次数过多, headers: {Retry-After: {schema: {type: string}}}}}
+
+  /admin/working-copies:
+    get:
+      tags: [writing]
+      operationId: listWorkingCopies
+      security: [SessionCookie: []]
+      responses: {'200': {description: 草稿托盘, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopyListResponse'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}}
+    post:
+      tags: [writing]
+      operationId: upsertWorkingCopy
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopyCreateRequest'}}}}
+      responses: {'200': {description: 幂等创建或更新草稿, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/CSRF'}}
+  /admin/working-copies/{id}:
+    get:
+      tags: [writing]
+      operationId: getWorkingCopy
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/WorkingCopyID'}]
+      responses: {'200': {description: 工作副本, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+    patch:
+      tags: [writing]
+      operationId: patchWorkingCopy
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/WorkingCopyID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopyPatchRequest'}}}}
+      responses: {'200': {description: 已自动保存}, '409': {$ref: '#/components/responses/Conflict'}, '403': {$ref: '#/components/responses/CSRF'}}
+    delete:
+      tags: [writing]
+      operationId: deleteWorkingCopy
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/WorkingCopyID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 已删除}, '404': {$ref: '#/components/responses/NotFound'}}
+  /admin/working-copies/{id}/commit:
+    post:
+      tags: [writing]
+      operationId: commitWorkingCopy
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/WorkingCopyID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CommitRequest'}}}}
+      responses: {'200': {description: 正式提交, content: {application/json: {schema: {$ref: '#/components/schemas/CommitResponse'}}}}, '409': {$ref: '#/components/responses/Conflict'}, '403': {$ref: '#/components/responses/CSRF'}}
+  /admin/entries:
+    get:
+      tags: [writing]
+      operationId: listAdminEntries
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}, {name: status, in: query, schema: {$ref: '#/components/schemas/EntryStatus'}}, {name: visibility, in: query, schema: {$ref: '#/components/schemas/Visibility'}}, {name: kind, in: query, schema: {$ref: '#/components/schemas/EntryKind'}}]
+      responses: {'200': {description: 后台内容列表, content: {application/json: {schema: {$ref: '#/components/schemas/EntryListResponse'}}}}}
+  /admin/entries/{id}:
+    get:
+      tags: [writing]
+      operationId: getAdminEntry
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}]
+      responses: {'200': {description: 完整私有内容, content: {application/json: {schema: {$ref: '#/components/schemas/Entry'}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+    delete:
+      tags: [writing]
+      operationId: trashEntry
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 进入回收站}, '403': {$ref: '#/components/responses/CSRF'}}
+  /admin/entries/{id}/edit:
+    post:
+      tags: [writing]
+      operationId: editEntry
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'201': {description: 创建编辑工作副本, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}}
+  /admin/entries/{id}/restore:
+    post:
+      tags: [writing]
+      operationId: restoreEntry
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 恢复回收站内容}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/entries/{id}/purge:
+    post:
+      tags: [writing]
+      operationId: purgeEntry
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 永久删除}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/entries/{id}/versions:
+    get:
+      tags: [writing]
+      operationId: listEntryVersions
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}]
+      responses: {'200': {description: 最近 20 个文章版本, content: {application/json: {schema: {$ref: '#/components/schemas/VersionListResponse'}}}}}
+  /admin/entries/{id}/versions/{version}/restore:
+    post:
+      tags: [writing]
+      operationId: restoreEntryVersion
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/EntryID'}, {$ref: '#/components/parameters/Version'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 从历史快照创建新版本}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/undo/{token}:
+    post:
+      tags: [writing]
+      operationId: undoEntry
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/UndoToken'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'200': {description: 15 秒内撤销短记录, content: {application/json: {schema: {$ref: '#/components/schemas/CommitResponse'}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+
+  /admin/categories:
+    get:
+      tags: [taxonomy]
+      operationId: listCategories
+      security: [SessionCookie: []]
+      responses: {'200': {description: 分类列表, content: {application/json: {schema: {$ref: '#/components/schemas/CategoryListResponse'}}}}}
+    post:
+      tags: [taxonomy]
+      operationId: createCategory
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CategoryRequest'}}}}
+      responses: {'201': {description: 分类已创建, content: {application/json: {schema: {$ref: '#/components/schemas/Category'}}}}}
+  /admin/categories/{id}:
+    patch:
+      tags: [taxonomy]
+      operationId: updateCategory
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CategoryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CategoryRequest'}}}}
+      responses: {'200': {description: 分类已更新}}
+    delete:
+      tags: [taxonomy]
+      operationId: deleteCategory
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CategoryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 删除分类并保留内容}}
+  /admin/tags:
+    get:
+      tags: [taxonomy]
+      operationId: listTags
+      security: [SessionCookie: []]
+      responses: {'200': {description: 标签列表, content: {application/json: {schema: {$ref: '#/components/schemas/TagListResponse'}}}}}
+    post:
+      tags: [taxonomy]
+      operationId: createTag
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TagRequest'}}}}
+      responses: {'201': {description: 标签已创建, content: {application/json: {schema: {$ref: '#/components/schemas/Tag'}}}}}
+  /admin/tags/{id}:
+    patch:
+      tags: [taxonomy]
+      operationId: updateTag
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/TagID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/TagRequest'}}}}
+      responses: {'200': {description: 标签已更新}}
+    delete:
+      tags: [taxonomy]
+      operationId: deleteTag
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/TagID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'200': {description: 删除标签}}
+
+  /admin/media/upload-ticket:
+    post:
+      description: 单文件大小受 MAX_UPLOAD_BYTES 限制（默认 200 MiB；允许范围 1 MiB–2 GiB）。
+      tags: [media]
+      operationId: createUploadTicket
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UploadTicketRequest'}}}}
+      responses: {'201': {description: 上传票据, content: {application/json: {schema: {$ref: '#/components/schemas/UploadTicketResponse'}}}}, '413': {$ref: '#/components/responses/PayloadTooLarge'}}
+  /admin/media/{id}/finalize:
+    post:
+      tags: [media]
+      operationId: finalizeMedia
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/MediaID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: false, content: {application/json: {schema: {type: object, properties: {}}}}}
+      responses: {'200': {description: 媒体已校验并就绪, content: {application/json: {schema: {$ref: '#/components/schemas/Media'}}}}}
+  /admin/media/{id}/upload:
+    head:
+      tags: [media]
+      operationId: getMediaUploadOffset
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/MediaID'}]
+      responses: {'204': {description: 当前上传偏移, headers: {Upload-Offset: {schema: {type: integer, format: int64}}, Tus-Resumable: {schema: {type: string}}}}}
+    patch:
+      tags: [media]
+      operationId: appendMediaUpload
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/MediaID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {name: Upload-Offset, in: header, required: true, schema: {type: integer, format: int64}}]
+      requestBody: {required: true, content: {application/offset+octet-stream: {schema: {type: string, format: binary}}}}
+      responses: {'204': {description: 分片已追加, headers: {Upload-Offset: {schema: {type: integer, format: int64}}, Tus-Resumable: {schema: {type: string}}}}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/media:
+    get:
+      tags: [media]
+      operationId: listMedia
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/Limit'}, {$ref: '#/components/parameters/Cursor'}, {name: q, in: query, schema: {type: string}}]
+      responses: {'200': {description: 媒体库, content: {application/json: {schema: {$ref: '#/components/schemas/MediaListResponse'}}}}}
+  /admin/media/{id}:
+    get:
+      tags: [media]
+      operationId: getMedia
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/MediaID'}]
+      responses: {'200': {description: 媒体元数据, content: {application/json: {schema: {$ref: '#/components/schemas/Media'}}}}}
+    delete:
+      tags: [media]
+      operationId: deleteMedia
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/MediaID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'204': {description: 已删除}, '409': {$ref: '#/components/responses/Conflict'}}
+  /media/{id}/content:
+    get:
+      tags: [media]
+      operationId: getMediaContent
+      parameters: [{$ref: '#/components/parameters/MediaID'}, {name: Range, in: header, schema: {type: string}}, {name: If-None-Match, in: header, schema: {type: string}}]
+      responses: {'200': {description: 媒体内容, headers: {ETag: {schema: {type: string}}, Accept-Ranges: {schema: {type: string}}}, content: {application/octet-stream: {schema: {type: string, format: binary}}}}, '206': {description: 部分媒体内容}, '404': {$ref: '#/components/responses/NotFound'}}
+  /admin/embeds/resolve:
+    post:
+      tags: [media]
+      operationId: resolveEmbed
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EmbedRequest'}}}}
+      responses: {'200': {description: 受控嵌入结构}}
+
+  /admin/exports:
+    get:
+      tags: [exports]
+      operationId: listExports
+      security: [SessionCookie: []]
+      responses: {'200': {description: 导出任务列表, content: {application/json: {schema: {$ref: '#/components/schemas/ExportListResponse'}}}}}
+    post:
+      tags: [exports]
+      operationId: createExport
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExportRequest'}}}}
+      responses: {'202': {description: 导出任务已排队, content: {application/json: {schema: {$ref: '#/components/schemas/Export'}}}}}
+  /admin/exports/{id}/download:
+    get:
+      tags: [exports]
+      operationId: downloadExport
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/ExportID'}]
+      responses: {'200': {description: ZIP 文件, content: {application/zip: {schema: {type: string, format: binary}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+  /admin/imports/dry-run:
+    post:
+      tags: [exports]
+      operationId: dryRunImport
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/zip: {schema: {type: string, format: binary}}}}
+      responses: {'200': {description: 导入预览, content: {application/json: {schema: {$ref: '#/components/schemas/ImportDryRunResponse'}}}}}
+  /admin/imports:
+    post:
+      tags: [exports]
+      operationId: importExport
+      security: [SessionCookie: []]
+      parameters:
+        - {$ref: '#/components/parameters/CSRF'}
+        - {$ref: '#/components/parameters/Origin'}
+        - {name: conflictPolicy, in: query, required: false, schema: {type: string, enum: [skip, replace, remap], description: 未指定且出现冲突时返回409}}
+      requestBody: {required: true, content: {application/zip: {schema: {type: string, format: binary}}}}
+      responses: {'201': {description: 导入完成}, '400': {$ref: '#/components/responses/BadRequest'}, '409': {$ref: '#/components/responses/Conflict'}}
+
+  /admin/calendar:
+    get:
+      tags: [calendar]
+      operationId: getAdminCalendar
+      security: [SessionCookie: []]
+      parameters:
+        - {name: year, in: query, required: false, schema: {type: string, pattern: '^[0-9]{4}$'}}
+        - {name: includeDrafts, in: query, required: false, schema: {type: boolean, default: false}}
+      responses: {'200': {description: 按日期的公开/私人/草稿/回收站计数}}
+
+  /admin/settings:
+    get:
+      tags: [settings]
+      operationId: getSettings
+      security: [SessionCookie: []]
+      responses: {'200': {description: 设置}}
+    patch:
+      tags: [settings]
+      operationId: updateSettings
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: true}}}}
+      responses: {'200': {description: 设置已更新}}
+
+  /health/live:
+    get:
+      tags: [health]
+      operationId: healthLive
+      responses: {'200': {description: 进程存活, content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}}
+  /health/ready:
+    get:
+      tags: [health]
+      operationId: healthReady
+      responses: {'200': {description: 依赖就绪, content: {application/json: {schema: {$ref: '#/components/schemas/Health'}}}}, '503': {$ref: '#/components/responses/Problem'}}
+
+components:
+  securitySchemes:
+    SessionCookie: {type: apiKey, in: cookie, name: timeline_session, description: HttpOnly SameSite=Lax session cookie; production sets Secure}
+  parameters:
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+    Cursor: {name: cursor, in: query, schema: {type: string}}
+    Date: {name: date, in: path, required: true, schema: {type: string, format: date}}
+    Slug: {name: slug, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 200}}
+    CSRF: {name: X-CSRF-Token, in: header, required: true, schema: {type: string, minLength: 16}}
+    Origin: {name: Origin, in: header, required: false, schema: {type: string, format: uri}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: false, schema: {type: string, maxLength: 200}}
+    SessionID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    WorkingCopyID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    EntryID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    CategoryID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    TagID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    MediaID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    ExportID: {name: id, in: path, required: true, schema: {type: string, format: uuid}}
+    UndoToken: {name: token, in: path, required: true, schema: {type: string}}
+    Version: {name: version, in: path, required: true, schema: {type: integer, minimum: 1, maximum: 20}}
+  headers:
+    SessionCookie: {description: HttpOnly session cookie, schema: {type: string}}
+  responses:
+    Problem: {description: Problem Details, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    BadRequest: {description: 请求无效, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Unauthorized: {description: 未认证, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    CSRF: {description: CSRF 或来源校验失败, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Conflict: {description: 乐观锁或资源冲突, content: {application/problem+json: {schema: {$ref: '#/components/schemas/ProblemConflict'}}}}
+    NotFound: {description: 资源不存在, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    PayloadTooLarge: {description: 文件超过配置限制, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  schemas:
+    EntryKind: {type: string, enum: [note, article]}
+    EntryStatus: {type: string, enum: [draft, published, trashed]}
+    Visibility: {type: string, enum: [public, private]}
+    Entry:
+      type: object
+      required: [id, kind, status, visibility, markdown, journalDate, timePrecision, revision]
+      properties:
+        id: {type: string, format: uuid}
+        kind: {$ref: '#/components/schemas/EntryKind'}
+        status: {$ref: '#/components/schemas/EntryStatus'}
+        visibility: {$ref: '#/components/schemas/Visibility'}
+        title: {type: string}
+        slug: {type: string}
+        summary: {type: string}
+        markdown: {type: string}
+        renderedHtml: {type: string}
+        plainText: {type: string}
+        journalDate: {type: string, format: date}
+        journalTime: {type: string, nullable: true, pattern: '^\\d{2}:\\d{2}$'}
+        timePrecision: {type: string, enum: [day, minute]}
+        dayPosition: {type: integer}
+        revision: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        categories: {type: array, items: {type: string}}
+        tags: {type: array, items: {type: string}}
+    PrivatePlaceholder:
+      type: object
+      required: [visibility, journalDate, placeholder, text]
+      additionalProperties: false
+      properties:
+        visibility: {type: string, enum: [private]}
+        journalDate: {type: string, format: date}
+        journalTime: {type: string, nullable: true}
+        placeholder: {type: boolean, const: true}
+        text: {type: string, enum: ['这是一条私人记录 🔒']}
+    PublicEntry:
+      oneOf: [{$ref: '#/components/schemas/Entry'}, {$ref: '#/components/schemas/PrivatePlaceholder'}]
+    Day:
+      type: object
+      required: [date, untimed, timed]
+      properties:
+        date: {type: string, format: date}
+        untimed: {type: array, items: {$ref: '#/components/schemas/PublicEntry'}}
+        timed: {type: array, items: {$ref: '#/components/schemas/PublicEntry'}}
+    TimelineResponse:
+      type: object
+      required: [days, targetLimit, actualCount]
+      properties:
+        days: {type: array, items: {$ref: '#/components/schemas/Day'}}
+        nextCursor: {type: string}
+        targetLimit: {type: integer}
+        actualCount: {type: integer}
+    DayResponse: {type: object, required: [date, untimed, timed], properties: {date: {type: string, format: date}, untimed: {type: array, items: {$ref: '#/components/schemas/PublicEntry'}}, timed: {type: array, items: {$ref: '#/components/schemas/PublicEntry'}}}}
+    EntryListResponse: {type: object, required: [entries], properties: {entries: {type: array, items: {$ref: '#/components/schemas/PublicEntry'}}, nextCursor: {type: string}}}
+    CalendarResponse: {type: object, required: [month, days], properties: {month: {type: string}, days: {type: object, additionalProperties: {type: integer}}}}
+    PublicCategoriesResponse: {type: object, required: [categories], properties: {categories: {type: object, additionalProperties: {type: integer}}}}
+    PasswordLoginRequest: {type: object, required: [password], properties: {password: {type: string, format: password}}}
+    MFAChallengeResponse: {type: object, required: [challenge, requiresTotp], properties: {challenge: {type: string}, requiresTotp: {type: boolean}}}
+    TOTPLoginRequest: {type: object, required: [challenge, code], properties: {challenge: {type: string}, code: {type: string, minLength: 6, maxLength: 8}}}
+    SessionResponse: {type: object, required: [authenticated, csrfToken], properties: {authenticated: {type: boolean}, username: {type: string}, csrfToken: {type: string}, idleExpiresInDays: {type: integer}, absoluteExpiresInDays: {type: integer}}}
+    Session: {type: object, required: [id, createdAt, lastSeen], properties: {id: {type: string, format: uuid}, createdAt: {type: string, format: date-time}, lastSeen: {type: string, format: date-time}}}
+    SessionListResponse: {type: object, required: [sessions], properties: {sessions: {type: array, items: {$ref: '#/components/schemas/Session'}}}}
+    RecoveryRequest: {type: object, required: [recoveryKey, newPassword], properties: {recoveryKey: {type: string}, newPassword: {type: string, format: password, minLength: 12}}}
+    RecoveryResponse: {type: object, required: [ok, recoveryKey, totpSetupURI], properties: {ok: {type: boolean}, recoveryKey: {type: string, description: 仅在本次响应显示一次}, totpSetupURI: {type: string, description: 仅在本次响应显示一次}}}
+    WorkingCopy:
+      type: object
+      required: [id, clientDraftId, payload, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        clientDraftId: {type: string}
+        entryId: {type: string, format: uuid, nullable: true}
+        baseRevision: {type: integer, format: int64}
+        payload: {type: object, additionalProperties: true}
+        updatedAt: {type: string, format: date-time}
+    WorkingCopyCreateRequest: {type: object, required: [clientDraftId, payload], properties: {clientDraftId: {type: string}, payload: {type: object, additionalProperties: true}}}
+    WorkingCopyPatchRequest: {type: object, required: [payload], properties: {baseRevision: {type: integer, format: int64}, payload: {type: object, additionalProperties: true}}}
+    WorkingCopyListResponse: {type: object, required: [workingCopies], properties: {workingCopies: {type: array, items: {$ref: '#/components/schemas/WorkingCopy'}}}}
+    CommitRequest: {type: object, required: [markdown, status, visibility, journalDate], properties: {kind: {$ref: '#/components/schemas/EntryKind'}, status: {$ref: '#/components/schemas/EntryStatus'}, visibility: {$ref: '#/components/schemas/Visibility'}, title: {type: string}, slug: {type: string}, summary: {type: string}, markdown: {type: string}, journalDate: {type: string, format: date}, journalTime: {type: string, nullable: true}, categories: {type: array, items: {type: string}}, tags: {type: array, items: {type: string}}, baseRevision: {type: integer, format: int64}}}
+    CommitResponse: {type: object, required: [entry], properties: {entry: {$ref: '#/components/schemas/Entry'}, undoToken: {type: string}}}
+    Category: {type: object, required: [id, name, slug], properties: {id: {type: string, format: uuid}, name: {type: string}, slug: {type: string}, description: {type: string}}}
+    CategoryRequest: {type: object, required: [name], properties: {name: {type: string}, slug: {type: string}, description: {type: string}}}
+    CategoryListResponse: {type: object, required: [categories], properties: {categories: {type: array, items: {$ref: '#/components/schemas/Category'}}}}
+    Tag: {type: object, required: [id, displayName, normalizedName, slug], properties: {id: {type: string, format: uuid}, displayName: {type: string}, normalizedName: {type: string}, slug: {type: string}}}
+    TagRequest: {type: object, required: [displayName], properties: {displayName: {type: string}, slug: {type: string}}}
+    TagListResponse: {type: object, required: [tags], properties: {tags: {type: array, items: {$ref: '#/components/schemas/Tag'}}}}
+    UploadTicketRequest: {type: object, required: [name, size, mime, visibility], properties: {name: {type: string}, size: {type: integer, format: int64}, mime: {type: string}, visibility: {$ref: '#/components/schemas/Visibility'}}}
+    UploadTicketResponse: {type: object, required: [media, uploadUrl, finalizeUrl], properties: {media: {$ref: '#/components/schemas/Media'}, uploadUrl: {type: string, description: PATCH/HEAD resumable upload URL}, finalizeUrl: {type: string, description: POST metadata-only finalize URL}, expiresIn: {type: integer}}}
+    Media: {type: object, required: [id, originalName, mimeType, sizeBytes, visibility, status], properties: {id: {type: string, format: uuid}, originalName: {type: string}, mimeType: {type: string}, sizeBytes: {type: integer, format: int64}, visibility: {$ref: '#/components/schemas/Visibility'}, status: {type: string, enum: [uploading, ready, failed, deleting, deleted]}, sha256: {type: string}, createdAt: {type: string, format: date-time}}}
+    MediaListResponse: {type: object, required: [media], properties: {media: {type: array, items: {$ref: '#/components/schemas/Media'}}, nextCursor: {type: string}}}
+    EmbedRequest: {type: object, required: [url], properties: {url: {type: string, format: uri}}}
+    ExportRequest: {type: object, required: [type], properties: {type: {type: string, enum: [public, full]}}}
+    Export: {type: object, required: [id, type, status], properties: {id: {type: string, format: uuid}, type: {type: string, enum: [public, full]}, status: {type: string, enum: [queued, running, ready, failed]}, downloadUrl: {type: string}, sha256: {type: string}}}
+    ExportListResponse: {type: object, required: [exports], properties: {exports: {type: array, items: {$ref: '#/components/schemas/Export'}}}}
+    ImportDryRunResponse: {type: object, required: [schemaVersion, conflicts, counts], properties: {schemaVersion: {type: string}, conflicts: {type: array, items: {type: string}}, counts: {type: object, additionalProperties: {type: integer}}}}
+    Version: {type: object, required: [version, createdAt, snapshot], properties: {version: {type: integer}, createdAt: {type: string, format: date-time}, snapshot: {type: object, additionalProperties: true}}}
+    VersionListResponse: {type: object, required: [versions], properties: {versions: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/Version'}}}}
+    Health: {type: object, required: [status], properties: {status: {type: string, enum: [ok, ready]}}}
+    OKResponse: {type: object, required: [ok], properties: {ok: {type: boolean}}}
+    Problem: {type: object, required: [type, title, status, detail], properties: {type: {type: string, format: uri-reference}, title: {type: string}, status: {type: integer}, detail: {type: string}, instance: {type: string}, requestId: {type: string}, fieldErrors: {type: object, additionalProperties: {type: string}}}}
+    ProblemConflict:
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          properties: {serverRevision: {type: integer, format: int64}, conflictCopyId: {type: string, format: uuid}}

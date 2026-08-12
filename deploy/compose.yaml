@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:16.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: timeline
+      POSTGRES_USER: timeline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U timeline -d timeline"], interval: 5s, timeout: 5s, retries: 10}
+  api:
+    build:
+      context: ../services/core
+    restart: unless-stopped
+    environment:
+      API_ADDR: :8080
+      DATABASE_URL: postgres://timeline:${POSTGRES_PASSWORD}@postgres:5432/timeline?sslmode=disable
+      APP_ENV: production
+      APP_ORIGIN: ${SITE_URL:?set}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set}
+      ADMIN_TOTP_SECRET: ${ADMIN_TOTP_SECRET:?set}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?set}
+      ACCOUNT_RECOVERY_KEY_BOOTSTRAP: ${ACCOUNT_RECOVERY_KEY_BOOTSTRAP:-}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-}
+      MEDIA_ROOT: /srv/timeline/media
+      EXPORT_ROOT: /srv/timeline/exports
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-209715200}
+    healthcheck: {test: ["CMD", "/app/api", "--healthcheck"], interval: 10s, timeout: 5s, retries: 6, start_period: 10s}
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
+    depends_on: {postgres: {condition: service_healthy}}
+  worker:
+    build:
+      context: ../services/core
+    restart: unless-stopped
+    command: ["/app/worker"]
+    environment:
+      DATABASE_URL: postgres://timeline:${POSTGRES_PASSWORD}@postgres:5432/timeline?sslmode=disable
+      MEDIA_ROOT: /srv/timeline/media
+      EXPORT_ROOT: /srv/timeline/exports
+      APP_ENV: production
+    healthcheck: {test: ["CMD", "/app/worker", "--healthcheck"], interval: 15s, timeout: 5s, retries: 6, start_period: 10s}
+    volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
+    depends_on: {postgres: {condition: service_healthy}}
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      API_ORIGIN: http://api:8080
+      SITE_URL: ${SITE_URL:?set}
+    ports: ["127.0.0.1:3000:3000"]
+    healthcheck: {test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"], interval: 15s, timeout: 5s, retries: 6, start_period: 20s}
+    depends_on: {api: {condition: service_healthy}}
+  volume-tools:
+    image: alpine:3.20
+    profiles: [tools]
+    entrypoint: ["/bin/sh"]
+    volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    profiles: [proxy]
+    environment:
+      SITE_HOST: ${SITE_HOST:?set}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: {web: {condition: service_healthy}, api: {condition: service_healthy}}
+volumes:
+  postgres-data:
+  media:
+  exports:
+  caddy-data:
+  caddy-config:

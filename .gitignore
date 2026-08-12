@@ -1,0 +1,65 @@
+# Dependencies and package-manager caches
+node_modules/
+**/node_modules/
+.pnpm-store/
+.npm/
+
+# Next.js and frontend build output
+.next/
+**/.next/
+out/
+build/
+dist/
+coverage/
+.turbo/
+
+# TypeScript and local tooling caches
+*.tsbuildinfo
+**/*.tsbuildinfo
+.cache/
+.tmp/
+tmp/
+
+# Environment files and credentials (keep templates such as *.example)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Local databases, logs and runtime state
+*.sqlite
+*.sqlite3
+*.db
+*.log
+logs/
+
+# Backups and generated archives
+backups/
+*.dump
+*.tar
+*.tar.gz
+*.zip
+*.tgz
+
+# OS/editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go build/test artifacts
+bin/
+*.test
+
+# Generated reports and local test fixtures
+playwright-report/
+test-results/
+
+# Keep deployment/docs assets and the blueprint document tracked.

@@ -1,0 +1,8 @@
+[Unit]
+Description=Personal Timeline backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/timeblog
+EnvironmentFile=/etc/timeblog/backup.env
+ExecStart=/opt/timeblog/deploy/backup.sh

@@ -1,0 +1,11 @@
+export type UploadItem = { id: string; fileName: string; mime: string; size: number; status: 'queued'|'uploading'|'ready'|'failed'; mediaId?: string; error?: string; file?: Blob; hasBlob?: boolean; needsReselect?: boolean };
+export const MAX_MEDIA_BYTES: number;
+export const MEDIA_BLOB_MAX_BYTES: number;
+export const MEDIA_QUEUE_MAX_BYTES: number;
+export function isSupportedMedia(file: { type: string; size: number }, maxBytes?: number): boolean;
+export function createUploadItem(file: { name: string; type: string; size: number }, id?: string): UploadItem;
+export function mediaQueueStoragePlan(fileSize: number, persistedBytes: number, options?: { perFileMaxBytes?: number; totalMaxBytes?: number }): { persistBlob: boolean; reason: '' | 'file-too-large' | 'queue-quota' };
+export function mediaMarkdown(mediaId: string): string;
+export function replaceMediaToken(markdown: string, oldToken: string, newToken: string): string;
+export function mediaUploadUrl(value: string, origin?: string): string;
+export function uploadResumable(uploadUrl: string, file: Blob, options?: { fetcher?: typeof fetch; csrfToken?: string; idempotencyKey?: string; chunkSize?: number; maxRetries?: number }): Promise<number>;
