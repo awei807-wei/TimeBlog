@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { API } from '@/lib/api';
-import { editorHTMLToMarkdown, hasUnsupportedStructure, markdownToEditorHTML, nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
+import { nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
 import { renderMarkdown } from '@/lib/markdown';
 import { createUploadItem, isSupportedMedia, mediaMarkdown, mediaQueueStoragePlan, mediaUploadUrl, replaceMediaToken, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
 
-type Mode = 'simple' | 'markdown' | 'wysiwyg';
+import AuthNav from '../AuthNav';
+type Mode = 'simple' | 'markdown' | 'preview';
 type EditorStatus = 'draft' | 'public' | 'private';
 type Draft = { id: string; clientDraftId: string; payload: Record<string, unknown>; updatedAt: string };
 type QueueItem = { id: string; draft: Draft; attempts: number; nextTryAt: number };
@@ -97,6 +98,7 @@ function Preview({ markdown }: { markdown: string }) {
 
 export default function AdminPage() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
   const draftID = useRef<string | null>(null);
   const lastSync = useRef(0);
   const [markdown, setMarkdown] = useState('');
@@ -114,8 +116,6 @@ export default function AdminPage() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [csrf, setCsrf] = useState('');
   const [online, setOnline] = useState(true);
-  const [wysiwygHTML, setWysiwygHTML] = useState('');
-  const [wysiwygLocked, setWysiwygLocked] = useState(false);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
 
   const currentDraftId = useCallback(() => {
@@ -266,7 +266,7 @@ export default function AdminPage() {
   }, [payload, currentDraftId, syncDraft]);
 
   async function save() {
-    const effectiveMarkdown = mode === 'wysiwyg' && !wysiwygLocked ? editorHTMLToMarkdown(wysiwygHTML) : markdown;
+    const effectiveMarkdown = markdown;
     const savePayload = { ...payload, markdown: effectiveMarkdown };
     if (!effectiveMarkdown.trim() || !csrf) { setMessage(csrf ? '请输入正文' : '请先登录'); return; }
     setSaving(true); setMessage('保存中…');
@@ -303,19 +303,10 @@ export default function AdminPage() {
 
   function switchMode(nextMode: Mode) {
     if (nextMode === mode) return;
-    if (mode === 'wysiwyg' && !wysiwygLocked) setMarkdown(editorHTMLToMarkdown(wysiwygHTML));
-    if (nextMode === 'wysiwyg') {
-      const complex = hasUnsupportedStructure(markdown);
-      setWysiwygLocked(complex);
-      if (complex) {
-        setMessage('当前 Markdown 含复杂结构，所见即所得暂时只读并保留原始源码，避免丢失内容');
-      } else {
-        setWysiwygHTML(markdownToEditorHTML(markdown));
-        setMessage('');
-      }
-    }
     setMode(nextMode);
+    setMessage(nextMode === 'preview' ? '实时预览已开启；请在 Markdown 编辑区输入内容' : '');
+    window.setTimeout(() => editorRef.current?.focus(), 0);
   }
 
-  return <main id="main-content" className="shell"><header className="topbar"><Link href="/" className="brand">个人时间线</Link><nav className="nav"><Link href="/admin/entries">内容管理</Link><Link href="/calendar">日历</Link><Link href="/login">登录</Link></nav></header><div className="admin-grid"><section><div className="eyebrow">WRITE NOW · {online ? 'ONLINE' : 'OFFLINE'}</div><h1>此刻想写些什么？</h1><div className="composer"><div className="editor-toolbar" role="tablist" aria-label="编辑模式">{(['simple', 'markdown', 'wysiwyg'] as Mode[]).map(value => <button id={`tab-${value}`} type="button" role="tab" aria-controls="editor-panel" aria-selected={mode === value} className={mode === value ? 'tool active' : 'tool'} key={value} onClick={() => switchMode(value)}>{value === 'simple' ? '简易' : value === 'markdown' ? 'Markdown' : '所见即所得'}</button>)}<label className="tool upload-control">添加媒体<input type="file" accept="image/*,audio/*,video/*,application/pdf" multiple hidden onChange={e => e.target.files && handleFiles(e.target.files)}/></label></div>{kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/></>}{mode === 'wysiwyg' ? wysiwygLocked ? <div id="editor-panel" role="tabpanel" aria-labelledby="tab-wysiwyg" className="wysiwyg wysiwyg-source" aria-describedby="wysiwyg-complex-help" tabIndex={0}><pre aria-readonly="true">{markdown}</pre><p id="wysiwyg-complex-help" className="status">当前正文含列表、链接、代码、表格或媒体等复杂 Markdown，已切换为只读源码；请在 Markdown 模式编辑以避免结构丢失。</p></div> : <div id="editor-panel" role="tabpanel" aria-labelledby="tab-wysiwyg" className="wysiwyg" contentEditable suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: wysiwygHTML }} onInput={e => { const nextHTML = e.currentTarget.innerHTML; setWysiwygHTML(nextHTML); setMarkdown(editorHTMLToMarkdown(nextHTML)); }} aria-label="所见即所得编辑器" tabIndex={0}/> : <textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => setMarkdown(e.target.value)} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder="从一句话开始。支持 Markdown，也可以直接粘贴图片。" aria-label="记录正文"/>}{mode === 'markdown' && <Preview markdown={markdown}/>}<div className="status" aria-live="polite">{message}</div>{uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><span>{item.fileName}</span><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? '已完成' : item.status === 'uploading' ? '上传中' : item.status === 'failed' ? '失败' : '排队中'}{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); }}/></label>}</span></li>)}</ul>}<div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || !markdown.trim()} onClick={save}>保存</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div></div></section><aside className="sidebar"><div className="side-card"><div className="side-card-heading"><h3>草稿托盘（{drafts.length}）</h3><button className="icon-button" type="button" onClick={() => void refreshDrafts()} aria-label="刷新草稿">↻</button></div>{drafts.length ? <ul className="draft-list">{drafts.slice(0, 8).map(d => <li key={d.id}><button type="button" onClick={() => loadDraft(d)}><strong>{draftName(d)}</strong><small>{new Date(d.updatedAt).toLocaleString('zh-CN')}</small></button></li>)}</ul> : <p>停止输入后自动保存。你可以同时保留多份未命名草稿。</p>}</div><div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div><div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站、导出和设置工具。</p></div></aside></div></main>;
+  return <main id="main-content" className="shell"><header className="topbar"><Link href="/" className="brand">个人时间线</Link><nav className="nav"><Link href="/admin/entries">内容管理</Link><Link href="/calendar">日历</Link><AuthNav /></nav></header><div className="admin-grid"><section><div className="eyebrow">WRITE NOW · {online ? 'ONLINE' : 'OFFLINE'}</div><h1>此刻想写些什么？</h1><div className="composer"><div className="editor-toolbar" role="tablist" aria-label="编辑模式">{(['simple', 'markdown', 'preview'] as Mode[]).map(value => <button id={`tab-${value}`} type="button" role="tab" aria-controls="editor-panel" aria-selected={mode === value} className={mode === value ? 'tool active' : 'tool'} key={value} onClick={() => switchMode(value)}>{value === 'simple' ? '简易' : value === 'markdown' ? 'Markdown' : '实时预览'}</button>)}<label className="tool upload-control">添加媒体<input type="file" accept="image/*,audio/*,video/*,application/pdf" multiple hidden onChange={e => e.target.files && handleFiles(e.target.files)}/></label></div>{kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/></>}<textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => { if (!composingRef.current) setMarkdown(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder="从一句话开始。支持 Markdown，也可以直接粘贴图片。" aria-label="Markdown 正文编辑" />{(mode === 'markdown' || mode === 'preview') && <Preview markdown={markdown}/>}<div className="status" aria-live="polite">{message}</div>{uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><span>{item.fileName}</span><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? '已完成' : item.status === 'uploading' ? '上传中' : item.status === 'failed' ? '失败' : '排队中'}{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); }}/></label>}</span></li>)}</ul>}<div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || !markdown.trim()} onClick={save}>保存</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div></div></section><aside className="sidebar"><div className="side-card"><div className="side-card-heading"><h3>草稿托盘（{drafts.length}）</h3><button className="icon-button" type="button" onClick={() => void refreshDrafts()} aria-label="刷新草稿">↻</button></div>{drafts.length ? <ul className="draft-list">{drafts.slice(0, 8).map(d => <li key={d.id}><button type="button" onClick={() => loadDraft(d)}><strong>{draftName(d)}</strong><small>{new Date(d.updatedAt).toLocaleString('zh-CN')}</small></button></li>)}</ul> : <p>停止输入后自动保存。你可以同时保留多份未命名草稿。</p>}</div><div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div><div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站和导出工具。</p></div></aside></div></main>;
 }

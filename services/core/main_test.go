@@ -46,6 +46,65 @@ func TestPersistentAuthRejectsUnknownCookieWithoutDB(t *testing.T) {
 	}
 }
 
+func TestLogoutRevokesSessionAndClearsCookie(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	srv := NewServer(NewStore())
+	h := srv.routes()
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	cookie, csrf := string(parts[0]), string(parts[1])
+
+	logout := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	logout.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+	logout.Header.Set("Origin", "http://localhost:3000")
+	logout.Header.Set("X-CSRF-Token", csrf)
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, logout)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("logout status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	cleared := false
+	for _, value := range rr.Result().Cookies() {
+		if value.Name == "timeline_session" {
+			cleared = value.MaxAge < 0 && value.HttpOnly && value.Path == "/" && value.SameSite == http.SameSiteLaxMode
+		}
+	}
+	if !cleared {
+		t.Fatalf("logout did not clear secure session cookie: %v", rr.Result().Cookies())
+	}
+
+	session := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	session.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+	sessionRR := httptest.NewRecorder()
+	h.ServeHTTP(sessionRR, session)
+	if sessionRR.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked session status=%d", sessionRR.Code)
+	}
+}
+
+func TestAuthSessionStatusValidatesCookieWithoutCSRF(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	srv := NewServer(NewStore())
+	h := srv.routes()
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	status := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session/status", nil)
+	status.AddCookie(&http.Cookie{Name: "timeline_session", Value: string(parts[0])})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, status)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("session status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	var body struct {
+		Authenticated bool `json:"authenticated"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil || !body.Authenticated {
+		t.Fatalf("unexpected status body=%s", rr.Body.String())
+	}
+}
+
 func TestLoginPasswordThrottleAfterRepeatedFailures(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
 	srv := NewServer(NewStore())

@@ -61,6 +61,7 @@ func (srv *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/auth/recovery/account", srv.recoverAccount)
 	mux.HandleFunc("/api/v1/auth/logout", srv.logout)
 	mux.HandleFunc("/api/v1/auth/session", srv.authSession)
+	mux.HandleFunc("/api/v1/auth/session/status", srv.authSessionStatus)
 	mux.HandleFunc("/api/v1/auth/sessions", srv.authSessions)
 	mux.HandleFunc("/api/v1/auth/sessions/", srv.authSessionAction)
 	mux.HandleFunc("/api/v1/admin/working-copies", admin(srv.workingCopies))

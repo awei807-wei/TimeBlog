@@ -9,6 +9,65 @@ import { decodeMermaidBase64 } from '../lib/mermaid-utils.js';
 import { embedSource, isSupportedEmbedProvider } from '../lib/embed-utils.js';
 test('local draft storage key is stable',()=>assert.equal('timeline-local-drafts','timeline-local-drafts'));
 
+test('auth navigation checks server session and revokes it through logout', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/AuthNav.tsx', import.meta.url), 'utf8');
+  assert.match(source, /auth\/session\/status/);
+  assert.match(source, /auth\/logout/);
+  assert.match(source, /credentials: 'include'/);
+  assert.match(source, /X-CSRF-Token/);
+  assert.match(source, /response\.status === 401/);
+  assert.match(source, /role="status"/);
+});
+
+test('management actions keep equal button geometry on narrow screens', async () => {
+  const fs = await import('node:fs/promises');
+  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(css, /\.management-actions \.secondary\{[^}]*min-width:56px/);
+  assert.match(css, /\.management-actions \.secondary\{[^}]*height:36px/);
+  assert.match(css, /@media \(max-width:640px\)/);
+  assert.match(css, /\.management-row\{align-items:flex-start;flex-direction:column\}/);
+});
+
+test('version panel returns to the in-page content list', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const returnToEntries = useCallback/);
+  assert.match(source, /setSection\('entries'\)/);
+  assert.match(source, /onBack=\{returnToEntries\}/);
+  assert.match(source, /onClick=\{onBack\}/);
+  assert.match(source, /aria-label="返回内容列表"/);
+});
+
+test('home page does not render the removed introductory note copy', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /以天为单位记录正在发生的事。短记录直接回到时间线，完整文章保留自己的地址与上下文。/);
+  assert.doesNotMatch(source, /className="note"/);
+});
+
+test('editor keeps Markdown as the source of truth and protects Chinese IME composition', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /实时预览/);
+  assert.match(source, /aria-label="Markdown 正文编辑"/);
+  assert.match(source, /onCompositionStart/);
+  assert.match(source, /onCompositionEnd/);
+  assert.match(source, /composingRef\.current/);
+  assert.doesNotMatch(source, /contentEditable/);
+  assert.doesNotMatch(source, /所见即所得/);
+});
+
+test('calendar loads the initial month and aborts stale month requests', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/calendar/CalendarView.tsx', import.meta.url), 'utf8');
+  assert.match(source, /useEffect\(\(\) =>/);
+  assert.match(source, /getCalendar\(month, controller\.signal\)/);
+  assert.match(source, /new AbortController\(\)/);
+  assert.match(source, /requestID !== requestRef\.current/);
+  assert.match(source, /setMonth\(current => shiftMonth/);
+});
+
 test('private editor status maps to published private API fields', () => {
   assert.deepEqual(serializeEditorStatus('private'), { status: 'published', visibility: 'private' });
   assert.deepEqual(serializeEditorStatus('public'), { status: 'published', visibility: 'public' });

@@ -131,6 +131,12 @@ paths:
       operationId: getAuthSession
       security: [SessionCookie: []]
       responses: {'200': {description: 当前 session, content: {application/json: {schema: {$ref: '#/components/schemas/SessionResponse'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}}
+  /auth/session/status:
+    get:
+      tags: [auth]
+      operationId: getAuthSessionStatus
+      security: [SessionCookie: []]
+      responses: {'200': {description: 当前 session 是否有效, content: {application/json: {schema: {$ref: '#/components/schemas/SessionStatusResponse'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}}
   /auth/sessions:
     get:
       tags: [auth]
@@ -550,6 +556,7 @@ components:
     MFAChallengeResponse: {type: object, required: [challenge, requiresTotp], properties: {challenge: {type: string}, requiresTotp: {type: boolean}}}
     TOTPLoginRequest: {type: object, required: [challenge, code], properties: {challenge: {type: string}, code: {type: string, minLength: 6, maxLength: 8}}}
     SessionResponse: {type: object, required: [authenticated, csrfToken], properties: {authenticated: {type: boolean}, username: {type: string}, csrfToken: {type: string}, idleExpiresInDays: {type: integer}, absoluteExpiresInDays: {type: integer}}}
+    SessionStatusResponse: {type: object, required: [authenticated], properties: {authenticated: {type: boolean}, username: {type: string}}}
     Session: {type: object, required: [id, createdAt, lastSeen], properties: {id: {type: string, format: uuid}, createdAt: {type: string, format: date-time}, lastSeen: {type: string, format: date-time}}}
     SessionListResponse: {type: object, required: [sessions], properties: {sessions: {type: array, items: {$ref: '#/components/schemas/Session'}}}}
     RecoveryRequest: {type: object, required: [recoveryKey, newPassword], properties: {recoveryKey: {type: string}, newPassword: {type: string, format: password, minLength: 12}}}

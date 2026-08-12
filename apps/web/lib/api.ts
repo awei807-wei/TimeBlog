@@ -58,8 +58,8 @@ export async function getArticle(slug: string): Promise<PublicEntry> {
   return getJSON(`/public/articles/${encodeURIComponent(slug)}`, { next: { revalidate: 30 } });
 }
 
-export async function getCalendar(month: string): Promise<CalendarResponse> {
-  return getJSON(`/public/calendar?month=${encodeURIComponent(month)}`, { next: { revalidate: 30 } });
+export async function getCalendar(month: string, signal?: AbortSignal): Promise<CalendarResponse> {
+  return getJSON(`/public/calendar?month=${encodeURIComponent(month)}`, { next: { revalidate: 30 }, signal });
 }
 
 export async function getCategories(): Promise<{ categories: Record<string, number> }> {

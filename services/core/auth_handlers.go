@@ -435,7 +435,7 @@ func (srv *Server) logout(w http.ResponseWriter, r *http.Request) {
 		}
 		srv.store.mu.Unlock()
 	}
-	http.SetCookie(w, &http.Cookie{Name: "timeline_session", MaxAge: -1, Path: "/"})
+	http.SetCookie(w, &http.Cookie{Name: "timeline_session", MaxAge: -1, Path: "/", HttpOnly: true, Secure: os.Getenv("APP_ENV") == "production", SameSite: http.SameSiteLaxMode})
 	jsonResponse(w, 200, map[string]bool{"ok": true})
 }
 
@@ -477,6 +477,22 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 	csrf := srv.store.sessions[tokenHash(c.Value)].CSRFToken
 	srv.store.mu.RUnlock()
 	jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "idleExpiresInDays": 30, "absoluteExpiresInDays": 90, "csrfToken": csrf})
+}
+
+// authSessionStatus validates the HttpOnly session cookie without rotating
+// the CSRF token. Navigation can safely call this endpoint without racing
+// with page mutations that use /auth/session for their CSRF token.
+func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
+	if srv.store.persistent && srv.store.database != nil {
+		if !srv.authenticatedPersistent(r) {
+			problem(w, http.StatusUnauthorized, "未登录")
+			return
+		}
+	} else if !srv.store.authenticated(r) {
+		problem(w, http.StatusUnauthorized, "未登录")
+		return
+	}
+	jsonResponse(w, http.StatusOK, map[string]any{"authenticated": true, "username": "owner"})
 }
 
 func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {
