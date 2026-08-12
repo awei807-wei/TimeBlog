@@ -332,6 +332,13 @@ paths:
       parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UploadTicketRequest'}}}}
       responses: {'201': {description: 上传票据, content: {application/json: {schema: {$ref: '#/components/schemas/UploadTicketResponse'}}}}, '413': {$ref: '#/components/responses/PayloadTooLarge'}}
+  /admin/media/capability:
+    get:
+      description: 返回服务端媒体存储能力。当前 provider 为 local_private；writable 由 API 对媒体卷执行安全写入探测得出。
+      tags: [media]
+      operationId: getMediaCapability
+      security: [SessionCookie: []]
+      responses: {'200': {description: 媒体存储能力, content: {application/json: {schema: {type: object, required: [provider,writable,imageUploadEnabled,nonImageUploadEnabled], properties: {provider: {type: string}, writable: {type: boolean}, imageUploadEnabled: {type: boolean}, nonImageUploadEnabled: {type: boolean}, reason: {type: string}}}}}}}
   /admin/media/{id}/finalize:
     post:
       tags: [media]

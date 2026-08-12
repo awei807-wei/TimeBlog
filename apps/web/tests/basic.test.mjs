@@ -100,6 +100,27 @@ test('editor keeps Markdown as the source of truth and protects Chinese IME comp
   assert.doesNotMatch(source, /所见即所得/);
 });
 
+test('editor accepts every native input event during IME and keeps media controls cross-mode', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /onChange=\{e => setMarkdown\(e\.target\.value\)\}/);
+  assert.doesNotMatch(source, /if \(!composingRef\.current\) setMarkdown/);
+  assert.match(source, /Paperclip/);
+  assert.match(source, /Trash2/);
+  assert.match(source, /admin\/media\/capability/);
+  assert.match(source, /从当前草稿移除/);
+  assert.match(source, /aria-disabled=\{uploadDisabled\}/);
+});
+
+test('writing surface has responsive touch-safe controls and bounded editor height', async () => {
+  const fs = await import('node:fs/promises');
+  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(css, /\.composer textarea\{min-height:clamp\(/);
+  assert.match(css, /\.editor-toolbar \.tool\{min-height:44px/);
+  assert.match(css, /@media\(max-width:760px\)/);
+  assert.match(css, /\.composer-footer \.primary,.composer-footer \.secondary\{width:100%/);
+});
+
 test('calendar loads the initial month and aborts stale month requests', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/calendar/CalendarView.tsx', import.meta.url), 'utf8');

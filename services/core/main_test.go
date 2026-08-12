@@ -46,6 +46,41 @@ func TestPersistentAuthRejectsUnknownCookieWithoutDB(t *testing.T) {
 	}
 }
 
+func TestMediaCapabilityRequiresAuthAndProbesLocalStorage(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("MEDIA_ROOT", t.TempDir())
+	s := NewStore()
+	h := NewServer(s).routes()
+	unauth := httptest.NewRequest(http.MethodGet, "/api/v1/admin/media/capability", nil)
+	unauthRR := httptest.NewRecorder()
+	h.ServeHTTP(unauthRR, unauth)
+	if unauthRR.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated capability status=%d", unauthRR.Code)
+	}
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	auth := httptest.NewRequest(http.MethodGet, "/api/v1/admin/media/capability", nil)
+	auth.AddCookie(&http.Cookie{Name: "timeline_session", Value: string(parts[0])})
+	authRR := httptest.NewRecorder()
+	h.ServeHTTP(authRR, auth)
+	if authRR.Code != http.StatusOK {
+		t.Fatalf("authenticated capability status=%d body=%s", authRR.Code, authRR.Body.String())
+	}
+	var body struct {
+		Provider              string `json:"provider"`
+		Writable              bool   `json:"writable"`
+		ImageUploadEnabled    bool   `json:"imageUploadEnabled"`
+		NonImageUploadEnabled bool   `json:"nonImageUploadEnabled"`
+	}
+	if err := json.Unmarshal(authRR.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Provider != "local_private" || !body.Writable || !body.ImageUploadEnabled || !body.NonImageUploadEnabled {
+		t.Fatalf("unexpected capability: %+v", body)
+	}
+}
+
 func TestLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
 	t.Setenv("ADMIN_TOTP_SECRET", "123456")

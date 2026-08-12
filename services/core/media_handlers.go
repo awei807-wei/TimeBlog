@@ -21,6 +21,30 @@ import (
 var mediaReferencePattern = regexp.MustCompile(`media://([A-Za-z0-9._~-]+)`)
 var mediaUploadLocks sync.Map
 
+// mediaCapability reports the trusted server-side media storage capability.
+// This project uses a local media volume (provider local_private), not an
+// external image host. The write probe is intentionally performed by the API
+// so the editor never guesses from client-side environment variables.
+func (srv *Server) mediaCapability(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
+	provider := "local_private"
+	writable := checkWritableDirectory(srv.mediaRoot) == nil
+	reason := ""
+	if !writable {
+		reason = "媒体存储不可写，上传已禁用"
+	}
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"provider":              provider,
+		"writable":              writable,
+		"imageUploadEnabled":    writable,
+		"nonImageUploadEnabled": writable,
+		"reason":                reason,
+	})
+}
+
 func parseUploadOffset(value string) int64 {
 	if value == "" {
 		return 0
