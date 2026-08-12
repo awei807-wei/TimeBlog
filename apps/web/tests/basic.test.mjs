@@ -7,6 +7,7 @@ import { mediaContentUrl, mediaKind, probeMediaContentType } from '../lib/media-
 import { mergeTimelineDays } from '../lib/timeline.js';
 import { decodeMermaidBase64 } from '../lib/mermaid-utils.js';
 import { embedSource, isSupportedEmbedProvider } from '../lib/embed-utils.js';
+import { runEndpointProbe } from '../lib/integration-probe.js';
 test('local draft storage key is stable',()=>assert.equal('timeline-local-drafts','timeline-local-drafts'));
 
 test('auth navigation checks server session and revokes it through logout', async () => {
@@ -42,6 +43,39 @@ test('content rows use one accessible dropdown menu for actions', async () => {
   assert.doesNotMatch(source, /<button[^>]+>版本<\/button>/);
   assert.match(ui, /DropdownMenuPrimitive\.Content/);
   assert.match(ui, /DropdownMenuPrimitive\.Item/);
+});
+
+test('external image host probe prevents submit, preserves drafts and reports state', async () => {
+  const draft = { endpoint: ' https://image.example.test/upload ', token: 'unsaved-secret' };
+  const snapshots = [];
+  let prevented = false;
+  let receivedEndpoint = '';
+  const result = await runEndpointProbe({
+    event: { preventDefault: () => { prevented = true; } },
+    endpoint: draft.endpoint,
+    probe: async endpoint => { receivedEndpoint = endpoint; return { status: 'configured_unverified', message: 'Endpoint 可达且要求认证' }; },
+    onState: state => snapshots.push(state),
+  });
+  assert.equal(prevented, true);
+  assert.equal(receivedEndpoint, 'https://image.example.test/upload');
+  assert.equal(draft.endpoint, ' https://image.example.test/upload ');
+  assert.equal(draft.token, 'unsaved-secret');
+  assert.equal(result?.status, 'configured_unverified');
+  assert.deepEqual(snapshots.map(state => state.phase), ['testing', 'success']);
+});
+
+test('settings actions are non-submit controls and endpoint probe does not remount the panel', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  const settingsSource = source.slice(source.indexOf('function SettingsPanel'));
+  const buttons = [...settingsSource.matchAll(/<button\b([^>]*)>/g)];
+  assert.ok(buttons.length >= 4);
+  for (const [, attributes] of buttons) assert.match(attributes, /type="button"/);
+  assert.doesNotMatch(source, /<SettingsPanel\s+key=/);
+  assert.doesNotMatch(source.slice(source.indexOf('async function testImageHost'), source.indexOf('async function saveNASBackup')), /setBusy|setImageHost|router\.refresh/);
+  assert.match(settingsSource, /event\.preventDefault\(\)/);
+  assert.match(settingsSource, /probeState\.phase === 'testing'/);
+  assert.match(settingsSource, /onTestImageHost:\s*\(endpoint: string\)/);
 });
 
 test('version panel returns to the in-page content list', async () => {

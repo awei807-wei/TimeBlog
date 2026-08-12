@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -14,6 +17,26 @@ func TestValidateExternalEndpoint(t *testing.T) {
 		if _, err := validateExternalEndpoint(value); err == nil {
 			t.Fatalf("unsafe endpoint accepted: %s", value)
 		}
+	}
+}
+
+func TestProbeExternalImageHostTreatsUnauthorizedAsReachable(t *testing.T) {
+	var receivedAuthorization string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuthorization = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	status, message := probeExternalImageHostWithClient(context.Background(), server.URL, server.Client())
+	if status != "configured_unverified" {
+		t.Fatalf("401 should mean reachable/authentication required, got %q: %s", status, message)
+	}
+	if !strings.Contains(message, "要求认证") {
+		t.Fatalf("401 probe message should explain authentication challenge: %s", message)
+	}
+	if receivedAuthorization != "" {
+		t.Fatalf("reachability probe leaked authorization header: %q", receivedAuthorization)
 	}
 }
 

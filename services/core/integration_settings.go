@@ -54,6 +54,10 @@ type externalImageHostPatch struct {
 	Token    secretMutation `json:"token"`
 }
 
+type externalImageHostProbeRequest struct {
+	Endpoint string `json:"endpoint"`
+}
+
 func integrationRecordByName(ctx context.Context, db *sql.DB, name string) (integrationRecord, error) {
 	var record integrationRecord
 	err := db.QueryRowContext(ctx, `SELECT config,secret_encrypted,revision,last_test_status,last_test_message,last_tested_at,updated_at FROM integration_settings WHERE name=$1`, name).
@@ -298,18 +302,12 @@ func (srv *Server) integrationTestEndpoint(w http.ResponseWriter, r *http.Reques
 		problem(w, http.StatusNotFound, "集成测试不存在")
 		return
 	}
-	record, err := integrationRecordByName(r.Context(), srv.store.database, name)
-	if err != nil {
-		problem(w, 404, "请先保存图床配置")
+	var request externalImageHostProbeRequest
+	if decode(r, &request) != nil || strings.TrimSpace(request.Endpoint) == "" {
+		problem(w, 400, "请提供要测试的图床 Endpoint")
 		return
 	}
-	config := externalImageHostConfig{}
-	if json.Unmarshal(record.Config, &config) != nil {
-		problem(w, 500, "图床配置损坏")
-		return
-	}
-	status, message := probeExternalImageHost(r.Context(), config.Endpoint)
-	_, _ = srv.store.database.ExecContext(r.Context(), `UPDATE integration_settings SET last_test_status=$1,last_test_message=$2,last_tested_at=now(),updated_at=now() WHERE name=$3`, status, message, name)
+	status, message := probeExternalImageHost(r.Context(), request.Endpoint)
 	jsonResponse(w, 200, map[string]any{"status": status, "message": message, "protocolStatus": "unverified"})
 }
 
@@ -318,10 +316,11 @@ func probeExternalImageHost(ctx context.Context, endpoint string) (string, strin
 	if err != nil {
 		return "unreachable", "Endpoint 校验失败"
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodHead, validated, nil)
-	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	return probeExternalImageHostWithClient(ctx, validated, newExternalProbeClient())
+}
+
+func newExternalProbeClient() *http.Client {
+	return &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 3 {
 			return http.ErrUseLastResponse
 		}
@@ -330,6 +329,15 @@ func probeExternalImageHost(ctx context.Context, endpoint string) (string, strin
 		}
 		return nil
 	}}
+}
+
+func probeExternalImageHostWithClient(ctx context.Context, endpoint string, client *http.Client) (string, string) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, endpoint, nil)
+	if err != nil {
+		return "unreachable", "Endpoint 无法访问；未发送 Token，也未上传文件"
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "unreachable", "Endpoint 无法访问；未发送 Token，也未上传文件"

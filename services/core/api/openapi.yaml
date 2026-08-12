@@ -488,10 +488,11 @@ paths:
     post:
       tags: [settings]
       operationId: probeExternalImageHost
-      description: 仅执行不携带 Token 的 HEAD 可达性与认证挑战探测，不上传或删除文件。
+      description: 对请求中的临时 Endpoint 执行不携带 Token 的 HEAD 可达性与认证挑战探测；不保存地址，不上传或删除文件。
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
-      responses: {'200': {description: 探测结果；protocolStatus 始终为 unverified}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostProbeRequest'}}}}
+      responses: {'200': {description: 探测结果；外部 401/403 表示 Endpoint 可达且要求认证，protocolStatus 始终为 unverified}, '400': {$ref: '#/components/responses/BadRequest'}}
 
   /admin/integrations/nas_backup:
     get:
@@ -589,6 +590,12 @@ components:
         statusMessage: {type: string}
         lastTestedAt: {type: [string, 'null'], format: date-time}
         updatedAt: {type: string, format: date-time}
+    ExternalImageHostProbeRequest:
+      type: object
+      additionalProperties: false
+      required: [endpoint]
+      properties:
+        endpoint: {type: string, format: uri, description: 仅用于本次无副作用探测，不会入库}
     NASBackupPatch:
       type: object
       additionalProperties: false
