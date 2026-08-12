@@ -11,6 +11,7 @@ services:
   api:
     build:
       context: ../services/core
+    entrypoint: ["/app/api"]
     restart: unless-stopped
     environment:
       API_ADDR: :8080
@@ -32,8 +33,8 @@ services:
   worker:
     build:
       context: ../services/core
+    entrypoint: ["/app/worker"]
     restart: unless-stopped
-    command: ["/app/worker"]
     environment:
       DATABASE_URL: postgres://timeline:${POSTGRES_PASSWORD}@postgres:5432/timeline?sslmode=disable
       MEDIA_ROOT: /srv/timeline/media
@@ -50,6 +51,10 @@ services:
     environment:
       API_ORIGIN: http://api:8080
       SITE_URL: ${SITE_URL:?set}
+      # Next.js standalone server uses HOSTNAME as its listen address. Docker
+      # otherwise injects the container name, which makes localhost healthchecks
+      # fail even though the published port is reachable.
+      HOSTNAME: 0.0.0.0
     ports: ["127.0.0.1:3000:3000"]
     healthcheck: {test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"], interval: 15s, timeout: 5s, retries: 6, start_period: 20s}
     depends_on: {api: {condition: service_healthy}}

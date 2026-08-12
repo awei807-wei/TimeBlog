@@ -42,6 +42,8 @@ jobs:
         run: docker build -f apps/web/Dockerfile .
       - name: Compose config
         run: docker compose -f deploy/compose.yaml config
+      - name: Deployment static checks
+        run: node --test deploy/compose.test.mjs
       - name: Start Postgres
         run: docker compose -f deploy/compose.yaml up -d --wait postgres
       - name: Postgres integration tests
