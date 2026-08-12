@@ -40,3 +40,82 @@
 .dark {--sidebar:hsl(240 5.9% 10%);--sidebar-foreground:hsl(240 4.8% 95.9%);--sidebar-primary:hsl(224.3 76.3% 48%);--sidebar-primary-foreground:hsl(0 0% 100%);--sidebar-accent:hsl(240 3.7% 15.9%);--sidebar-accent-foreground:hsl(240 4.8% 95.9%);--sidebar-border:hsl(240 3.7% 15.9%);--sidebar-ring:hsl(217.2 91.2% 59.8%);}
 
 @theme inline {--color-sidebar:var(--sidebar);--color-sidebar-foreground:var(--sidebar-foreground);--color-sidebar-primary:var(--sidebar-primary);--color-sidebar-primary-foreground:var(--sidebar-primary-foreground);--color-sidebar-accent:var(--sidebar-accent);--color-sidebar-accent-foreground:var(--sidebar-accent-foreground);--color-sidebar-border:var(--sidebar-border);--color-sidebar-ring:var(--sidebar-ring);}
+
+/* Keep the sidebar aligned with the active page theme instead of a separate palette. */
+:root {
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: #fff;
+  --sidebar-accent: var(--accent-soft);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--line);
+  --sidebar-ring: #9ad4cb;
+  --sidebar-bg: var(--sidebar);
+  --sidebar-fg: var(--sidebar-foreground);
+  --sidebar-muted: var(--muted);
+  --sidebar-active: var(--sidebar-accent);
+}
+
+.dark {
+  --background: #182329;
+  --foreground: #f6f4ef;
+  --sidebar: var(--background);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: #fff;
+  --sidebar-accent: #29423f;
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: #314149;
+  --sidebar-ring: #9ad4cb;
+  --sidebar-bg: var(--sidebar);
+  --sidebar-fg: var(--sidebar-foreground);
+  --sidebar-muted: #afbebd;
+  --sidebar-active: var(--sidebar-accent);
+}
+
+.app-sidebar {
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  border-color: var(--sidebar-border);
+}
+
+.sidebar-brand,
+.sidebar-link { color: var(--sidebar-foreground); }
+.sidebar-kicker,
+.sidebar-group h2,
+.sidebar-link svg,
+.sidebar-session-placeholder,
+.sidebar-status { color: color-mix(in srgb, var(--sidebar-foreground) 62%, var(--sidebar) 38%); }
+.sidebar-link:hover,
+.sidebar-link:focus-visible,
+.sidebar-link.is-active { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+.sidebar-link.is-active { font-weight: 650; }
+.sidebar-link.is-active svg,
+.sidebar-link:hover svg,
+.sidebar-link:focus-visible svg { color: var(--sidebar-primary); }
+
+/* The trigger is intentionally not rendered; keep navigation reachable on narrow screens. */
+@media (max-width: 760px) {
+  .app-sidebar {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    min-height: 0;
+    max-height: min(48vh, 360px);
+    transform: none;
+    transition: none;
+    z-index: auto;
+    margin: 0;
+    padding: 14px 12px;
+    border-width: 0 0 1px;
+    border-radius: 0 0 18px 18px;
+    box-shadow: none;
+  }
+
+  .app-sidebar > [data-slot="sidebar-content"] { overflow-y: auto; }
+  .app-main { padding-left: 0; }
+  .app-content > .shell { padding-top: 18px; }
+}

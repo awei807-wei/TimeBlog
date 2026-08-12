@@ -59,6 +59,20 @@ test('home page does not render the removed introductory note copy', async () =>
   assert.doesNotMatch(source, /className="note"/);
 });
 
+test('sidebar has no trigger and maps theme tokens for desktop and mobile', async () => {
+  const fs = await import('node:fs/promises');
+  const shell = await fs.readFile(new URL('../app/AppShell.tsx', import.meta.url), 'utf8');
+  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(shell, /SidebarTrigger|data-slot=["']sidebar-trigger/);
+  assert.match(css, /--sidebar:\s*var\(--background\)/);
+  assert.match(css, /--sidebar-foreground:\s*var\(--foreground\)/);
+  assert.match(css, /background:\s*var\(--sidebar\)/);
+  assert.match(css, /color:\s*var\(--sidebar-foreground\)/);
+  assert.match(css, /@media \(max-width: 760px\)/);
+  assert.match(css, /position:\s*relative/);
+  assert.match(css, /transform:\s*none/);
+});
+
 test('editor keeps Markdown as the source of truth and protects Chinese IME composition', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');

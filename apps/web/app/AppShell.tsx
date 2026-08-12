@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, FileText, Home, LogIn, LogOut, Menu, PenLine, Search, Tags } from 'lucide-react';
+import { CalendarDays, FileText, Home, LogIn, LogOut, PenLine, Search, Tags } from 'lucide-react';
 import { SessionProvider, useSession } from './SessionContext';
 import {
   Sidebar,
@@ -16,7 +16,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarTrigger,
 } from './components/ui/sidebar';
 
 type NavItem = { href: string; label: string; icon: typeof Home; exact?: boolean };
@@ -47,5 +46,5 @@ function AppNavigation() {
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  return <SessionProvider><SidebarProvider defaultOpen><AppNavigation/><SidebarTrigger className="mobile-sidebar-trigger"><Menu aria-hidden="true"/></SidebarTrigger><main className="app-main"><div className="app-content">{children}</div></main></SidebarProvider></SessionProvider>;
+  return <SessionProvider><SidebarProvider defaultOpen><AppNavigation/><main className="app-main"><div className="app-content">{children}</div></main></SidebarProvider></SessionProvider>;
 }
