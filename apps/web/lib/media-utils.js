@@ -11,7 +11,7 @@ export function isSupportedMedia(file, maxBytes = MAX_MEDIA_BYTES) {
 }
 
 export function createUploadItem(file, id = crypto.randomUUID()) {
-  return { id, fileName: file.name, mime: file.type, size: file.size, status: 'queued' };
+  return { id, fileName: file.name, mime: file.type, size: file.size, status: 'queued', progress: 0 };
 }
 
 export function mediaQueueStoragePlan(fileSize, persistedBytes, options = {}) {
@@ -49,6 +49,8 @@ export async function uploadResumable(uploadUrl, file, options = {}) {
   const idempotencyKey = options.idempotencyKey || '';
   const chunkSize = options.chunkSize || 5 * 1024 * 1024;
   const maxRetries = options.maxRetries ?? 4;
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : () => {};
+  const signal = options.signal;
   const commonHeaders = {
     'Tus-Resumable': '1.0.0',
     ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
@@ -56,7 +58,7 @@ export async function uploadResumable(uploadUrl, file, options = {}) {
   };
 
   const readOffset = async () => {
-    const response = await fetcher(uploadUrl, { method: 'HEAD', credentials: 'include', headers: commonHeaders });
+    const response = await fetcher(uploadUrl, { method: 'HEAD', credentials: 'include', headers: commonHeaders, ...(signal ? { signal } : {}) });
     if (!response.ok && response.status !== 204) throw new Error(`upload HEAD ${response.status}`);
     const raw = response.headers.get('Upload-Offset') || '0';
     const offset = Number(raw);
@@ -66,6 +68,7 @@ export async function uploadResumable(uploadUrl, file, options = {}) {
 
   const pause = (attempt) => new Promise(resolve => setTimeout(resolve, Math.min(2000, 250 * (2 ** attempt))));
   let offset = await readOffset();
+  onProgress(file.size ? offset / file.size : 0);
   while (offset < file.size) {
     const start = offset;
     const end = Math.min(start + chunkSize, file.size);
@@ -77,11 +80,13 @@ export async function uploadResumable(uploadUrl, file, options = {}) {
           credentials: 'include',
           headers: { ...commonHeaders, 'Upload-Offset': String(start), 'Content-Type': 'application/offset+octet-stream' },
           body: file.slice(start, end),
+          ...(signal ? { signal } : {}),
         });
         if (response.ok) {
           const next = Number(response.headers.get('Upload-Offset') || '');
           if (!Number.isSafeInteger(next) || next < end || next > file.size) throw new Error('invalid upload response offset');
           offset = next;
+          onProgress(file.size ? offset / file.size : 1);
           break;
         }
         if (response.status !== 409 && response.status < 500 && response.status !== 408) throw new Error(`upload PATCH ${response.status}`);

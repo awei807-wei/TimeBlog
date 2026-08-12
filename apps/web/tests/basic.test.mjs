@@ -91,7 +91,9 @@ test('sidebar has no trigger and maps theme tokens for desktop and mobile', asyn
 test('editor keeps Markdown as the source of truth and protects Chinese IME composition', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /实时预览/);
+  assert.match(source, /Markdown 模式直接同页展示预览/);
+  assert.doesNotMatch(source, /value === 'preview'/);
+  assert.doesNotMatch(source, source.includes('实时预览</button>') ? /实时预览/ : /a^/);
   assert.match(source, /aria-label="Markdown 正文编辑"/);
   assert.match(source, /onCompositionStart/);
   assert.match(source, /onCompositionEnd/);

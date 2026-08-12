@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Paperclip, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, FileUp, LoaderCircle, Paperclip, RotateCcw, Trash2, UploadCloud, X } from 'lucide-react';
 import { API } from '@/lib/api';
 import { invalidatePublicCaches } from '@/lib/cache-invalidation';
 import { deserializeEditorStatus, nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
 import { renderMarkdown } from '@/lib/markdown';
 import { createUploadItem, isSupportedMedia, mediaMarkdown, mediaQueueStoragePlan, mediaUploadUrl, replaceMediaToken, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
 
-type Mode = 'simple' | 'markdown' | 'preview';
+type Mode = 'simple' | 'markdown';
+// “实时预览”不再是独立标签；Markdown 模式直接同页展示预览。
 type EditorStatus = 'draft' | 'public' | 'private';
 type Draft = { id: string; clientDraftId: string; payload: Record<string, unknown>; updatedAt: string };
 type QueueItem = { id: string; draft: Draft; attempts: number; nextTryAt: number };
@@ -121,6 +122,10 @@ export default function AdminPage() {
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }));
   const [slug, setSlug] = useState('');
   const [mode, setMode] = useState<Mode>('simple');
+  const [uploadPanelOpen, setUploadPanelOpen] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const cancelledUploads = useRef<Set<string>>(new Set());
+  const uploadControllers = useRef<Map<string, AbortController>>(new Map());
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [editingEntryID, setEditingEntryID] = useState('');
@@ -154,27 +159,32 @@ export default function AdminPage() {
     if (file.type.startsWith('image/') && !mediaCapability.imageUploadEnabled) { setMessage(mediaCapability.reason || '图片上传暂不可用，请先配置可写的媒体存储'); return; }
     if (!file.type.startsWith('image/') && !mediaCapability.nonImageUploadEnabled) { setMessage(mediaCapability.reason || '媒体上传暂不可用，请先配置可写的媒体存储'); return; }
     const item = createUploadItem(file, existingId);
+    cancelledUploads.current.delete(item.id);
+    const controller = new AbortController();
+    uploadControllers.current.set(item.id, controller);
     setUploads(current => current.some(value => value.id === item.id) ? current.map(value => value.id === item.id ? item : value) : [...current, item]);
     void persistMediaQueueItem(item, file);
     const token = mediaMarkdown(item.id);
     setMarkdown(current => current.includes(token) ? current : `${current}${current && !current.endsWith('\n') ? '\n' : ''}${token}`);
     try {
-      const session = await fetch(`${API}/auth/session`, { credentials: 'include' }).then(r => r.json());
-      const ticketResponse = await fetch(`${API}/admin/media/upload-ticket`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id }, body: JSON.stringify({ name: file.name, size: file.size, mime: file.type, visibility: status === 'private' ? 'private' : 'public' }) });
+      const session = await fetch(`${API}/auth/session`, { credentials: 'include', signal: controller.signal }).then(r => r.json());
+      const ticketResponse = await fetch(`${API}/admin/media/upload-ticket`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id }, body: JSON.stringify({ name: file.name, size: file.size, mime: file.type, visibility: status === 'private' ? 'private' : 'public' }), signal: controller.signal });
       if (!ticketResponse.ok) throw new Error('ticket');
       const ticket = await ticketResponse.json() as { media: { id: string }; uploadUrl: string; finalizeUrl?: string };
-      setUploads(current => current.map(value => value.id === item.id ? { ...value, status: 'uploading' } : value));
+      setUploads(current => current.map(value => value.id === item.id ? { ...value, status: 'uploading', progress: 0 } : value));
       void persistMediaQueueItem({ ...item, status: 'uploading' }, file);
       const uploadUrl = mediaUploadUrl(ticket.uploadUrl, window.location.origin);
       if (ticket.finalizeUrl) {
-        await uploadResumable(uploadUrl, file, { csrfToken: session.csrfToken || '', idempotencyKey: item.id });
+        await uploadResumable(uploadUrl, file, { csrfToken: session.csrfToken || '', idempotencyKey: item.id, signal: controller.signal, onProgress: (progress: number) => setUploads(current => current.map(value => value.id === item.id ? { ...value, progress } : value)) });
       }
+      if (cancelledUploads.current.has(item.id)) throw new Error('cancelled');
       const finalizeUrl = ticket.finalizeUrl ? mediaUploadUrl(ticket.finalizeUrl, window.location.origin) : uploadUrl;
       const finalize = await fetch(finalizeUrl, {
         method: 'POST',
         credentials: 'include',
         headers: { 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id },
         ...(ticket.finalizeUrl ? {} : { 'body': file, headers: { 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id, 'Content-Type': 'application/octet-stream' } }),
+        signal: controller.signal,
       });
       if (!finalize.ok) throw new Error('finalize');
       const resolved = mediaMarkdown(ticket.media.id);
@@ -183,12 +193,16 @@ export default function AdminPage() {
       setUploads(current => current.map(value => value.id === item.id ? ready : value));
       void persistMediaQueueItem(ready);
       setMessage('媒体已上传并写入 Markdown');
-    } catch {
-      const failed: UploadItem = { ...item, status: 'failed', error: '上传失败' };
+    } catch (error) {
+      if (cancelledUploads.current.has(item.id) || (error instanceof Error && error.message === 'cancelled')) {
+        setUploads(current => current.filter(value => value.id !== item.id));
+        return;
+      }
+      const failed: UploadItem = { ...item, status: 'failed', error: '上传失败', progress: 0 };
       setUploads(current => current.map(value => value.id === item.id ? failed : value));
       void persistMediaQueueItem(failed);
       setMessage('媒体上传失败，保留引用占位符，可稍后重试');
-    }
+    } finally { uploadControllers.current.delete(item.id); }
   }
 
   async function retryUpload(item: UploadItem, file?: File) {
@@ -201,6 +215,16 @@ export default function AdminPage() {
   }
 
   function handleFiles(files: FileList | File[]) { for (const file of Array.from(files)) void uploadMedia(file); }
+
+  function cancelUpload(item: UploadItem) {
+    cancelledUploads.current.add(item.id);
+    uploadControllers.current.get(item.id)?.abort();
+    uploadControllers.current.delete(item.id);
+    setUploads(current => current.filter(value => value.id !== item.id));
+    setMarkdown(current => removeMediaToken(current, item));
+    void dbDelete(MEDIA_QUEUE_STORE, item.id);
+    setMessage(`已取消上传 ${item.fileName}`);
+  }
 
   function removeUpload(item: UploadItem) {
     setMarkdown(current => removeMediaToken(current, item));
@@ -404,10 +428,49 @@ export default function AdminPage() {
   function switchMode(nextMode: Mode) {
     if (nextMode === mode) return;
     setMode(nextMode);
-    setMessage(nextMode === 'preview' ? '实时预览已开启；请在 Markdown 编辑区输入内容' : '');
+    setMessage('');
     window.setTimeout(() => editorRef.current?.focus(), 0);
   }
 
   const uploadDisabled = mediaCapability.checked && !mediaCapability.imageUploadEnabled && !mediaCapability.nonImageUploadEnabled;
-  return <main id="main-content" className="shell"><div className="admin-grid"><section><div className="eyebrow">WRITE NOW · {online ? 'ONLINE' : 'OFFLINE'}</div><h1>{editingEntryID ? '编辑内容' : '此刻想写些什么？'}</h1><div className="composer"><div className="editor-toolbar" role="tablist" aria-label="编辑模式">{(['simple', 'markdown', 'preview'] as Mode[]).map(value => <button id={`tab-${value}`} type="button" role="tab" aria-controls="editor-panel" aria-selected={mode === value} className={mode === value ? 'tool active' : 'tool'} key={value} onClick={() => switchMode(value)}>{value === 'simple' ? '简易' : value === 'markdown' ? 'Markdown' : '实时预览'}</button>)}<label className={`tool upload-control${uploadDisabled ? ' upload-disabled' : ''}`} aria-label="添加媒体" aria-disabled={uploadDisabled} title={uploadDisabled ? mediaCapability.reason : '上传图片、音频、视频或 PDF'}><Paperclip aria-hidden="true" /> 添加媒体<input type="file" accept="image/*,audio/*,video/*,application/pdf" multiple hidden disabled={uploadDisabled} onChange={e => { if (e.target.files) handleFiles(e.target.files); e.currentTarget.value = ''; }}/></label></div>{!mediaCapability.checked || uploadDisabled ? <div className="media-capability" role="status">{mediaCapability.reason}</div> : null}{kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/><input className="summary-input" value={slug} onChange={e => setSlug(e.target.value)} placeholder="地址 slug（可选，编辑时保持原值）" aria-label="文章地址"/></>}<textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => setMarkdown(e.target.value)} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder="从一句话开始。支持 Markdown，也可以直接粘贴图片。" aria-label="Markdown 正文编辑" />{(mode === 'markdown' || mode === 'preview') && <Preview markdown={markdown}/>}<div className="status" aria-live="polite">{message}</div>{uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><span className="upload-name">{item.fileName}</span><span className="upload-actions"><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? '已完成' : item.status === 'uploading' ? '上传中' : item.status === 'failed' ? '失败' : '排队中'}</span>{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); e.currentTarget.value = ''; }}/></label>}<button type="button" className="inline-action remove-media" onClick={() => removeUpload(item)} aria-label={`从当前草稿移除 ${item.fileName}`}><Trash2 aria-hidden="true" />移除</button></span></li>)}</ul>}<div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || loadingEdit || !markdown.trim()} onClick={save}>{saving ? '保存中…' : editingEntryID ? '保存修改' : '保存'}</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div></div></section><aside className="sidebar"><div className="side-card"><div className="side-card-heading"><h3>草稿托盘（{drafts.length}）</h3><button className="icon-button" type="button" onClick={() => void refreshDrafts()} aria-label="刷新草稿">↻</button></div>{drafts.length ? <ul className="draft-list">{drafts.slice(0, 8).map(d => <li key={d.id}><button type="button" onClick={() => loadDraft(d)}><strong>{draftName(d)}</strong><small>{new Date(d.updatedAt).toLocaleString('zh-CN')}</small></button></li>)}</ul> : <p>停止输入后自动保存。你可以同时保留多份未命名草稿。</p>}</div><div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div><div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站和导出工具。</p></div></aside></div></main>;
+  const openUploadPicker = () => {
+    if (!uploadDisabled) setUploadPanelOpen(true);
+  };
+
+  const uploadPanel = uploadPanelOpen ? <section className="upload-panel" aria-label="媒体附件上传">
+    <div
+      className={`upload-dropzone${dragActive ? ' is-dragging' : ''}${uploadDisabled ? ' is-disabled' : ''}`}
+      onDragEnter={event => { event.preventDefault(); setDragActive(true); }}
+      onDragOver={event => { event.preventDefault(); setDragActive(true); }}
+      onDragLeave={event => { event.preventDefault(); setDragActive(false); }}
+      onDrop={event => { event.preventDefault(); setDragActive(false); if (!uploadDisabled) handleFiles(event.dataTransfer.files); }}
+    >
+      <div className="upload-dropzone-icon" aria-hidden="true"><UploadCloud /></div>
+      <strong>拖放文件到这里</strong>
+      <span>或浏览设备选择附件</span>
+      <small>支持 PNG、JPG、GIF、WEBP、音频、视频和 PDF，单个文件不超过 {Math.round(MAX_MEDIA_BYTES / 1024 / 1024)}MB</small>
+      <label className="upload-browse-button">
+        <FileUp aria-hidden="true" /> 浏览文件
+        <input type="file" accept="image/*,audio/*,video/*,application/pdf" multiple hidden disabled={uploadDisabled} onChange={event => { if (event.target.files) handleFiles(event.target.files); event.currentTarget.value = ''; }} />
+      </label>
+      {uploadDisabled && <span className="upload-panel-error"><AlertCircle aria-hidden="true" />{mediaCapability.reason}</span>}
+    </div>
+  </section> : null;
+
+  return <main id="main-content" className="shell"><div className="admin-grid"><section><div className="eyebrow">WRITE NOW · {online ? 'ONLINE' : 'OFFLINE'}</div><h1>{editingEntryID ? '编辑内容' : '此刻想写些什么？'}</h1><div className="composer">
+    <div className="editor-toolbar" role="tablist" aria-label="编辑模式">
+      {(['simple', 'markdown'] as Mode[]).map(value => <button id={`tab-${value}`} type="button" role="tab" aria-controls="editor-panel" aria-selected={mode === value} className={mode === value ? 'tool active' : 'tool'} key={value} onClick={() => switchMode(value)}>{value === 'simple' ? '简易' : 'Markdown'}</button>)}
+      <button type="button" className={`tool upload-control${uploadPanelOpen ? ' active' : ''}${uploadDisabled ? ' upload-disabled' : ''}`} aria-label="添加媒体" aria-disabled={uploadDisabled} aria-expanded={uploadPanelOpen} disabled={uploadDisabled} title={uploadDisabled ? mediaCapability.reason : '上传图片、音频、视频或 PDF'} onClick={() => setUploadPanelOpen(open => !open)}><Paperclip aria-hidden="true" /> 添加媒体</button>
+    </div>
+    <div className={`media-capability${uploadDisabled ? ' is-unavailable' : ''}`} role="status">{!mediaCapability.checked ? mediaCapability.reason : uploadDisabled ? mediaCapability.reason : '本地媒体存储已就绪 · 图片与附件可上传'}</div>
+    {kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/><input className="summary-input" value={slug} onChange={e => setSlug(e.target.value)} placeholder="地址 slug（可选，编辑时保持原值）" aria-label="文章地址"/></>}
+    <textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => setMarkdown(e.target.value)} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder={mode === 'simple' ? '从一句话开始。可直接粘贴图片或添加媒体附件。' : '使用 Markdown 写作；右侧或下方会同步显示预览。'} aria-label="Markdown 正文编辑" />
+    {mode === 'simple' && uploadPanel}
+    {mode === 'markdown' && <Preview markdown={markdown}/>} {mode === 'markdown' && uploadPanel}
+    <div className="status" aria-live="polite">{message}</div>
+    {uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><div className="upload-item-main"><span className="upload-name">{item.fileName}</span>{item.status === 'uploading' && <div className="upload-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((item.progress || 0) * 100)}><span style={{ width: `${Math.round((item.progress || 0) * 100)}%` }} /></div>}</div><span className="upload-actions"><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? <><Check aria-hidden="true" />已完成</> : item.status === 'uploading' ? <><LoaderCircle className="spin" aria-hidden="true" />上传中</> : item.status === 'failed' ? <><AlertCircle aria-hidden="true" />失败</> : '排队中'}</span>{item.status === 'uploading' && <button type="button" className="inline-action" onClick={() => cancelUpload(item)}><X aria-hidden="true" />取消</button>}{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); e.currentTarget.value = ''; }}/></label>}<button type="button" className="inline-action remove-media" onClick={() => removeUpload(item)} aria-label={`从当前草稿移除 ${item.fileName}`}><Trash2 aria-hidden="true" />移除附件</button></span></li>)}</ul>}
+    <div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || loadingEdit || !markdown.trim()} onClick={save}>{saving ? '保存中…' : editingEntryID ? '保存修改' : '保存'}</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div>
+  </div></section><aside className="sidebar"><div className="side-card"><div className="side-card-heading"><h3>草稿托盘（{drafts.length}）</h3><button className="icon-button" type="button" onClick={() => void refreshDrafts()} aria-label="刷新草稿"><RotateCcw aria-hidden="true" /></button></div>{drafts.length ? <ul className="draft-list">{drafts.slice(0, 8).map(d => <li key={d.id}><button type="button" onClick={() => loadDraft(d)}><strong>{draftName(d)}</strong><small>{new Date(d.updatedAt).toLocaleString('zh-CN')}</small></button></li>)}</ul> : <p>停止输入后自动保存。你可以同时保留多份未命名草稿。</p>}</div><div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div><div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站和导出工具。</p></div></aside></div></main>;
+
 }
+/* Markdown mode keeps the live preview inline; the old standalone tab is intentionally removed. */

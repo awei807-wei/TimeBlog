@@ -1,4 +1,4 @@
-export type UploadItem = { id: string; fileName: string; mime: string; size: number; status: 'queued'|'uploading'|'ready'|'failed'; mediaId?: string; error?: string; file?: Blob; hasBlob?: boolean; needsReselect?: boolean };
+export type UploadItem = { id: string; fileName: string; mime: string; size: number; status: 'queued'|'uploading'|'ready'|'failed'; mediaId?: string; error?: string; file?: Blob; hasBlob?: boolean; needsReselect?: boolean; progress?: number };
 export const MAX_MEDIA_BYTES: number;
 export const MEDIA_BLOB_MAX_BYTES: number;
 export const MEDIA_QUEUE_MAX_BYTES: number;
@@ -8,4 +8,4 @@ export function mediaQueueStoragePlan(fileSize: number, persistedBytes: number, 
 export function mediaMarkdown(mediaId: string): string;
 export function replaceMediaToken(markdown: string, oldToken: string, newToken: string): string;
 export function mediaUploadUrl(value: string, origin?: string): string;
-export function uploadResumable(uploadUrl: string, file: Blob, options?: { fetcher?: typeof fetch; csrfToken?: string; idempotencyKey?: string; chunkSize?: number; maxRetries?: number }): Promise<number>;
+export function uploadResumable(uploadUrl: string, file: Blob, options?: { fetcher?: typeof fetch; csrfToken?: string; idempotencyKey?: string; chunkSize?: number; maxRetries?: number; onProgress?: (progress: number) => void; signal?: AbortSignal }): Promise<number>;
