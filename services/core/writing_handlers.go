@@ -288,6 +288,10 @@ func (srv *Server) entriesDatabase(w http.ResponseWriter, r *http.Request) {
 		if jt.Valid {
 			e.JournalTime = &jt.String
 		}
+		if err := loadEntryTaxonomy(r.Context(), srv.store.database, &e); err != nil {
+			problem(w, 500, "读取内容分类失败")
+			return
+		}
 		out = append(out, &e)
 	}
 	jsonResponse(w, 200, map[string]any{"entries": out})
@@ -314,7 +318,7 @@ func (srv *Server) entry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(parts) > 1 && parts[1] == "edit" && r.Method == http.MethodPost {
-		wc := &WorkingCopy{ID: newID(), EntryID: e.ID, BaseRevision: e.Revision, ClientDraftID: newID(), Payload: map[string]any{"markdown": e.Markdown, "title": e.Title, "summary": e.Summary, "journalDate": e.JournalDate, "journalTime": e.JournalTime, "visibility": e.Visibility, "kind": e.Kind}, UpdatedAt: time.Now()}
+		wc := &WorkingCopy{ID: newID(), EntryID: e.ID, BaseRevision: e.Revision, ClientDraftID: "edit-" + e.ID, Payload: map[string]any{"markdown": e.Markdown, "title": e.Title, "slug": e.Slug, "summary": e.Summary, "journalDate": e.JournalDate, "journalTime": e.JournalTime, "visibility": e.Visibility, "status": e.Status, "kind": e.Kind, "categories": e.Categories, "tags": e.Tags}, UpdatedAt: time.Now()}
 		srv.store.mu.Lock()
 		srv.store.working[wc.ID] = wc
 		srv.store.mu.Unlock()
@@ -384,6 +388,10 @@ func (srv *Server) entryDatabase(w http.ResponseWriter, r *http.Request) {
 	if jt.Valid {
 		e.JournalTime = &jt.String
 	}
+	if err := loadEntryTaxonomy(r.Context(), srv.store.database, &e); err != nil {
+		problem(w, 500, "读取内容分类失败")
+		return
+	}
 	switch {
 	case len(parts) > 1 && parts[1] == "edit" && r.Method == http.MethodPost:
 		payload := map[string]any{"kind": e.Kind, "status": e.Status, "visibility": e.Visibility, "title": e.Title, "slug": e.Slug, "summary": e.Summary, "markdown": e.Markdown, "journalDate": e.JournalDate, "journalTime": e.JournalTime, "categories": e.Categories, "tags": e.Tags}
@@ -391,8 +399,14 @@ func (srv *Server) entryDatabase(w http.ResponseWriter, r *http.Request) {
 		var wc WorkingCopy
 		err = srv.store.database.QueryRowContext(r.Context(), `INSERT INTO entry_working_copies(id,owner_id,entry_id,client_draft_id,base_revision,payload) VALUES(gen_random_uuid(),$1::uuid,$2::uuid,$3,$4,$5) RETURNING id::text,client_draft_id,COALESCE(entry_id::text,''),base_revision,payload,updated_at`, ownerID, e.ID, "edit-"+e.ID, e.Revision, data).Scan(&wc.ID, &wc.ClientDraftID, &wc.EntryID, &wc.BaseRevision, &data, &wc.UpdatedAt)
 		if err != nil {
-			problem(w, http.StatusConflict, "编辑草稿已存在")
-			return
+			// Reopening the same entry should resume its existing private
+			// working copy instead of creating a second record or discarding
+			// unsaved edits from a previous browser tab.
+			err = srv.store.database.QueryRowContext(r.Context(), `SELECT id::text,client_draft_id,COALESCE(entry_id::text,''),base_revision,payload,updated_at FROM entry_working_copies WHERE owner_id=$1::uuid AND entry_id=$2::uuid`, ownerID, e.ID).Scan(&wc.ID, &wc.ClientDraftID, &wc.EntryID, &wc.BaseRevision, &data, &wc.UpdatedAt)
+			if err != nil {
+				problem(w, http.StatusConflict, "编辑草稿已存在")
+				return
+			}
 		}
 		_ = json.Unmarshal(data, &wc.Payload)
 		jsonResponse(w, http.StatusCreated, &wc)
@@ -582,6 +596,16 @@ func (srv *Server) commitWorking(w http.ResponseWriter, r *http.Request, wc *Wor
 			in.Markdown = v
 		}
 	}
+	if in.Slug == "" {
+		if v, ok := wc.Payload["slug"].(string); ok {
+			in.Slug = v
+		}
+	}
+	if in.Summary == "" {
+		if v, ok := wc.Payload["summary"].(string); ok {
+			in.Summary = v
+		}
+	}
 	if in.Title == "" {
 		if v, ok := wc.Payload["title"].(string); ok {
 			in.Title = v
@@ -767,6 +791,10 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 	}
 	undoToken := ""
 	if in.Categories != nil {
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entry_categories WHERE entry_id=$1::uuid`, entryID); err != nil {
+			problem(w, 500, "更新分类失败")
+			return
+		}
 		for _, name := range in.Categories {
 			slug := slugify(name)
 			_, _ = tx.ExecContext(r.Context(), `INSERT INTO categories(id,name,slug) VALUES(gen_random_uuid(),$1,$2) ON CONFLICT(slug) DO NOTHING`, name, slug)
@@ -778,6 +806,12 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 		undoToken = randomToken()
 		if err := persistUndoTx(r.Context(), tx, undoToken, entryID, b, time.Now().Add(15*time.Second)); err != nil {
 			problem(w, 500, "撤销令牌创建失败")
+			return
+		}
+	}
+	if in.Tags != nil {
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entry_tags WHERE entry_id=$1::uuid`, entryID); err != nil {
+			problem(w, 500, "更新标签失败")
 			return
 		}
 	}

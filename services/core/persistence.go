@@ -63,6 +63,47 @@ func queryEntries(ctx context.Context, db *sql.DB, publicOnly bool) ([]*Entry, e
 	return out, rows.Err()
 }
 
+// loadEntryTaxonomy fills the private category/tag fields that are required by
+// the editor. Public query paths intentionally redact these fields for private
+// entries, while authenticated admin reads must round-trip them losslessly.
+func loadEntryTaxonomy(ctx context.Context, db *sql.DB, e *Entry) error {
+	rows, err := db.QueryContext(ctx, `SELECT c.name FROM entry_categories ec JOIN categories c ON c.id=ec.category_id WHERE ec.entry_id=$1::uuid ORDER BY c.name`, e.ID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		e.Categories = append(e.Categories, name)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	rows, err = db.QueryContext(ctx, `SELECT t.display_name FROM entry_tags et JOIN tags t ON t.id=et.tag_id WHERE et.entry_id=$1::uuid ORDER BY t.normalized_name`, e.ID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return err
+		}
+		e.Tags = append(e.Tags, name)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	return nil
+}
+
 func encodeCursor(date, id string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(date + "|" + id))
 }

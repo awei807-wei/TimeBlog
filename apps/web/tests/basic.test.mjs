@@ -39,6 +39,19 @@ test('version panel returns to the in-page content list', async () => {
   assert.match(source, /aria-label="返回内容列表"/);
 });
 
+test('content management exposes a safe edit entry and editor uses the update working copy', async () => {
+  const fs = await import('node:fs/promises');
+  const list = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  assert.match(list, /href=\{`\/admin\?edit=\$\{encodeURIComponent\(entry\.id\)\}`\}/);
+  assert.match(list, /aria-label=\{`编辑\$\{entry\.title/);
+  assert.match(editor, /\/admin\/entries\/\$\{encodeURIComponent\(requestedEditID\)\}\/edit/);
+  assert.match(editor, /setMarkdown\(String\(value\.markdown/);
+  assert.match(editor, /setEditingBaseRevision\(Number\(working\.baseRevision/);
+  assert.match(editor, /working-copies\/\$\{working\.id\}\/commit/);
+  assert.match(editor, /editingEntryID \? '保存修改' : '保存'/);
+});
+
 test('home page does not render the removed introductory note copy', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');

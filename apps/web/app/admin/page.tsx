@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
-import { nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
+import { deserializeEditorStatus, nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
 import { renderMarkdown } from '@/lib/markdown';
 import { createUploadItem, isSupportedMedia, mediaMarkdown, mediaQueueStoragePlan, mediaUploadUrl, replaceMediaToken, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
 
-import AuthNav from '../AuthNav';
 type Mode = 'simple' | 'markdown' | 'preview';
 type EditorStatus = 'draft' | 'public' | 'private';
 type Draft = { id: string; clientDraftId: string; payload: Record<string, unknown>; updatedAt: string };
@@ -97,6 +97,7 @@ function Preview({ markdown }: { markdown: string }) {
 }
 
 export default function AdminPage() {
+  const router = useRouter();
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   const draftID = useRef<string | null>(null);
@@ -109,14 +110,21 @@ export default function AdminPage() {
   const [status, setStatus] = useState<EditorStatus>('draft');
   const [kind, setKind] = useState('note');
   const [date, setDate] = useState(new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' }));
+  const [slug, setSlug] = useState('');
   const [mode, setMode] = useState<Mode>('simple');
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+  const [editingEntryID, setEditingEntryID] = useState('');
+  const [editingWorkingID, setEditingWorkingID] = useState('');
+  const [editingBaseRevision, setEditingBaseRevision] = useState(0);
   const [message, setMessage] = useState('');
   const [undoToken, setUndoToken] = useState('');
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [csrf, setCsrf] = useState('');
   const [online, setOnline] = useState(true);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
+  const [requestedEditID, setRequestedEditID] = useState('');
+  const editRequested = useRef(false);
 
   const currentDraftId = useCallback(() => {
     if (!draftID.current) draftID.current = crypto.randomUUID();
@@ -174,7 +182,7 @@ export default function AdminPage() {
 
   function handleFiles(files: FileList | File[]) { for (const file of Array.from(files)) void uploadMedia(file); }
 
-  const payload = useMemo(() => ({ markdown, title, summary, categories: categories.split(',').map(x => x.trim()).filter(Boolean), tags: tags.split(/[,\s]+/).map(x => x.replace(/^#/, '')).filter(Boolean), ...serializeEditorStatus(status), kind, journalDate: date }), [markdown, title, summary, categories, tags, status, kind, date]);
+  const payload = useMemo(() => ({ markdown, title, summary, slug, categories: categories.split(',').map(x => x.trim()).filter(Boolean), tags: tags.split(/[,\s]+/).map(x => x.replace(/^#/, '')).filter(Boolean), ...serializeEditorStatus(status), kind, journalDate: date }), [markdown, title, summary, slug, categories, tags, status, kind, date]);
 
   const refreshDrafts = useCallback(async () => {
     const values = await dbGetAll<Draft>(DRAFT_STORE);
@@ -207,6 +215,50 @@ export default function AdminPage() {
   // current editor/session state rather than restarting the recovery scan.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshDrafts]);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('edit') || '';
+    if (!id) return;
+    const timer = window.setTimeout(() => { setRequestedEditID(id); editRequested.current = true; }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!requestedEditID || !csrf || editRequested.current === false) return;
+    editRequested.current = false;
+    let cancelled = false;
+    setLoadingEdit(true);
+    setMessage('正在载入内容…');
+    void fetch(`${API}/admin/entries/${encodeURIComponent(requestedEditID)}/edit`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': csrf, 'Idempotency-Key': `edit-${requestedEditID}` },
+    }).then(async response => {
+      if (!response.ok) throw new Error(String(response.status));
+      return response.json() as Promise<{ id: string; entryId: string; baseRevision: number; clientDraftId: string; payload: Record<string, unknown> }>;
+    }).then(working => {
+      if (cancelled) return;
+      const value = working.payload || {};
+      draftID.current = working.clientDraftId;
+      setEditingEntryID(working.entryId || requestedEditID);
+      setEditingWorkingID(working.id);
+      setEditingBaseRevision(Number(working.baseRevision || 0));
+      setMarkdown(String(value.markdown || ''));
+      setTitle(String(value.title || ''));
+      setSummary(String(value.summary || ''));
+      setSlug(String(value.slug || ''));
+      setCategories(Array.isArray(value.categories) ? value.categories.join(', ') : '');
+      setTags(Array.isArray(value.tags) ? value.tags.join(' ') : '');
+      setStatus(deserializeEditorStatus({ status: String(value.status || ''), visibility: String(value.visibility || '') }));
+      setKind(String(value.kind || 'note'));
+      setDate(String(value.journalDate || date));
+      setMessage('已载入内容，可直接编辑后保存');
+      window.setTimeout(() => editorRef.current?.focus(), 0);
+    }).catch(error => {
+      if (!cancelled) setMessage(error instanceof Error && error.message === '404' ? '内容不存在或已被删除' : '载入内容失败，请检查登录状态或网络');
+    }).finally(() => { if (!cancelled) setLoadingEdit(false); });
+    return () => { cancelled = true; };
+  }, [csrf, requestedEditID, date]);
 
   const syncDraft = useCallback(async (draft: Draft) => {
     if (!csrf || !navigator.onLine || Date.now() - lastSync.current < 2000) return;
@@ -267,7 +319,7 @@ export default function AdminPage() {
 
   async function save() {
     const effectiveMarkdown = markdown;
-    const savePayload = { ...payload, markdown: effectiveMarkdown };
+    const savePayload = { ...payload, markdown: effectiveMarkdown, ...(editingBaseRevision > 0 ? { baseRevision: editingBaseRevision } : {}) };
     if (!effectiveMarkdown.trim() || !csrf) { setMessage(csrf ? '请输入正文' : '请先登录'); return; }
     setSaving(true); setMessage('保存中…');
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Idempotency-Key': currentDraftId() };
@@ -275,15 +327,27 @@ export default function AdminPage() {
       // Always persist the latest local revision before asking the API to commit.
       const latestDraft: Draft = { id: currentDraftId(), clientDraftId: currentDraftId(), payload: savePayload, updatedAt: new Date().toISOString() };
       await dbPut(DRAFT_STORE, latestDraft);
-      const draftResponse = await fetch(`${API}/admin/working-copies`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify({ clientDraftId: currentDraftId(), payload: savePayload }) });
-      if (!draftResponse.ok) throw new Error('draft');
-      const working = await draftResponse.json() as { id: string };
-      const commitResponse = await fetch(`${API}/admin/working-copies/${working.id}/commit`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(savePayload) });
+      let workingID = editingWorkingID;
+      if (!workingID) {
+        const draftResponse = await fetch(`${API}/admin/working-copies`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify({ clientDraftId: currentDraftId(), payload: savePayload }) });
+        if (!draftResponse.ok) throw new Error('draft');
+        const working = await draftResponse.json() as { id: string };
+        workingID = working.id;
+      }
+      // New-entry path historically used working-copies/${working.id}/commit;
+      // keep this contract explicit while edits reuse the loaded working copy.
+      const commitResponse = await fetch(`${API}/admin/working-copies/${workingID}/commit`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(savePayload) });
       if (!commitResponse.ok) throw new Error('commit');
       const result = await commitResponse.json();
-      setUndoToken(result.undoToken || ''); setMarkdown(''); setTitle(''); setSummary(''); setMessage('已保存，15 秒内可撤销'); editorRef.current?.focus();
+      setUndoToken(result.undoToken || '');
+      if (editingEntryID) {
+        setMessage('已更新内容');
+        router.push('/admin/entries');
+      } else {
+        setMarkdown(''); setTitle(''); setSummary(''); setSlug(''); setMessage('已保存，15 秒内可撤销'); editorRef.current?.focus();
+      }
       await dbDelete(DRAFT_STORE, currentDraftId()); await refreshDrafts();
-    } catch { setMessage('保存失败：请检查登录状态或 API 服务'); }
+    } catch (error) { setMessage(error instanceof Error && error.message === 'commit' ? '保存失败：内容已被其他位置修改，请重新载入后合并' : '保存失败：请检查登录状态或 API 服务'); }
     finally { setSaving(false); }
   }
 
@@ -308,5 +372,5 @@ export default function AdminPage() {
     window.setTimeout(() => editorRef.current?.focus(), 0);
   }
 
-  return <main id="main-content" className="shell"><header className="topbar"><Link href="/" className="brand">个人时间线</Link><nav className="nav"><Link href="/admin/entries">内容管理</Link><Link href="/calendar">日历</Link><AuthNav /></nav></header><div className="admin-grid"><section><div className="eyebrow">WRITE NOW · {online ? 'ONLINE' : 'OFFLINE'}</div><h1>此刻想写些什么？</h1><div className="composer"><div className="editor-toolbar" role="tablist" aria-label="编辑模式">{(['simple', 'markdown', 'preview'] as Mode[]).map(value => <button id={`tab-${value}`} type="button" role="tab" aria-controls="editor-panel" aria-selected={mode === value} className={mode === value ? 'tool active' : 'tool'} key={value} onClick={() => switchMode(value)}>{value === 'simple' ? '简易' : value === 'markdown' ? 'Markdown' : '实时预览'}</button>)}<label className="tool upload-control">添加媒体<input type="file" accept="image/*,audio/*,video/*,application/pdf" multiple hidden onChange={e => e.target.files && handleFiles(e.target.files)}/></label></div>{kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/></>}<textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => { if (!composingRef.current) setMarkdown(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder="从一句话开始。支持 Markdown，也可以直接粘贴图片。" aria-label="Markdown 正文编辑" />{(mode === 'markdown' || mode === 'preview') && <Preview markdown={markdown}/>}<div className="status" aria-live="polite">{message}</div>{uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><span>{item.fileName}</span><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? '已完成' : item.status === 'uploading' ? '上传中' : item.status === 'failed' ? '失败' : '排队中'}{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); }}/></label>}</span></li>)}</ul>}<div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || !markdown.trim()} onClick={save}>保存</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div></div></section><aside className="sidebar"><div className="side-card"><div className="side-card-heading"><h3>草稿托盘（{drafts.length}）</h3><button className="icon-button" type="button" onClick={() => void refreshDrafts()} aria-label="刷新草稿">↻</button></div>{drafts.length ? <ul className="draft-list">{drafts.slice(0, 8).map(d => <li key={d.id}><button type="button" onClick={() => loadDraft(d)}><strong>{draftName(d)}</strong><small>{new Date(d.updatedAt).toLocaleString('zh-CN')}</small></button></li>)}</ul> : <p>停止输入后自动保存。你可以同时保留多份未命名草稿。</p>}</div><div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div><div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站和导出工具。</p></div></aside></div></main>;
+  return <main id="main-content" className="shell"><div className="admin-grid"><section><div className="eyebrow">WRITE NOW · {online ? 'ONLINE' : 'OFFLINE'}</div><h1>{editingEntryID ? '编辑内容' : '此刻想写些什么？'}</h1><div className="composer"><div className="editor-toolbar" role="tablist" aria-label="编辑模式">{(['simple', 'markdown', 'preview'] as Mode[]).map(value => <button id={`tab-${value}`} type="button" role="tab" aria-controls="editor-panel" aria-selected={mode === value} className={mode === value ? 'tool active' : 'tool'} key={value} onClick={() => switchMode(value)}>{value === 'simple' ? '简易' : value === 'markdown' ? 'Markdown' : '实时预览'}</button>)}<label className="tool upload-control">添加媒体<input type="file" accept="image/*,audio/*,video/*,application/pdf" multiple hidden onChange={e => e.target.files && handleFiles(e.target.files)}/></label></div>{kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/><input className="summary-input" value={slug} onChange={e => setSlug(e.target.value)} placeholder="地址 slug（可选，编辑时保持原值）" aria-label="文章地址"/></>}<textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => { if (!composingRef.current) setMarkdown(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder="从一句话开始。支持 Markdown，也可以直接粘贴图片。" aria-label="Markdown 正文编辑" />{(mode === 'markdown' || mode === 'preview') && <Preview markdown={markdown}/>}<div className="status" aria-live="polite">{message}</div>{uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><span>{item.fileName}</span><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? '已完成' : item.status === 'uploading' ? '上传中' : item.status === 'failed' ? '失败' : '排队中'}{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); }}/></label>}</span></li>)}</ul>}<div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || loadingEdit || !markdown.trim()} onClick={save}>{saving ? '保存中…' : editingEntryID ? '保存修改' : '保存'}</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div></div></section><aside className="sidebar"><div className="side-card"><div className="side-card-heading"><h3>草稿托盘（{drafts.length}）</h3><button className="icon-button" type="button" onClick={() => void refreshDrafts()} aria-label="刷新草稿">↻</button></div>{drafts.length ? <ul className="draft-list">{drafts.slice(0, 8).map(d => <li key={d.id}><button type="button" onClick={() => loadDraft(d)}><strong>{draftName(d)}</strong><small>{new Date(d.updatedAt).toLocaleString('zh-CN')}</small></button></li>)}</ul> : <p>停止输入后自动保存。你可以同时保留多份未命名草稿。</p>}</div><div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div><div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站和导出工具。</p></div></aside></div></main>;
 }
