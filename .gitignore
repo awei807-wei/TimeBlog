@@ -62,4 +62,7 @@ bin/
 playwright-report/
 test-results/
 
+# HelloAGENTS local session/runtime state
+.helloagents/
+
 # Keep deployment/docs assets and the blueprint document tracked.
