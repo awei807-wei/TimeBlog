@@ -3,7 +3,6 @@ import { getCategories, getCategory, type PublicEntry } from '@/lib/api';
 import CategoryResults from './CategoryResults';
 import type { Metadata } from 'next';
 
-import AuthNav from '../../AuthNav';
 const siteUrl = () => process.env.SITE_URL || 'http://localhost:3000';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -21,5 +20,5 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
   let entries: PublicEntry[] = [];
   let nextCursor: string | undefined;
   try { const result = await getCategory(slug); entries = result.entries; nextCursor = result.nextCursor; } catch { /* keep index fallback */ }
-  return <main id="main-content" className="shell"><header className="topbar"><Link href="/" className="brand">个人时间线</Link><nav className="nav"><Link href="/categories">分类</Link><Link href="/search">搜索</Link><AuthNav /></nav></header><div className="eyebrow">CATEGORY</div><h1>{category}</h1><CategoryResults slug={slug} initialEntries={entries} initialCursor={nextCursor}/></main>;
+  return <main id="main-content" className="shell"><div className="eyebrow">CATEGORY</div><h1>{category}</h1><CategoryResults slug={slug} initialEntries={entries} initialCursor={nextCursor}/></main>;
 }

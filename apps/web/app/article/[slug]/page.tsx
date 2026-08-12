@@ -6,7 +6,6 @@ import { decorateMediaReferences, renderMarkdown } from '@/lib/markdown';
 import EmbedMarkup from '../EmbedMarkup';
 import type { Metadata } from 'next';
 
-import AuthNav from '../../AuthNav';
 const siteUrl = () => process.env.SITE_URL || 'http://localhost:3000';
 
 async function loadArticle(slug: string): Promise<PublicEntry | null> {
@@ -45,7 +44,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   };
   return (
     <main id="main-content" className="shell article-shell">
-      <header className="topbar"><Link href="/" className="brand">个人时间线</Link><nav className="nav"><Link href="/calendar">日历</Link><Link href="/search">搜索</Link><Link href="/admin">写作</Link><AuthNav /></nav></header>
+
       <article className="article-page">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, '\\u003c') }} />
         <div className="eyebrow">ARTICLE · {article.journalDate}</div>

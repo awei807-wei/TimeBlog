@@ -4,7 +4,6 @@ import { getTag } from '@/lib/api';
 import TagResults from './TagResults';
 import type { Metadata } from 'next';
 
-import AuthNav from '../../AuthNav';
 const siteUrl = () => process.env.SITE_URL || 'http://localhost:3000';
 
 export async function generateMetadata({ params }: { params: Promise<{ tag: string }> }): Promise<Metadata> {
@@ -18,5 +17,5 @@ export default async function TagPage({ params }: { params: Promise<{ tag: strin
   const { tag } = await params;
   let data;
   try { data = await getTag(tag); } catch { notFound(); }
-  return <main id="main-content" className="shell"><header className="topbar"><Link href="/" className="brand">个人时间线</Link><nav className="nav"><Link href="/calendar">日历</Link><Link href="/search">搜索</Link><AuthNav /></nav></header><div className="eyebrow">TAG</div><h1>#{data.tag}</h1><TagResults tag={tag} initialEntries={data.entries} initialCursor={data.nextCursor}/></main>;
+  return <main id="main-content" className="shell"><div className="eyebrow">TAG</div><h1>#{data.tag}</h1><TagResults tag={tag} initialEntries={data.entries} initialCursor={data.nextCursor}/></main>;
 }
