@@ -1416,7 +1416,12 @@ func (srv *Server) adminCalendar(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) settingsEndpoint(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	allowed := map[string]bool{"siteTitle": true, "siteDescription": true, "timezone": true, "defaultVisibility": true, "feedEnabled": true, "theme": true}
+	if r.Method != http.MethodGet && r.Method != http.MethodPatch {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
 	if srv.store.persistent && srv.store.database != nil {
 		if r.Method == http.MethodGet {
 			rows, err := srv.store.database.QueryContext(r.Context(), `SELECT key,value FROM site_settings ORDER BY key`)
@@ -1448,16 +1453,16 @@ func (srv *Server) settingsEndpoint(w http.ResponseWriter, r *http.Request) {
 				problem(w, 400, "设置无效")
 				return
 			}
+			if err := validateSiteSettings(values, allowed); err != nil {
+				problem(w, http.StatusBadRequest, err.Error())
+				return
+			}
 			tx, err := srv.store.database.BeginTx(r.Context(), nil)
 			if err != nil {
 				problem(w, 500, "保存设置失败")
 				return
 			}
 			for key, value := range values {
-				if !allowed[key] || strings.Contains(strings.ToLower(key), "secret") || strings.Contains(strings.ToLower(key), "token") || strings.Contains(strings.ToLower(key), "password") {
-					delete(values, key)
-					continue
-				}
 				data, _ := json.Marshal(value)
 				if _, err = tx.ExecContext(r.Context(), `INSERT INTO site_settings(key,value,updated_at) VALUES($1,$2,now()) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=now()`, key, data); err != nil {
 					_ = tx.Rollback()
@@ -1488,16 +1493,86 @@ func (srv *Server) settingsEndpoint(w http.ResponseWriter, r *http.Request) {
 		problem(w, 400, "设置无效")
 		return
 	}
+	if err := validateSiteSettings(values, allowed); err != nil {
+		problem(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	srv.store.mu.Lock()
 	for key, value := range values {
-		if !allowed[key] || strings.Contains(strings.ToLower(key), "secret") || strings.Contains(strings.ToLower(key), "token") || strings.Contains(strings.ToLower(key), "password") {
-			delete(values, key)
-			continue
-		}
 		srv.store.settings[key] = value
 	}
 	srv.store.mu.Unlock()
 	jsonResponse(w, 200, values)
+}
+
+func validateSiteSettings(values map[string]any, allowed map[string]bool) error {
+	for key, value := range values {
+		if !allowed[key] {
+			return fmt.Errorf("不支持的设置项: %s", key)
+		}
+		switch key {
+		case "siteTitle", "siteDescription", "timezone", "theme":
+			if _, ok := value.(string); !ok {
+				return fmt.Errorf("设置项 %s 类型无效", key)
+			}
+		case "defaultVisibility":
+			v, ok := value.(string)
+			if !ok || (v != "public" && v != "private") {
+				return fmt.Errorf("设置项 %s 类型无效", key)
+			}
+		case "feedEnabled":
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("设置项 %s 类型无效", key)
+			}
+		}
+	}
+	return nil
+}
+
+func configuredEnv(name string) bool {
+	value, ok := os.LookupEnv(name)
+	return ok && strings.TrimSpace(value) != ""
+}
+
+// runtimeStatus exposes only safe operational metadata. It intentionally does
+// not return environment values, credentials, filesystem paths or DB errors.
+func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	adminPassword := configuredEnv("ADMIN_PASSWORD")
+	adminTOTP := configuredEnv("ADMIN_TOTP_SECRET")
+	recoveryHash := configuredEnv("ACCOUNT_RECOVERY_KEY_HASH")
+	databaseURL := configuredEnv("DATABASE_URL")
+	if srv.store.persistent && srv.store.database != nil {
+		databaseURL = true
+		var exists bool
+		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM users WHERE username='owner' AND password_hash <> '')`).Scan(&exists); err == nil {
+			adminPassword = exists
+			var totpConfigured bool
+			if err := srv.store.database.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM users WHERE username='owner' AND totp_secret_encrypted <> '')`).Scan(&totpConfigured); err == nil {
+				adminTOTP = totpConfigured
+			}
+		}
+	}
+	jsonResponse(w, http.StatusOK, map[string]any{
+		"updatedAt": time.Now().UTC().Format(time.RFC3339),
+		"media":     srv.mediaCapabilityStatus(),
+		"externalImageHost": map[string]any{
+			"provider": "not_connected",
+			"status":   "未接入；本地媒体卷可直接使用",
+		},
+		"security": map[string]any{
+			"adminPassword":      map[string]any{"configured": adminPassword, "managedBy": "account_recovery"},
+			"adminTotpSecret":    map[string]any{"configured": adminTOTP, "managedBy": "account_recovery"},
+			"totpEncryptionKey":  map[string]any{"configured": configuredEnv("TOTP_ENCRYPTION_KEY"), "managedBy": "vps_environment"},
+			"databaseConnection": map[string]any{"configured": databaseURL, "managedBy": "vps_environment"},
+			"accountRecoveryKey": map[string]any{"configured": recoveryHash, "managedBy": "account_recovery"},
+		},
+		"nasBackup": map[string]any{"managedExternally": true, "statusAvailable": false, "status": "状态未接入"},
+	})
 }
 
 func (srv *Server) resolveEmbed(w http.ResponseWriter, r *http.Request) {

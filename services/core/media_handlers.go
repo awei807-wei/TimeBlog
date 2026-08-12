@@ -30,19 +30,21 @@ func (srv *Server) mediaCapability(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
+	jsonResponse(w, http.StatusOK, srv.mediaCapabilityStatus())
+}
+
+// mediaCapabilityStatus is deliberately metadata-only so it can be reused by
+// the authenticated runtime status endpoint without exposing filesystem paths.
+func (srv *Server) mediaCapabilityStatus() map[string]any {
 	provider := "local_private"
 	writable := checkWritableDirectory(srv.mediaRoot) == nil
-	reason := ""
-	if !writable {
-		reason = "媒体存储不可写，上传已禁用"
-	}
-	jsonResponse(w, http.StatusOK, map[string]any{
+	return map[string]any{
 		"provider":              provider,
 		"writable":              writable,
 		"imageUploadEnabled":    writable,
 		"nonImageUploadEnabled": writable,
-		"reason":                reason,
-	})
+		"maxUploadBytes":        configuredMaxUploadBytes(),
+	}
 }
 
 func parseUploadOffset(value string) int64 {

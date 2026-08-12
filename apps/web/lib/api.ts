@@ -25,6 +25,13 @@ export type Version = { version: number; createdAt: string; snapshot: Record<str
 export type Media = { id: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' | 'private'; status: 'uploading' | 'ready' | 'failed' | 'deleting' | 'deleted'; createdAt?: string };
 export type ExportJob = { id: string; type: 'public' | 'full'; status: 'queued' | 'running' | 'ready' | 'failed'; downloadUrl?: string; sha256?: string };
 export type SiteSettings = { siteTitle?: string; siteDescription?: string; timezone?: string; defaultVisibility?: 'public' | 'private'; feedEnabled?: boolean; theme?: string };
+export type RuntimeStatus = {
+  updatedAt: string;
+  media: { provider: 'local_private'; writable: boolean; imageUploadEnabled: boolean; nonImageUploadEnabled: boolean; maxUploadBytes: number };
+  externalImageHost: { provider: 'not_connected'; status: string };
+  security: Record<string, { configured: boolean; managedBy: string }>;
+  nasBackup: { managedExternally: boolean; statusAvailable: boolean; status: string };
+};
 export type AdminCalendarDay = { public: number; private: number; draft: number; trashed: number };
 export type AdminCalendarResponse = { year: string; includeDrafts: boolean; days: Record<string, AdminCalendarDay> };
 
@@ -96,7 +103,11 @@ export async function getExports(): Promise<{ exports: ExportJob[] }> {
 }
 
 export async function getSettings(): Promise<SiteSettings> {
-  return getJSON('/admin/settings');
+  return getJSON('/admin/settings', { cache: 'no-store' });
+}
+
+export async function getRuntimeStatus(): Promise<RuntimeStatus> {
+  return getJSON('/admin/runtime-status', { cache: 'no-store' });
 }
 
 export async function getAdminCalendar(year: string, includeDrafts = false): Promise<AdminCalendarResponse> {

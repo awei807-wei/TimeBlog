@@ -81,6 +81,65 @@ func TestMediaCapabilityRequiresAuthAndProbesLocalStorage(t *testing.T) {
 	}
 }
 
+func TestRuntimeStatusIsAuthenticatedAndMetadataOnly(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("TOTP_ENCRYPTION_KEY", "not-returned")
+	t.Setenv("DATABASE_URL", "postgres://secret@example.invalid/db")
+	t.Setenv("MEDIA_ROOT", t.TempDir())
+	h := NewServer(NewStore()).routes()
+	unauth := httptest.NewRecorder()
+	h.ServeHTTP(unauth, httptest.NewRequest(http.MethodGet, "/api/v1/admin/runtime-status", nil))
+	if unauth.Code != http.StatusUnauthorized {
+		t.Fatalf("runtime status unauthenticated status=%d", unauth.Code)
+	}
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	auth := httptest.NewRequest(http.MethodGet, "/api/v1/admin/runtime-status", nil)
+	auth.AddCookie(&http.Cookie{Name: "timeline_session", Value: string(parts[0])})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, auth)
+	if rr.Code != http.StatusOK || rr.Header().Get("Cache-Control") != "no-store, max-age=0" {
+		t.Fatalf("runtime status response=%d cache=%q", rr.Code, rr.Header().Get("Cache-Control"))
+	}
+	body := rr.Body.String()
+	for _, forbidden := range []string{"not-returned", "postgres://", "MEDIA_ROOT", "timeline-media", "password_hash"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("runtime status leaked %q: %s", forbidden, body)
+		}
+	}
+	if !strings.Contains(body, `"provider":"local_private"`) || !strings.Contains(body, `"configured":true`) {
+		t.Fatalf("runtime status missing safe metadata: %s", body)
+	}
+}
+
+func TestSettingsRejectsUnknownKeysAndMethods(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	h := NewServer(NewStore()).routes()
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	method := httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", nil)
+	method.AddCookie(&http.Cookie{Name: "timeline_session", Value: string(parts[0])})
+	method.Header.Set("Origin", "http://localhost:3000")
+	method.Header.Set("X-CSRF-Token", string(parts[1]))
+	methodRR := httptest.NewRecorder()
+	h.ServeHTTP(methodRR, method)
+	if methodRR.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("settings method status=%d", methodRR.Code)
+	}
+	unknown := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/settings", strings.NewReader(`{"secret":"x"}`))
+	unknown.AddCookie(&http.Cookie{Name: "timeline_session", Value: string(parts[0])})
+	unknown.Header.Set("Origin", "http://localhost:3000")
+	unknown.Header.Set("X-CSRF-Token", string(parts[1]))
+	unknown.Header.Set("Content-Type", "application/json")
+	unknownRR := httptest.NewRecorder()
+	h.ServeHTTP(unknownRR, unknown)
+	if unknownRR.Code != http.StatusBadRequest {
+		t.Fatalf("settings unknown key status=%d body=%s", unknownRR.Code, unknownRR.Body.String())
+	}
+}
+
 func TestLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
 	t.Setenv("ADMIN_TOTP_SECRET", "123456")

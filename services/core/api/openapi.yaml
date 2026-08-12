@@ -457,8 +457,18 @@ paths:
       operationId: updateSettings
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
-      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: true}}}}
-      responses: {'200': {description: 设置已更新}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SiteSettingsPatch'}}}}
+      responses: {'200': {description: 设置已更新}, '400': {$ref: '#/components/responses/BadRequest'}, '405': {description: 方法不允许}}
+
+  /admin/runtime-status:
+    get:
+      tags: [settings]
+      operationId: getAdminRuntimeStatus
+      security: [SessionCookie: []]
+      responses:
+        '200': {description: 非敏感运行状态, headers: {Cache-Control: {schema: {type: string}, description: 必须为 no-store}}, content: {application/json: {schema: {$ref: '#/components/schemas/RuntimeStatus'}}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '405': {description: 方法不允许}
 
   /health/live:
     get:
@@ -502,6 +512,64 @@ components:
     NotFound: {description: 资源不存在, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
     PayloadTooLarge: {description: 文件超过配置限制, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
   schemas:
+    SiteSettingsPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        siteTitle: {type: string}
+        siteDescription: {type: string}
+        timezone: {type: string}
+        defaultVisibility: {type: string, enum: [public, private]}
+        feedEnabled: {type: boolean}
+        theme: {type: string}
+    RuntimeStatus:
+      type: object
+      additionalProperties: false
+      required: [updatedAt, media, externalImageHost, security, nasBackup]
+      properties:
+        updatedAt: {type: string, format: date-time}
+        media:
+          type: object
+          additionalProperties: false
+          required: [provider, writable, imageUploadEnabled, nonImageUploadEnabled, maxUploadBytes]
+          properties:
+            provider: {type: string, enum: [local_private]}
+            writable: {type: boolean}
+            imageUploadEnabled: {type: boolean}
+            nonImageUploadEnabled: {type: boolean}
+            maxUploadBytes: {type: integer, format: int64}
+        externalImageHost:
+          type: object
+          additionalProperties: false
+          required: [provider, status]
+          properties:
+            provider: {type: string, enum: [not_connected]}
+            status: {type: string}
+        security:
+          type: object
+          additionalProperties: false
+          required: [adminPassword, adminTotpSecret, totpEncryptionKey, databaseConnection, accountRecoveryKey]
+          properties:
+            adminPassword: {$ref: '#/components/schemas/ConfiguredStatus'}
+            adminTotpSecret: {$ref: '#/components/schemas/ConfiguredStatus'}
+            totpEncryptionKey: {$ref: '#/components/schemas/ConfiguredStatus'}
+            databaseConnection: {$ref: '#/components/schemas/ConfiguredStatus'}
+            accountRecoveryKey: {$ref: '#/components/schemas/ConfiguredStatus'}
+        nasBackup:
+          type: object
+          additionalProperties: false
+          required: [managedExternally, statusAvailable, status]
+          properties:
+            managedExternally: {type: boolean}
+            statusAvailable: {type: boolean}
+            status: {type: string}
+    ConfiguredStatus:
+      type: object
+      additionalProperties: false
+      required: [configured, managedBy]
+      properties:
+        configured: {type: boolean}
+        managedBy: {type: string}
     EntryKind: {type: string, enum: [note, article]}
     EntryStatus: {type: string, enum: [draft, published, trashed]}
     Visibility: {type: string, enum: [public, private]}
