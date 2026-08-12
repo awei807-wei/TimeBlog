@@ -70,6 +70,40 @@ func TestLoginPasswordThrottleAfterRepeatedFailures(t *testing.T) {
 	}
 }
 
+func TestTOTPChallengeSurvivesInvalidCode(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	s := NewStore()
+	s.userPassword = "test-password"
+	s.userTOTP = "123456"
+	h := NewServer(s).routes()
+	p := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/password", bytes.NewBufferString(`{"password":"test-password"}`))
+	p.Header.Set("Content-Type", "application/json")
+	pr := httptest.NewRecorder()
+	h.ServeHTTP(pr, p)
+	if pr.Code != http.StatusOK {
+		t.Fatalf("password login: %d", pr.Code)
+	}
+	var challenge struct {
+		Challenge string `json:"challenge"`
+	}
+	if err := json.Unmarshal(pr.Body.Bytes(), &challenge); err != nil || challenge.Challenge == "" {
+		t.Fatalf("missing challenge: %s", pr.Body.String())
+	}
+	postTOTP := func(code string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/totp", bytes.NewBufferString(`{"code":"`+code+`","challenge":"`+challenge.Challenge+`"}`))
+		r.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, r)
+		return rr
+	}
+	if rr := postTOTP("000000"); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid code status=%d", rr.Code)
+	}
+	if rr := postTOTP("123456"); rr.Code != http.StatusOK {
+		t.Fatalf("valid code after invalid status=%d body=%s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestOriginExactMatch(t *testing.T) {
 	s := NewStore()
 	s.userPassword = "p"

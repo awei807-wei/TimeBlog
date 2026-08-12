@@ -194,14 +194,13 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 	ok := false
 	var err error
 	if srv.store.persistent && srv.store.database != nil {
-		ok, err = consumeChallenge(r.Context(), srv.store.database, in.Challenge)
+		ok, err = challengeValid(r.Context(), srv.store.database, in.Challenge)
 		if err != nil {
 			ok = false
 		}
 	} else {
 		srv.store.mu.Lock()
 		expires, exists := srv.store.mfaChallenges[in.Challenge]
-		delete(srv.store.mfaChallenges, in.Challenge)
 		srv.store.mu.Unlock()
 		ok = exists && time.Now().Before(expires)
 	}
@@ -224,6 +223,26 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 	if !validCode {
 		srv.throttleFailure(r, "owner-totp")
 		problem(w, http.StatusUnauthorized, "验证码错误")
+		return
+	}
+	// Consume the challenge only after TOTP validation. This keeps a challenge
+	// usable after a mistyped code while retaining one-time replay protection.
+	if srv.store.persistent && srv.store.database != nil {
+		ok, err = consumeChallenge(r.Context(), srv.store.database, in.Challenge)
+	} else {
+		srv.store.mu.Lock()
+		expires, exists := srv.store.mfaChallenges[in.Challenge]
+		if exists && time.Now().Before(expires) {
+			delete(srv.store.mfaChallenges, in.Challenge)
+			ok = true
+		} else {
+			ok = false
+		}
+		srv.store.mu.Unlock()
+	}
+	if err != nil || !ok {
+		srv.throttleFailure(r, "owner-totp")
+		problem(w, http.StatusUnauthorized, "MFA challenge 无效或已过期")
 		return
 	}
 	srv.throttleSuccess(r, "owner-totp")

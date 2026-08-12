@@ -197,9 +197,24 @@ func persistChallenge(ctx context.Context, db *sql.DB, challenge string, expires
 	_, err := db.ExecContext(ctx, `INSERT INTO mfa_challenges(token_hash,expires_at) VALUES($1,$2)`, tokenHash(challenge), expires)
 	return err
 }
+
+// challengeValid checks a challenge without consuming it. The challenge is
+// consumed only after the submitted TOTP has been validated.
+func challengeValid(ctx context.Context, db *sql.DB, challenge string) (bool, error) {
+	var valid bool
+	err := db.QueryRowContext(ctx, `SELECT expires_at>now() FROM mfa_challenges WHERE token_hash=$1`, tokenHash(challenge)).Scan(&valid)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return valid, err
+}
+
 func consumeChallenge(ctx context.Context, db *sql.DB, challenge string) (bool, error) {
 	var ok bool
 	err := db.QueryRowContext(ctx, `DELETE FROM mfa_challenges WHERE token_hash=$1 AND expires_at>now() RETURNING true`, tokenHash(challenge)).Scan(&ok)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
 	return ok, err
 }
 func persistUndo(ctx context.Context, db *sql.DB, token, entryID string, payload []byte, expires time.Time) error {
