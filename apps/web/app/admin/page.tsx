@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Paperclip, Trash2 } from 'lucide-react';
 import { API } from '@/lib/api';
+import { invalidatePublicCaches } from '@/lib/cache-invalidation';
 import { deserializeEditorStatus, nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
 import { renderMarkdown } from '@/lib/markdown';
 import { createUploadItem, isSupportedMedia, mediaMarkdown, mediaQueueStoragePlan, mediaUploadUrl, replaceMediaToken, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
@@ -370,6 +371,8 @@ export default function AdminPage() {
       const commitResponse = await fetch(`${API}/admin/working-copies/${workingID}/commit`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(savePayload) });
       if (!commitResponse.ok) throw new Error('commit');
       const result = await commitResponse.json();
+      await invalidatePublicCaches({ entryId: editingEntryID || result.entry?.id, slug: String(savePayload.slug || ''), reason: 'edit' });
+      router.refresh();
       setUndoToken(result.undoToken || '');
       if (editingEntryID) {
         setMessage('已更新内容');
@@ -387,6 +390,8 @@ export default function AdminPage() {
     const response = await fetch(`${API}/admin/undo/${undoToken}`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf, 'Idempotency-Key': undoToken } });
     if (!response.ok) { setMessage('撤销窗口已过期'); return; }
     const body = await response.json();
+    await invalidatePublicCaches({ entryId: body.entry?.id, slug: body.entry?.slug, reason: 'undo' });
+    router.refresh();
     setMarkdown(body.entry?.markdown || ''); setTitle(body.entry?.title || ''); setSummary(body.entry?.summary || ''); setCategories((body.entry?.categories || []).join(', ')); setTags((body.entry?.tags || []).join(' ')); setDate(body.entry?.journalDate || date); setKind(body.entry?.kind || 'note'); setStatus('draft'); setUndoToken(''); setMessage('已撤销并回填编辑器'); editorRef.current?.focus();
   }
 

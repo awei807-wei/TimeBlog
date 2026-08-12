@@ -1,7 +1,26 @@
-const CACHE = 'timeline-shell-v3';
+const CACHE = 'timeline-shell-v4';
 const APP_SHELL = ['/','/manifest.webmanifest','/robots.txt'];
 self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_SHELL))); self.skipWaiting(); });
 self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())); });
+self.addEventListener('message', event => {
+  if (!event.data || event.data.type !== 'CACHE_INVALIDATE' || event.data.scope !== 'public-content') return;
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    const requests = await cache.keys();
+    await Promise.all(requests.map(request => {
+      const url = new URL(request.url);
+      const keep = url.origin === self.location.origin && APP_SHELL.includes(url.pathname);
+      const mutable = url.origin === self.location.origin && (
+        url.pathname === '/' || url.pathname.startsWith('/day/') || url.pathname.startsWith('/article/') ||
+        url.pathname.startsWith('/categories/') || url.pathname.startsWith('/tag/') ||
+        url.pathname.startsWith('/search') || url.pathname.startsWith('/calendar') || url.pathname === '/feed.xml'
+      );
+      return mutable && !keep ? cache.delete(request) : Promise.resolve(false);
+    }));
+    const clients = await self.clients.matchAll({ type: 'window' });
+    clients.forEach(client => client.postMessage({ type: 'CACHE_INVALIDATED', scope: 'public-content', entryId: event.data.entryId, reason: event.data.reason }));
+  })());
+});
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);

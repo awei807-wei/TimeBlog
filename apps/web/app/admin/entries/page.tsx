@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { History, MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/app/components/ui/dropdown-menu';
 import { API, getAdminCalendar, getAdminEntries, getExports, getMedia, getSettings, getVersions, type AdminCalendarDay, type AdminEntry, type ExportJob, type Media, type SiteSettings, type Version } from '@/lib/api';
+import { invalidatePublicCaches } from '@/lib/cache-invalidation';
 
 type Section = 'entries' | 'versions' | 'trash' | 'media' | 'exports' | 'calendar' | 'settings';
 
 export default function EntriesAdmin() {
+  const router = useRouter();
   const [entries, setEntries] = useState<AdminEntry[]>([]);
   const [status, setStatus] = useState('');
   const [section, setSection] = useState<Section>('entries');
@@ -67,6 +70,8 @@ export default function EntriesAdmin() {
       const response = await fetch(`${API}/admin/entries/${id}${action === 'trash' ? '' : `/${action}`}`, { method: action === 'trash' ? 'DELETE' : 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf, 'Idempotency-Key': crypto.randomUUID() } });
       if (!response.ok) throw new Error(String(response.status));
       setMessage(action === 'trash' ? '已移入回收站' : action === 'restore' ? '已恢复内容' : '已永久删除');
+      await invalidatePublicCaches({ entryId: id, reason: action });
+      router.refresh();
       await loadEntries(status);
     } catch { setError('操作失败：请确认登录状态、CSRF 或 API 是否可用。'); }
     finally { setBusy(false); }
@@ -79,6 +84,8 @@ export default function EntriesAdmin() {
       const response = await fetch(`${API}/admin/entries/${entryId}/versions/${version}/restore`, { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': csrf } });
       if (!response.ok) throw new Error(String(response.status));
       setMessage(`已从版本 ${version} 创建新版本`);
+      await invalidatePublicCaches({ entryId, reason: 'edit' });
+      router.refresh();
     } catch { setError('版本恢复失败，请确认登录状态或版本接口是否可用。'); }
     finally { setBusy(false); }
   }

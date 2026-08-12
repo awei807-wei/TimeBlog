@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getTimeline, type PublicEntry, type TimelineDay } from '@/lib/api';
 import { mergeTimelineDays } from '@/lib/timeline';
+import { PUBLIC_CACHE_INVALIDATED_EVENT } from '@/lib/cache-invalidation';
 
 function EntryCard({ entry }: { entry: PublicEntry }) {
   if (entry.placeholder) return <article className="entry private"><span aria-hidden="true">◌</span><span>{entry.journalTime ? `${entry.journalTime} · ` : ''}{entry.text}</span></article>;
@@ -20,6 +21,18 @@ export default function HomeTimeline({ initialDays, initialCursor }: { initialDa
   const [cursor, setCursor] = useState(initialCursor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const refresh = () => {
+      void getTimeline().then(result => {
+        setDays(result.days || []);
+        setCursor(result.nextCursor);
+      }).catch(() => setError('时间线刷新失败，请重新加载页面。'));
+    };
+    const onEvent = () => refresh();
+    window.addEventListener(PUBLIC_CACHE_INVALIDATED_EVENT, onEvent);
+    return () => window.removeEventListener(PUBLIC_CACHE_INVALIDATED_EVENT, onEvent);
+  }, []);
 
   async function loadMore() {
     if (!cursor || loading) return;

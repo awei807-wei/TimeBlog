@@ -24,6 +24,16 @@ func (srv *Server) routes() http.Handler {
 	admin := func(handler http.HandlerFunc) http.HandlerFunc {
 		return srv.adminAuth(handler)
 	}
+	// Public representations are derived from mutable entries.  They must not
+	// be retained by an intermediary after a recycle/restore/publish mutation;
+	// the web client already keeps an offline shell separately.
+	public := func(handler http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store, max-age=0")
+			w.Header().Set("CDN-Cache-Control", "no-store")
+			handler(w, r)
+		}
+	}
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) { jsonResponse(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("/health/ready", func(w http.ResponseWriter, r *http.Request) {
 		if srv.store.persistent && srv.store.database != nil {
@@ -47,15 +57,15 @@ func (srv *Server) routes() http.Handler {
 		}
 		jsonResponse(w, 200, map[string]string{"status": "ready"})
 	})
-	mux.HandleFunc("/api/v1/public/timeline", srv.publicTimeline)
-	mux.HandleFunc("/api/v1/public/days/", srv.publicDay)
-	mux.HandleFunc("/api/v1/public/articles/", srv.publicArticle)
-	mux.HandleFunc("/api/v1/public/calendar", srv.publicCalendar)
-	mux.HandleFunc("/api/v1/public/categories", srv.publicCategories)
-	mux.HandleFunc("/api/v1/public/categories/", srv.publicCategoryEntries)
-	mux.HandleFunc("/api/v1/public/tags/", srv.publicTag)
-	mux.HandleFunc("/api/v1/public/search", srv.publicSearch)
-	mux.HandleFunc("/api/v1/public/feed", srv.publicFeed)
+	mux.HandleFunc("/api/v1/public/timeline", public(srv.publicTimeline))
+	mux.HandleFunc("/api/v1/public/days/", public(srv.publicDay))
+	mux.HandleFunc("/api/v1/public/articles/", public(srv.publicArticle))
+	mux.HandleFunc("/api/v1/public/calendar", public(srv.publicCalendar))
+	mux.HandleFunc("/api/v1/public/categories", public(srv.publicCategories))
+	mux.HandleFunc("/api/v1/public/categories/", public(srv.publicCategoryEntries))
+	mux.HandleFunc("/api/v1/public/tags/", public(srv.publicTag))
+	mux.HandleFunc("/api/v1/public/search", public(srv.publicSearch))
+	mux.HandleFunc("/api/v1/public/feed", public(srv.publicFeed))
 	mux.HandleFunc("/api/v1/auth/login/password", srv.loginPassword)
 	mux.HandleFunc("/api/v1/auth/login/totp", srv.loginTOTP)
 	mux.HandleFunc("/api/v1/auth/recovery/account", srv.recoverAccount)

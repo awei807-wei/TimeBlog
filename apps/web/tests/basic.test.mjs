@@ -215,6 +215,26 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   assert.match(worker, /event\.request\.destination === 'image'/);
   assert.match(worker, /response\.ok && url\.origin === self\.location\.origin/);
   assert.match(worker, /startsWith\('\/private-media\/'\)/);
+  assert.match(worker, /CACHE_INVALIDATE/);
+  assert.match(worker, /CACHE_INVALIDATED/);
+  assert.match(worker, /timeline-shell-v4/);
+});
+
+test('public API fetches bypass Next data cache and mutations notify the worker', async () => {
+  const fs = await import('node:fs/promises');
+  const api = await fs.readFile(new URL('../lib/api.ts', import.meta.url), 'utf8');
+  const invalidation = await fs.readFile(new URL('../lib/cache-invalidation.ts', import.meta.url), 'utf8');
+  const home = await fs.readFile(new URL('../app/HomeTimeline.tsx', import.meta.url), 'utf8');
+  const entries = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  assert.match(api, /getJSON\(`\/public\/timeline[\s\S]*cache: 'no-store'/);
+  assert.match(api, /getJSON\(`\/public\/days[\s\S]*cache: 'no-store'/);
+  assert.match(api, /getJSON\(`\/public\/articles[\s\S]*cache: 'no-store'/);
+  assert.match(invalidation, /type: 'CACHE_INVALIDATE'/);
+  assert.match(invalidation, /dispatchEvent\(new CustomEvent\(PUBLIC_CACHE_INVALIDATED_EVENT/);
+  assert.match(home, /PUBLIC_CACHE_INVALIDATED_EVENT/);
+  assert.match(home, /getTimeline\(\)/);
+  assert.match(entries, /invalidatePublicCaches/);
+  assert.match(entries, /router\.refresh\(\)/);
 });
 
 test('shared GFM fixture stays safe and resolves media references', async () => {

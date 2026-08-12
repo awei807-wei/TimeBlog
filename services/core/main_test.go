@@ -364,6 +364,33 @@ func TestLocalCORS(t *testing.T) {
 	}
 }
 
+func TestPublicResponsesDisableIntermediaryCaching(t *testing.T) {
+	s := NewStore()
+	s.entries["public-cache"] = &Entry{ID: "public-cache", Kind: "note", Status: "published", Visibility: "public", Markdown: "fresh", JournalDate: "2026-08-12"}
+	rr := httptest.NewRecorder()
+	NewServer(s).routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/public/timeline", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("timeline status=%d", rr.Code)
+	}
+	if got := rr.Header().Get("Cache-Control"); got != "no-store, max-age=0" {
+		t.Fatalf("cache-control=%q", got)
+	}
+	if got := rr.Header().Get("CDN-Cache-Control"); got != "no-store" {
+		t.Fatalf("cdn-cache-control=%q", got)
+	}
+}
+
+func TestTrashedEntryIsAbsentFromPublicTimeline(t *testing.T) {
+	s := NewStore()
+	s.entries["live"] = &Entry{ID: "live", Kind: "note", Status: "published", Visibility: "public", Markdown: "live", JournalDate: "2026-08-12"}
+	s.entries["trashed"] = &Entry{ID: "trashed", Kind: "note", Status: "trashed", Visibility: "public", Markdown: "must not leak", JournalDate: "2026-08-12"}
+	rr := httptest.NewRecorder()
+	NewServer(s).routes().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/v1/public/timeline", nil))
+	if rr.Code != http.StatusOK || strings.Contains(rr.Body.String(), "must not leak") || !strings.Contains(rr.Body.String(), "live") {
+		t.Fatalf("timeline leaked or omitted live entry: %s", rr.Body.String())
+	}
+}
+
 func TestPublicCategoryAndTagEntryRoutes(t *testing.T) {
 	s := NewStore()
 	s.entries["public-1"] = &Entry{ID: "public-1", Kind: "note", Status: "published", Visibility: "public", Markdown: "hello #Go", PlainText: "hello Go", JournalDate: "2026-08-12", Categories: []string{"日常"}, Tags: []string{"Go"}}

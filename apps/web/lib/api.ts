@@ -44,35 +44,35 @@ async function getJSON<T>(path: string, init?: RequestInit & { next?: { revalida
 
 export async function getTimeline(limit = 20, cursor = ''): Promise<{ days: TimelineDay[]; actualCount: number; nextCursor?: string }> {
   try {
-    return await getJSON(`/public/timeline?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { next: { revalidate: 30 } });
+    return await getJSON(`/public/timeline?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { cache: 'no-store' });
   } catch {
     return { days: [], actualCount: 0 };
   }
 }
 
 export async function getDay(date: string): Promise<{ date: string; untimed: PublicEntry[]; timed: PublicEntry[] }> {
-  return getJSON(`/public/days/${encodeURIComponent(date)}`, { next: { revalidate: 30 } });
+  return getJSON(`/public/days/${encodeURIComponent(date)}`, { cache: 'no-store' });
 }
 
 export async function getArticle(slug: string): Promise<PublicEntry> {
-  return getJSON(`/public/articles/${encodeURIComponent(slug)}`, { next: { revalidate: 30 } });
+  return getJSON(`/public/articles/${encodeURIComponent(slug)}`, { cache: 'no-store' });
 }
 
 export async function getCalendar(month: string, signal?: AbortSignal): Promise<CalendarResponse> {
-  return getJSON(`/public/calendar?month=${encodeURIComponent(month)}`, { next: { revalidate: 30 }, signal });
+  return getJSON(`/public/calendar?month=${encodeURIComponent(month)}`, { cache: 'no-store', signal });
 }
 
 export async function getCategories(): Promise<{ categories: Record<string, number> }> {
-  return getJSON('/public/categories', { next: { revalidate: 30 } });
+  return getJSON('/public/categories', { cache: 'no-store' });
 }
 
 export async function getTag(tag: string, cursor = ''): Promise<{ tag: string; entries: PublicEntry[]; nextCursor?: string }> {
-  const data = await getJSON<{ entries: PublicEntry[]; nextCursor?: string }>(`/public/tags/${encodeURIComponent(tag)}/entries${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { next: { revalidate: 30 } });
+  const data = await getJSON<{ entries: PublicEntry[]; nextCursor?: string }>(`/public/tags/${encodeURIComponent(tag)}/entries${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { cache: 'no-store' });
   return { tag, entries: data.entries, nextCursor: data.nextCursor };
 }
 
 export async function getCategory(slug: string, cursor = ''): Promise<{ entries: PublicEntry[]; nextCursor?: string }> {
-  return getJSON(`/public/categories/${encodeURIComponent(slug)}/entries${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { next: { revalidate: 30 } });
+  return getJSON(`/public/categories/${encodeURIComponent(slug)}/entries${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`, { cache: 'no-store' });
 }
 
 export async function searchPublic(query: string, cursor = ''): Promise<SearchResponse> {
