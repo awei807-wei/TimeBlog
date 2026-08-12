@@ -29,6 +29,21 @@ test('management actions keep equal button geometry on narrow screens', async ()
   assert.match(css, /\.management-row\{align-items:flex-start;flex-direction:column\}/);
 });
 
+test('content rows use one accessible dropdown menu for actions', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  const ui = await fs.readFile(new URL('../app/components/ui/dropdown-menu.tsx', import.meta.url), 'utf8');
+  assert.match(source, /DropdownMenuTrigger/);
+  assert.match(source, /aria-label="打开内容操作菜单"/);
+  assert.match(source, /<Pencil aria-hidden="true" \/>编辑/);
+  assert.match(source, /<History aria-hidden="true" \/>版本/);
+  assert.match(source, /<Trash2 aria-hidden="true" \/>回收/);
+  assert.match(source, /window\.confirm\('确定将这条内容移入回收站吗？'\)/);
+  assert.doesNotMatch(source, /<button[^>]+>版本<\/button>/);
+  assert.match(ui, /DropdownMenuPrimitive\.Content/);
+  assert.match(ui, /DropdownMenuPrimitive\.Item/);
+});
+
 test('version panel returns to the in-page content list', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
