@@ -310,3 +310,15 @@ TimeBlog 当前实现仍有意关闭外发：`customPublicProvider.ProtocolStatu
 - 当前审计版本的 `originalUrl` 可能为相对地址，也可能在启用签名后成为短期 URL。
 - `publicVisible` 不代表原图访问授权，不能依赖该字段保护私人媒体。
 - 本文没有向真实图床发送请求或上传文件；所有结论来自固定提交的源码。
+
+## 10. TimeBlog 运行时实现（2026-08-13）
+
+TimeBlog 已实现 `ou_image_hosting_v1` 异步适配器，但部署和测试过程不会向真实图床上传或删除：
+
+- Tus finalize 始终先校验并保留 `local_private` 规范原件；符合 OU 格式和 20 MiB 上限的图片，在配置启用后排入 `publish_media` PostgreSQL job。
+- 媒体状态独立记录为 `not_requested`、`pending`、`publishing`、`published`、`failed` 或 `trash_pending`，不复用本地文件的 `ready` 状态。失败时本地文件继续可读，媒体库显示脱敏错误并提供重试。
+- 成功时将 `provider` 更新为 `custom_public`，保存 `image.id` 为 `provider_key`，保存同源、稳定且非签名的 `originalUrl` 为 `public_url`；本地 `storage_path` 不清除。
+- 适配器拒绝包含 `Expires`、`Signature`、`token` 或任意 `X-Amz-*` 签名参数的交付链接；普通图片尺寸、格式等非鉴权 query 参数允许保留。
+- `stablePublicUrls` 是强制启用确认：图床不得使用短期签名链接，防盗链必须允许博客公开域名。
+- `syncDeletes` 默认关闭。关闭时，本地永久删除不会调用图床，worker 输出不含 Token 和 URL 的 `external_media_retained` 结构化日志，明确记录远端副本被策略保留；开启时需要 `images:delete`，远端软回收失败会阻止本地删除。
+- 无副作用验证调用 `GET /api/uploads?limit=1`。具有 `images:read` 时状态为 `verified`；仅有 `images:write` 时返回 `scope_limited`，管理员确认稳定公开 URL 后仍可启用上传。验证不会创建探针图片。

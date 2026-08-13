@@ -409,6 +409,8 @@ func runJob(ctx context.Context, db *sql.DB, workerID string) error {
 		}
 		_ = json.Unmarshal(payload, &p)
 		jobErr = deleteMediaJob(ctx, db, p.MediaID, p.Path)
+	case "publish_media":
+		jobErr = publishMediaJob(ctx, db, payload)
 	case "export_public", "export_full":
 		jobErr = generateExport(ctx, db, payload, typ)
 	default:
@@ -417,6 +419,11 @@ func runJob(ctx context.Context, db *sql.DB, workerID string) error {
 	status := "done"
 	if jobErr != nil {
 		status = "queued"
+		var attempts int
+		_ = db.QueryRowContext(ctx, `SELECT attempts FROM jobs WHERE id=$1`, id).Scan(&attempts)
+		if attempts >= 5 {
+			status = "failed"
+		}
 	}
 	_, err = db.ExecContext(ctx, `UPDATE jobs SET status=$1,run_at=CASE WHEN $1='queued' THEN now()+make_interval(secs => LEAST(3600, power(2, attempts)::int * 5)) ELSE run_at END,error=$2,locked_at=NULL,locked_by=NULL WHERE id=$3`, status, func() any {
 		if jobErr != nil {
@@ -452,8 +459,9 @@ func deleteMediaJob(ctx context.Context, db *sql.DB, mediaID, path string) error
 		return err
 	}
 	defer tx.Rollback()
-	var storedPath, status string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(storage_path,''),status FROM media WHERE id=$1::uuid FOR UPDATE`, mediaID).Scan(&storedPath, &status); err == sql.ErrNoRows {
+	var storedPath, status, providerKey string
+	var configRevision sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(storage_path,''),status,COALESCE(provider_key,''),external_config_revision FROM media WHERE id=$1::uuid FOR UPDATE`, mediaID).Scan(&storedPath, &status, &providerKey, &configRevision); err == sql.ErrNoRows {
 		return tx.Commit()
 	} else if err != nil {
 		return err
@@ -470,6 +478,11 @@ func deleteMediaJob(ctx context.Context, db *sql.DB, mediaID, path string) error
 			return err
 		}
 		return tx.Commit()
+	}
+	if providerKey != "" {
+		if err := trashExternalMedia(ctx, db, mediaID, providerKey, configRevision.Int64); err != nil {
+			return fmt.Errorf("远端副本回收失败；本地原件已保留: %w", err)
+		}
 	}
 	if storedPath == "" {
 		storedPath = path

@@ -4,13 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/example/personal-timeline/services/core/ouimage"
 )
 
 const (
@@ -21,8 +23,11 @@ const (
 )
 
 type externalImageHostConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Endpoint string `json:"endpoint"`
+	Enabled      bool   `json:"enabled"`
+	Endpoint     string `json:"endpoint"`
+	WorkspaceID  string `json:"workspaceId,omitempty"`
+	StablePublic bool   `json:"stablePublicUrls"`
+	SyncDeletes  bool   `json:"syncDeletes"`
 }
 
 type nasBackupConfig struct {
@@ -49,13 +54,18 @@ type secretMutation struct {
 }
 
 type externalImageHostPatch struct {
-	Enabled  bool           `json:"enabled"`
-	Endpoint string         `json:"endpoint"`
-	Token    secretMutation `json:"token"`
+	Enabled      bool           `json:"enabled"`
+	Endpoint     string         `json:"endpoint"`
+	WorkspaceID  string         `json:"workspaceId"`
+	StablePublic bool           `json:"stablePublicUrls"`
+	SyncDeletes  bool           `json:"syncDeletes"`
+	Token        secretMutation `json:"token"`
 }
 
 type externalImageHostProbeRequest struct {
-	Endpoint string `json:"endpoint"`
+	Endpoint    string `json:"endpoint"`
+	WorkspaceID string `json:"workspaceId"`
+	Token       string `json:"token,omitempty"`
 }
 
 func integrationRecordByName(ctx context.Context, db *sql.DB, name string) (integrationRecord, error) {
@@ -70,29 +80,37 @@ type externalImageHostProvider interface {
 	PublishEnabled() bool
 }
 
-// customPublicProvider is intentionally fail-closed. The configured service
-// has no verified official contract for token transport, upload fields,
-// response shape or deletion, so it cannot accept media bytes yet.
-type customPublicProvider struct{}
+type customPublicProvider struct {
+	config          externalImageHostConfig
+	tokenConfigured bool
+	verified        bool
+}
 
-func (customPublicProvider) ProtocolStatus() string { return "unverified" }
-func (customPublicProvider) PublishEnabled() bool   { return false }
+func (customPublicProvider) ProtocolStatus() string { return "ou_image_hosting_v1" }
+func (p customPublicProvider) PublishEnabled() bool {
+	return p.config.Enabled && p.config.StablePublic && p.tokenConfigured && p.verified
+}
 
 func imageHostResponse(record integrationRecord) map[string]any {
 	config := externalImageHostConfig{Endpoint: defaultImageHostURL}
 	_ = json.Unmarshal(record.Config, &config)
 	return map[string]any{
-		"provider":        "custom_public",
-		"enabled":         config.Enabled,
-		"endpoint":        config.Endpoint,
-		"tokenConfigured": record.SecretEncrypted.Valid && record.SecretEncrypted.String != "",
+		"provider":         "custom_public",
+		"enabled":          config.Enabled,
+		"endpoint":         config.Endpoint,
+		"workspaceId":      config.WorkspaceID,
+		"stablePublicUrls": config.StablePublic,
+		"syncDeletes":      config.SyncDeletes,
+		"tokenConfigured":  record.SecretEncrypted.Valid && record.SecretEncrypted.String != "",
 		"tokenMasked": func() string {
 			if record.SecretEncrypted.Valid && record.SecretEncrypted.String != "" {
 				return "********"
 			}
 			return ""
 		}(),
-		"protocolStatus": "unverified",
+		"protocolStatus": "ou_image_hosting_v1",
+		"verified":       record.TestStatus == "verified" || record.TestStatus == "scope_limited",
+		"publishEnabled": customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}.PublishEnabled(),
 		"status":         record.TestStatus,
 		"statusMessage":  record.TestMessage,
 		"lastTestedAt":   nullableTime(record.TestedAt),
@@ -119,7 +137,11 @@ func nullableTime(value sql.NullTime) any {
 }
 
 func validateExternalEndpoint(raw string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
+	normalized, err := ouimage.NormalizeEndpoint(raw)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(normalized)
 	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.Fragment != "" {
 		return "", fmt.Errorf("图床 API 必须是无用户名密码和片段的 HTTPS URL")
 	}
@@ -134,6 +156,14 @@ func validateExternalEndpoint(raw string) (string, error) {
 		return "", fmt.Errorf("图床 API 不允许内网地址")
 	}
 	return u.String(), nil
+}
+
+func validateWorkspaceID(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if len(value) > 80 || strings.ContainsAny(value, " \t\r\n/?#") {
+		return "", fmt.Errorf("工作区 ID 格式无效")
+	}
+	return value, nil
 }
 
 func validNASHost(value string) bool {
@@ -226,6 +256,11 @@ func (srv *Server) updateExternalImageHost(w http.ResponseWriter, r *http.Reques
 		problem(w, 400, err.Error())
 		return
 	}
+	workspaceID, err := validateWorkspaceID(patch.WorkspaceID)
+	if err != nil {
+		problem(w, 400, err.Error())
+		return
+	}
 	if patch.Token.Action == "" {
 		patch.Token.Action = "keep"
 	}
@@ -256,8 +291,24 @@ func (srv *Server) updateExternalImageHost(w http.ResponseWriter, r *http.Reques
 		problem(w, 400, "启用图床前必须保存 Token")
 		return
 	}
-	data, _ := json.Marshal(externalImageHostConfig{Enabled: patch.Enabled, Endpoint: endpoint})
-	_, err = srv.store.database.ExecContext(r.Context(), `INSERT INTO integration_settings(name,config,secret_encrypted,last_test_status,last_test_message,updated_at) VALUES($1,$2,$3,'configured_unverified','已保存；API 协议尚未验证，外部发布保持禁用',now()) ON CONFLICT(name) DO UPDATE SET config=EXCLUDED.config,secret_encrypted=EXCLUDED.secret_encrypted,revision=integration_settings.revision+1,last_test_status='configured_unverified',last_test_message='已保存；API 协议尚未验证，外部发布保持禁用',last_tested_at=NULL,updated_at=now()`, externalImageHostName, data, secret)
+	if patch.Enabled && !patch.StablePublic {
+		problem(w, 400, "启用前必须确认图床使用稳定公开 URL，未启用短期签名链接")
+		return
+	}
+	data, _ := json.Marshal(externalImageHostConfig{Enabled: patch.Enabled, Endpoint: endpoint, WorkspaceID: workspaceID, StablePublic: patch.StablePublic, SyncDeletes: patch.SyncDeletes})
+	status, message := "configured", "已保存；请执行无副作用认证验证后启用外部发布"
+	if patch.Enabled {
+		status, message = "credentials_unverified", "启用意图已保存；认证验证通过前仍只保存本地原件"
+	}
+	var previousConfig []byte
+	var previousStatus, previousMessage string
+	if err := srv.store.database.QueryRowContext(r.Context(), `SELECT config,last_test_status,last_test_message FROM integration_settings WHERE name=$1`, externalImageHostName).Scan(&previousConfig, &previousStatus, &previousMessage); err == nil {
+		var previous externalImageHostConfig
+		if json.Unmarshal(previousConfig, &previous) == nil && previous.Endpoint == endpoint && previous.WorkspaceID == workspaceID && patch.Token.Action == "keep" && (previousStatus == "verified" || previousStatus == "scope_limited") {
+			status, message = previousStatus, previousMessage
+		}
+	}
+	_, err = srv.store.database.ExecContext(r.Context(), `INSERT INTO integration_settings(name,config,secret_encrypted,last_test_status,last_test_message,last_tested_at,updated_at) VALUES($1,$2,$3,$4,$5,CASE WHEN $4 IN ('verified','scope_limited') THEN now() ELSE NULL END,now()) ON CONFLICT(name) DO UPDATE SET config=EXCLUDED.config,secret_encrypted=EXCLUDED.secret_encrypted,revision=integration_settings.revision+1,last_test_status=$4,last_test_message=$5,last_tested_at=CASE WHEN $4 IN ('verified','scope_limited') THEN integration_settings.last_tested_at ELSE NULL END,updated_at=now()`, externalImageHostName, data, secret, status, message)
 	if err != nil {
 		problem(w, 500, "保存图床配置失败")
 		return
@@ -307,47 +358,43 @@ func (srv *Server) integrationTestEndpoint(w http.ResponseWriter, r *http.Reques
 		problem(w, 400, "请提供要测试的图床 Endpoint")
 		return
 	}
-	status, message := probeExternalImageHost(r.Context(), request.Endpoint)
-	jsonResponse(w, 200, map[string]any{"status": status, "message": message, "protocolStatus": "unverified"})
+	status, message := srv.probeExternalImageHost(r.Context(), request)
+	jsonResponse(w, 200, map[string]any{"status": status, "message": message, "protocolStatus": "ou_image_hosting_v1"})
 }
 
-func probeExternalImageHost(ctx context.Context, endpoint string) (string, string) {
-	validated, err := validateExternalEndpoint(endpoint)
+func (srv *Server) probeExternalImageHost(ctx context.Context, request externalImageHostProbeRequest) (string, string) {
+	validated, err := validateExternalEndpoint(request.Endpoint)
 	if err != nil {
 		return "unreachable", "Endpoint 校验失败"
 	}
-	return probeExternalImageHostWithClient(ctx, validated, newExternalProbeClient())
-}
-
-func newExternalProbeClient() *http.Client {
-	return &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if len(via) >= 3 {
-			return http.ErrUseLastResponse
+	workspaceID, err := validateWorkspaceID(request.WorkspaceID)
+	if err != nil {
+		return "unreachable", err.Error()
+	}
+	token := strings.TrimSpace(request.Token)
+	if token == "" {
+		record, readErr := integrationRecordByName(ctx, srv.store.database, externalImageHostName)
+		if readErr == nil && record.SecretEncrypted.Valid {
+			token, err = decryptConfigSecret(externalTokenScope, record.SecretEncrypted.String)
 		}
-		if req.URL.Scheme != "https" || req.URL.Hostname() != via[0].URL.Hostname() {
-			return http.ErrUseLastResponse
-		}
-		return nil
-	}}
-}
-
-func probeExternalImageHostWithClient(ctx context.Context, endpoint string, client *http.Client) (string, string) {
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	}
+	if err != nil || token == "" {
+		return "credentials_unverified", "未提供可验证的 Token；上传协议已知但凭据未验证"
+	}
+	client, err := ouimage.New(ouimage.Config{Endpoint: validated, Token: token, WorkspaceID: workspaceID})
+	if err != nil {
+		return "unreachable", "图床客户端配置无效"
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodHead, endpoint, nil)
-	if err != nil {
-		return "unreachable", "Endpoint 无法访问；未发送 Token，也未上传文件"
+	if err = client.Probe(probeCtx); err != nil {
+		var protocol *ouimage.ProtocolError
+		if errors.As(err, &protocol) && protocol.StatusCode == http.StatusForbidden && protocol.Code == "TOKEN_SCOPE_DENIED" {
+			_, _ = srv.store.database.ExecContext(ctx, `UPDATE integration_settings SET last_test_status='scope_limited',last_test_message='Token 未授权 images:read；上传协议已确认，按稳定 URL 确认允许启用',last_tested_at=now(),updated_at=now() WHERE name=$1`, externalImageHostName)
+			return "scope_limited", "Token 未授权 images:read，无法无副作用读取验证；images:write 上传仍可按已审计协议启用"
+		}
+		return "credentials_unverified", "认证验证失败：" + err.Error()
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "unreachable", "Endpoint 无法访问；未发送 Token，也未上传文件"
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-		return "configured_unverified", "Endpoint 可达且要求认证；未发送 Token，API 协议仍待文档确认"
-	}
-	if resp.StatusCode >= 200 && resp.StatusCode < 500 {
-		return "configured_unverified", "Endpoint 可达；未发送 Token，API 协议仍待文档确认（HTTP " + strconv.Itoa(resp.StatusCode) + "）"
-	}
-	return "unreachable", "Endpoint 返回异常状态（HTTP " + strconv.Itoa(resp.StatusCode) + "）"
+	_, _ = srv.store.database.ExecContext(ctx, `UPDATE integration_settings SET last_test_status='verified',last_test_message='认证与只读协议验证通过；未上传或删除文件',last_tested_at=now(),updated_at=now() WHERE name=$1`, externalImageHostName)
+	return "verified", "认证与只读协议验证通过；未上传或删除文件"
 }

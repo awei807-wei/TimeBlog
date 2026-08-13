@@ -1557,13 +1557,14 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	externalStatus := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": "unverified", "status": "未配置"}
+	externalStatus := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": "ou_image_hosting_v1", "status": "未配置"}
 	nasStatus := map[string]any{"configured": false, "enabled": false, "applyStatus": "not_configured", "status": "未配置"}
 	if srv.store.persistent && srv.store.database != nil {
 		if record, err := integrationRecordByName(r.Context(), srv.store.database, externalImageHostName); err == nil {
 			config := externalImageHostConfig{}
 			_ = json.Unmarshal(record.Config, &config)
-			externalStatus = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": "unverified", "status": record.TestStatus}
+			provider := customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
+			externalStatus = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": "ou_image_hosting_v1", "probeStatus": record.TestStatus, "publishEnabled": provider.PublishEnabled(), "status": record.TestStatus}
 		}
 		if record, err := integrationRecordByName(r.Context(), srv.store.database, nasBackupName); err == nil {
 			config := nasBackupConfig{}
@@ -1641,7 +1642,7 @@ func (srv *Server) mediaCollection(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		query := `SELECT id::text,original_name,mime_type,size_bytes,visibility,status,COALESCE(storage_path,''),COALESCE(sha256,''),created_at FROM media WHERE owner_id=$1::uuid`
+		query := `SELECT id::text,original_name,mime_type,size_bytes,visibility,status,COALESCE(storage_path,''),COALESCE(sha256,''),created_at,provider,COALESCE(provider_key,''),COALESCE(public_url,''),external_publish_status,COALESCE(external_publish_error,'') FROM media WHERE owner_id=$1::uuid`
 		args := []any{ownerID}
 		if cursorID != "" {
 			query += ` AND (created_at,id) < ($2::timestamptz,$3::uuid)`
@@ -1663,7 +1664,7 @@ func (srv *Server) mediaCollection(w http.ResponseWriter, r *http.Request) {
 		out := []*Media{}
 		for rows.Next() {
 			var m Media
-			if err := rows.Scan(&m.ID, &m.OriginalName, &m.MimeType, &m.SizeBytes, &m.Visibility, &m.Status, &m.StoragePath, &m.SHA256, &m.CreatedAt); err != nil {
+			if err := rows.Scan(&m.ID, &m.OriginalName, &m.MimeType, &m.SizeBytes, &m.Visibility, &m.Status, &m.StoragePath, &m.SHA256, &m.CreatedAt, &m.Provider, &m.ProviderKey, &m.PublicURL, &m.ExternalPublishStatus, &m.ExternalPublishError); err != nil {
 				problem(w, 500, "读取媒体失败")
 				return
 			}

@@ -381,6 +381,13 @@ paths:
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/MediaID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
       responses: {'204': {description: 已删除}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/media/{id}/retry-publish:
+    post:
+      tags: [media]
+      operationId: retryExternalMediaPublish
+      security: [SessionCookie: []]
+      parameters: [{$ref: '#/components/parameters/MediaID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
+      responses: {'202': {description: 已重新排队外部发布}, '409': {$ref: '#/components/responses/Conflict'}}
   /media/{id}/content:
     get:
       tags: [media]
@@ -482,17 +489,17 @@ paths:
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostPatch'}}}}
-      responses: {'200': {description: 配置已加密入库；协议未验证前不会用于发布}, '400': {$ref: '#/components/responses/BadRequest'}}
+      responses: {'200': {description: 配置已加密入库；启用门禁由协议、凭据和稳定 URL 确认共同决定}, '400': {$ref: '#/components/responses/BadRequest'}}
 
   /admin/integrations/external_image_host/test:
     post:
       tags: [settings]
       operationId: probeExternalImageHost
-      description: 对请求中的临时 Endpoint 执行不携带 Token 的 HEAD 可达性与认证挑战探测；不保存地址，不上传或删除文件。
+      description: 使用临时 Token 或已保存 Token 调用 GET /api/uploads?limit=1；不会上传或删除文件。只有 images:write 而缺少 images:read 时返回 scope_limited。
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostProbeRequest'}}}}
-      responses: {'200': {description: 探测结果；外部 401/403 表示 Endpoint 可达且要求认证，protocolStatus 始终为 unverified}, '400': {$ref: '#/components/responses/BadRequest'}}
+      responses: {'200': {description: 无副作用认证探测结果，protocolStatus 为 ou_image_hosting_v1}, '400': {$ref: '#/components/responses/BadRequest'}}
 
   /admin/integrations/nas_backup:
     get:
@@ -570,22 +577,30 @@ components:
     ExternalImageHostPatch:
       type: object
       additionalProperties: false
-      required: [enabled, endpoint, token]
+      required: [enabled, endpoint, stablePublicUrls, syncDeletes, token]
       properties:
         enabled: {type: boolean}
         endpoint: {type: string, format: uri, default: 'https://image.cainiao.me/api/uploads'}
+        workspaceId: {type: string, maxLength: 80}
+        stablePublicUrls: {type: boolean, description: 管理员确认未使用短期签名 URL 且防盗链允许博客域名}
+        syncDeletes: {type: boolean, description: 永久删除本地媒体前将远端副本移入回收站；需要 images:delete}
         token: {$ref: '#/components/schemas/SecretMutation'}
     ExternalImageHostConfig:
       type: object
       additionalProperties: false
-      required: [provider, enabled, endpoint, tokenConfigured, tokenMasked, protocolStatus, status]
+      required: [provider, enabled, endpoint, stablePublicUrls, syncDeletes, tokenConfigured, tokenMasked, protocolStatus, verified, publishEnabled, status]
       properties:
         provider: {type: string, enum: [custom_public]}
         enabled: {type: boolean}
         endpoint: {type: string, format: uri}
+        workspaceId: {type: string}
+        stablePublicUrls: {type: boolean}
+        syncDeletes: {type: boolean}
         tokenConfigured: {type: boolean}
         tokenMasked: {type: string, enum: ['', '********']}
-        protocolStatus: {type: string, enum: [unverified]}
+        protocolStatus: {type: string, enum: [ou_image_hosting_v1]}
+        verified: {type: boolean}
+        publishEnabled: {type: boolean}
         status: {type: string}
         statusMessage: {type: string}
         lastTestedAt: {type: [string, 'null'], format: date-time}
@@ -596,6 +611,8 @@ components:
       required: [endpoint]
       properties:
         endpoint: {type: string, format: uri, description: 仅用于本次无副作用探测，不会入库}
+        workspaceId: {type: string, maxLength: 80}
+        token: {type: string, writeOnly: true, description: 可选临时 Token；留空时使用已加密保存值}
     NASBackupPatch:
       type: object
       additionalProperties: false
@@ -641,7 +658,9 @@ components:
             provider: {type: string, enum: [custom_public]}
             configured: {type: boolean}
             enabled: {type: boolean}
-            protocolStatus: {type: string, enum: [unverified]}
+            protocolStatus: {type: string, enum: [ou_image_hosting_v1]}
+            probeStatus: {type: string}
+            publishEnabled: {type: boolean}
             status: {type: string}
         security:
           type: object
@@ -758,7 +777,7 @@ components:
     TagListResponse: {type: object, required: [tags], properties: {tags: {type: array, items: {$ref: '#/components/schemas/Tag'}}}}
     UploadTicketRequest: {type: object, required: [name, size, mime, visibility], properties: {name: {type: string}, size: {type: integer, format: int64}, mime: {type: string}, visibility: {$ref: '#/components/schemas/Visibility'}}}
     UploadTicketResponse: {type: object, required: [media, uploadUrl, finalizeUrl], properties: {media: {$ref: '#/components/schemas/Media'}, uploadUrl: {type: string, description: PATCH/HEAD resumable upload URL}, finalizeUrl: {type: string, description: POST metadata-only finalize URL}, expiresIn: {type: integer}}}
-    Media: {type: object, required: [id, originalName, mimeType, sizeBytes, visibility, status], properties: {id: {type: string, format: uuid}, originalName: {type: string}, mimeType: {type: string}, sizeBytes: {type: integer, format: int64}, visibility: {$ref: '#/components/schemas/Visibility'}, status: {type: string, enum: [uploading, ready, failed, deleting, deleted]}, sha256: {type: string}, createdAt: {type: string, format: date-time}}}
+    Media: {type: object, required: [id, originalName, mimeType, sizeBytes, visibility, status], properties: {id: {type: string, format: uuid}, originalName: {type: string}, mimeType: {type: string}, sizeBytes: {type: integer, format: int64}, visibility: {$ref: '#/components/schemas/Visibility'}, status: {type: string, enum: [uploading, ready, failed, deleting, deleted]}, provider: {type: string, enum: [local_private, custom_public]}, providerKey: {type: string}, publicUrl: {type: string, format: uri}, externalPublishStatus: {type: string, enum: [not_requested, pending, publishing, published, failed, trash_pending]}, externalPublishError: {type: string}, sha256: {type: string}, createdAt: {type: string, format: date-time}}}
     MediaListResponse: {type: object, required: [media], properties: {media: {type: array, items: {$ref: '#/components/schemas/Media'}}, nextCursor: {type: string}}}
     EmbedRequest: {type: object, required: [url], properties: {url: {type: string, format: uri}}}
     ExportRequest: {type: object, required: [type], properties: {type: {type: string, enum: [public, full]}}}

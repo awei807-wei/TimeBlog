@@ -22,12 +22,12 @@ export type CalendarResponse = { month: string; days: Record<string, number> };
 export type SearchResponse = { query: string; entries: PublicEntry[]; nextCursor?: string };
 export type AdminEntry = Omit<PublicEntry, 'id' | 'visibility'> & { id: string; status: 'draft' | 'published' | 'trashed'; visibility: 'public' | 'private'; updatedAt: string };
 export type Version = { version: number; createdAt: string; snapshot: Record<string, unknown> };
-export type Media = { id: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' | 'private'; status: 'uploading' | 'ready' | 'failed' | 'deleting' | 'deleted'; createdAt?: string };
+export type Media = { id: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' | 'private'; status: 'uploading' | 'ready' | 'failed' | 'deleting' | 'deleted'; provider?: 'local_private' | 'custom_public'; providerKey?: string; publicUrl?: string; externalPublishStatus?: 'not_requested' | 'pending' | 'publishing' | 'published' | 'failed' | 'trash_pending'; externalPublishError?: string; createdAt?: string };
 export type ExportJob = { id: string; type: 'public' | 'full'; status: 'queued' | 'running' | 'ready' | 'failed'; downloadUrl?: string; sha256?: string };
 export type SiteSettings = { siteTitle?: string; siteDescription?: string; timezone?: string; defaultVisibility?: 'public' | 'private'; feedEnabled?: boolean; theme?: string };
 export type ExternalImageHostConfig = {
-  provider: 'custom_public'; enabled: boolean; endpoint: string; tokenConfigured: boolean; tokenMasked: '' | '********';
-  protocolStatus: 'unverified'; status: string; statusMessage?: string; lastTestedAt?: string | null; updatedAt?: string;
+  provider: 'custom_public'; enabled: boolean; endpoint: string; workspaceId?: string; stablePublicUrls: boolean; syncDeletes: boolean; tokenConfigured: boolean; tokenMasked: '' | '********';
+  protocolStatus: 'ou_image_hosting_v1'; verified: boolean; publishEnabled: boolean; status: string; statusMessage?: string; lastTestedAt?: string | null; updatedAt?: string;
 };
 export type NASBackupConfig = {
   enabled: boolean; sourceHost: string; sourcePath: string; destinationPath: string; retentionDays: number;
@@ -36,7 +36,7 @@ export type NASBackupConfig = {
 export type RuntimeStatus = {
   updatedAt: string;
   media: { provider: 'local_private'; writable: boolean; imageUploadEnabled: boolean; nonImageUploadEnabled: boolean; maxUploadBytes: number };
-  externalImageHost: { provider: 'custom_public'; configured: boolean; enabled: boolean; protocolStatus: 'unverified'; status: string };
+  externalImageHost: { provider: 'custom_public'; configured: boolean; enabled: boolean; protocolStatus: 'ou_image_hosting_v1'; probeStatus?: string; publishEnabled?: boolean; status: string };
   security: Record<string, { configured: boolean; managedBy: string }>;
   nasBackup: { configured: boolean; enabled: boolean; applyStatus: string; status: string };
 };

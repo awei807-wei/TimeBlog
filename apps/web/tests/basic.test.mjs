@@ -75,7 +75,10 @@ test('settings actions are non-submit controls and endpoint probe does not remou
   assert.doesNotMatch(source.slice(source.indexOf('async function testImageHost'), source.indexOf('async function saveNASBackup')), /setBusy|setImageHost|router\.refresh/);
   assert.match(settingsSource, /event\.preventDefault\(\)/);
   assert.match(settingsSource, /probeState\.phase === 'testing'/);
-  assert.match(settingsSource, /onTestImageHost:\s*\(endpoint: string\)/);
+  assert.match(settingsSource, /onTestImageHost:\s*\(endpoint: string, workspaceId: string, token: string\)/);
+  assert.match(settingsSource, /images:write/);
+  assert.match(settingsSource, /stablePublicUrls/);
+  assert.match(settingsSource, /syncDeletes/);
 });
 
 test('version panel returns to the in-page content list', async () => {

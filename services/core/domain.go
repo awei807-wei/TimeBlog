@@ -45,15 +45,20 @@ type WorkingCopy struct {
 }
 
 type Media struct {
-	ID           string    `json:"id"`
-	OriginalName string    `json:"originalName"`
-	MimeType     string    `json:"mimeType"`
-	SizeBytes    int64     `json:"sizeBytes"`
-	Visibility   string    `json:"visibility"`
-	Status       string    `json:"status"`
-	StoragePath  string    `json:"-"`
-	SHA256       string    `json:"sha256,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
+	ID                    string    `json:"id"`
+	OriginalName          string    `json:"originalName"`
+	MimeType              string    `json:"mimeType"`
+	SizeBytes             int64     `json:"sizeBytes"`
+	Visibility            string    `json:"visibility"`
+	Status                string    `json:"status"`
+	StoragePath           string    `json:"-"`
+	SHA256                string    `json:"sha256,omitempty"`
+	Provider              string    `json:"provider,omitempty"`
+	ProviderKey           string    `json:"providerKey,omitempty"`
+	PublicURL             string    `json:"publicUrl,omitempty"`
+	ExternalPublishStatus string    `json:"externalPublishStatus,omitempty"`
+	ExternalPublishError  string    `json:"externalPublishError,omitempty"`
+	CreatedAt             time.Time `json:"createdAt"`
 }
 
 type Session struct {

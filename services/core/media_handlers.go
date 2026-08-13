@@ -40,12 +40,13 @@ func (srv *Server) mediaCapabilityStatus() map[string]any {
 	provider := "local_private"
 	writable := checkWritableDirectory(srv.mediaRoot) == nil
 	externalProvider := customPublicProvider{}
-	external := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": externalProvider.ProtocolStatus(), "publishEnabled": externalProvider.PublishEnabled()}
+	external := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": externalProvider.ProtocolStatus(), "publishEnabled": false}
 	if srv.store.persistent && srv.store.database != nil {
 		if record, err := integrationRecordByName(context.Background(), srv.store.database, externalImageHostName); err == nil {
 			config := externalImageHostConfig{}
 			_ = json.Unmarshal(record.Config, &config)
-			external = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": externalProvider.ProtocolStatus(), "publishEnabled": externalProvider.PublishEnabled()}
+			provider := customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
+			external = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": provider.ProtocolStatus(), "publishEnabled": provider.PublishEnabled()}
 		}
 	}
 	return map[string]any{
@@ -469,7 +470,8 @@ func (srv *Server) mediaEndpointDatabase(w http.ResponseWriter, r *http.Request)
 			problem(w, http.StatusBadRequest, "媒体校验失败")
 			return
 		}
-		res, err := tx.ExecContext(r.Context(), `UPDATE media SET status='ready',storage_path=$1,size_bytes=$2,sha256=$3 WHERE id=$4::uuid AND owner_id=$5::uuid AND status='uploading'`, path, actualSize, sum, id, ownerID)
+		externalStatus, configRevision := srv.externalPublishPlan(r.Context(), declaredMime, actualSize)
+		res, err := tx.ExecContext(r.Context(), `UPDATE media SET status='ready',storage_path=$1,size_bytes=$2,sha256=$3,external_publish_status=$6,external_publish_error=NULL,external_config_revision=$7 WHERE id=$4::uuid AND owner_id=$5::uuid AND status='uploading'`, path, actualSize, sum, id, ownerID, externalStatus, configRevision)
 		if err != nil {
 			problem(w, 500, "保存媒体失败")
 			return
@@ -479,15 +481,64 @@ func (srv *Server) mediaEndpointDatabase(w http.ResponseWriter, r *http.Request)
 			problem(w, 404, "媒体不存在")
 			return
 		}
+		if externalStatus == "pending" {
+			payload, _ := json.Marshal(map[string]any{"mediaId": id, "configRevision": configRevision})
+			if _, err := tx.ExecContext(r.Context(), `INSERT INTO jobs(type,payload) VALUES('publish_media',$1) ON CONFLICT DO NOTHING`, payload); err != nil {
+				problem(w, 500, "排队外部发布失败")
+				return
+			}
+		}
 		if err := tx.Commit(); err != nil {
 			problem(w, http.StatusInternalServerError, "保存媒体失败")
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"id": id, "status": "ready", "sizeBytes": actualSize, "sha256": sum})
+		jsonResponse(w, 200, map[string]any{"id": id, "status": "ready", "sizeBytes": actualSize, "sha256": sum, "externalPublishStatus": externalStatus})
+		return
+	}
+	if len(parts) > 1 && parts[1] == "retry-publish" {
+		if r.Method != http.MethodPost {
+			problem(w, http.StatusMethodNotAllowed, "方法不允许")
+			return
+		}
+		var mimeType, state string
+		var size int64
+		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT mime_type,size_bytes,external_publish_status FROM media WHERE id=$1::uuid AND owner_id=$2::uuid AND status='ready'`, id, ownerID).Scan(&mimeType, &size, &state); err != nil {
+			problem(w, 404, "媒体不存在")
+			return
+		}
+		next, revision := srv.externalPublishPlan(r.Context(), mimeType, size)
+		if next != "pending" {
+			problem(w, 409, "外部图床未启用、未验证或媒体格式不支持")
+			return
+		}
+		if state == "pending" || state == "publishing" {
+			jsonResponse(w, 202, map[string]any{"externalPublishStatus": state})
+			return
+		}
+		payload, _ := json.Marshal(map[string]any{"mediaId": id, "configRevision": revision})
+		tx, err := srv.store.database.BeginTx(r.Context(), nil)
+		if err != nil {
+			problem(w, 500, "重试发布失败")
+			return
+		}
+		defer tx.Rollback()
+		if _, err = tx.ExecContext(r.Context(), `UPDATE media SET external_publish_status='pending',external_publish_error=NULL,external_config_revision=$2 WHERE id=$1::uuid`, id, revision); err != nil {
+			problem(w, 500, "重试发布失败")
+			return
+		}
+		if _, err = tx.ExecContext(r.Context(), `INSERT INTO jobs(type,payload) VALUES('publish_media',$1) ON CONFLICT DO NOTHING`, payload); err != nil {
+			problem(w, 500, "重试发布失败")
+			return
+		}
+		if err = tx.Commit(); err != nil {
+			problem(w, 500, "重试发布失败")
+			return
+		}
+		jsonResponse(w, 202, map[string]any{"externalPublishStatus": "pending"})
 		return
 	}
 	var m Media
-	err := srv.store.database.QueryRowContext(r.Context(), `SELECT id::text,original_name,mime_type,size_bytes,visibility,status,COALESCE(storage_path,''),COALESCE(sha256,''),created_at FROM media WHERE id=$1::uuid AND owner_id=$2::uuid`, id, ownerID).Scan(&m.ID, &m.OriginalName, &m.MimeType, &m.SizeBytes, &m.Visibility, &m.Status, &m.StoragePath, &m.SHA256, &m.CreatedAt)
+	err := srv.store.database.QueryRowContext(r.Context(), `SELECT id::text,original_name,mime_type,size_bytes,visibility,status,COALESCE(storage_path,''),COALESCE(sha256,''),created_at,provider,COALESCE(provider_key,''),COALESCE(public_url,''),external_publish_status,COALESCE(external_publish_error,'') FROM media WHERE id=$1::uuid AND owner_id=$2::uuid`, id, ownerID).Scan(&m.ID, &m.OriginalName, &m.MimeType, &m.SizeBytes, &m.Visibility, &m.Status, &m.StoragePath, &m.SHA256, &m.CreatedAt, &m.Provider, &m.ProviderKey, &m.PublicURL, &m.ExternalPublishStatus, &m.ExternalPublishError)
 	if err != nil {
 		problem(w, 404, "媒体不存在")
 		return
@@ -513,6 +564,25 @@ func (srv *Server) mediaEndpointDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	jsonResponse(w, 200, &m)
+}
+
+func (srv *Server) externalPublishPlan(ctx context.Context, mimeType string, size int64) (string, any) {
+	if !strings.HasPrefix(strings.ToLower(mimeType), "image/") || size > 20*1024*1024 {
+		return "not_requested", nil
+	}
+	record, err := integrationRecordByName(ctx, srv.store.database, externalImageHostName)
+	if err != nil {
+		return "not_requested", nil
+	}
+	config := externalImageHostConfig{}
+	if json.Unmarshal(record.Config, &config) != nil {
+		return "not_requested", nil
+	}
+	provider := customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
+	if !provider.PublishEnabled() {
+		return "not_requested", nil
+	}
+	return "pending", record.Revision
 }
 
 func (srv *Server) mediaContent(w http.ResponseWriter, r *http.Request) {
