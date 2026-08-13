@@ -8,7 +8,8 @@ import { API } from '@/lib/api';
 import { invalidatePublicCaches } from '@/lib/cache-invalidation';
 import { deserializeEditorStatus, nextRetryAt, serializeEditorStatus } from '@/lib/editor-utils';
 import { renderMarkdown } from '@/lib/markdown';
-import { createUploadItem, isSupportedMedia, mediaMarkdown, mediaQueueStoragePlan, mediaUploadUrl, replaceMediaToken, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
+import MediaResolver from '@/app/article/MediaResolver';
+import { createUploadItem, isSupportedMedia, mediaMarkdownReference, mediaQueueStoragePlan, mediaUploadUrl, removeMediaReferences, replaceMediaOccurrence, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
 
 type Mode = 'simple' | 'markdown';
 // “实时预览”不再是独立标签；Markdown 模式直接同页展示预览。
@@ -117,15 +118,18 @@ function draftName(draft: Draft) {
   return text ? text.slice(0, 34) : '未命名草稿';
 }
 
-function Preview({ markdown }: { markdown: string }) {
+function Preview({ markdown, uploads, className = '' }: { markdown: string; uploads?: UploadItem[]; className?: string }) {
   const rendered = renderMarkdown(markdown);
-  return <div className="markdown-preview" aria-label="Markdown 预览"><div className="preview-toc">{rendered.toc.length > 0 && <ol>{rendered.toc.map(item => <li key={item.id} className={`toc-level-${item.level}`}><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>}</div><div dangerouslySetInnerHTML={{ __html: rendered.html }} /></div>;
+  const metadata = Object.fromEntries((uploads || []).map(item => [item.mediaId || item.id, { fileName: item.fileName, mime: item.mime, size: item.size, status: item.status }]));
+  return <div className={`markdown-preview ${className}`.trim()} aria-label={className.includes('simple-media-preview') ? '正文中的媒体预览' : 'Markdown 预览'}><div className="preview-toc">{rendered.toc.length > 0 && <ol>{rendered.toc.map(item => <li key={item.id} className={`toc-level-${item.level}`}><a href={`#${item.id}`}>{item.title}</a></li>)}</ol>}</div><MediaResolver html={rendered.html} metadata={metadata} /></div>;
 }
 
 export default function AdminPage() {
   const router = useRouter();
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+  const editorSelectionRef = useRef({ start: 0, end: 0 });
+  const markdownRef = useRef('');
   const draftID = useRef<string | null>(null);
   const lastSync = useRef(0);
   const [markdown, setMarkdown] = useState('');
@@ -159,6 +163,10 @@ export default function AdminPage() {
   const [requestedEditID, setRequestedEditID] = useState('');
   const editRequested = useRef(false);
 
+  useEffect(() => {
+    markdownRef.current = markdown;
+  }, [markdown]);
+
   const setSessionCSRF = useCallback((value: string) => {
     csrfRef.current = value;
     setCsrf(value);
@@ -184,9 +192,33 @@ export default function AdminPage() {
 
   const removeMediaToken = useCallback((source: string, item: UploadItem) => {
     let next = source;
-    next = replaceMediaToken(next, mediaMarkdown(item.id), '');
-    if (item.mediaId) next = replaceMediaToken(next, mediaMarkdown(item.mediaId), '');
+    next = removeMediaReferences(next, item.id);
+    if (item.mediaId) next = removeMediaReferences(next, item.mediaId);
     return next.replace(/\n{3,}/g, '\n\n').trimStart();
+  }, []);
+
+  const insertMediaReference = useCallback((reference: string) => {
+    const editor = editorRef.current;
+    let cursor = 0;
+    const current = markdownRef.current;
+    const start = editorSelectionRef.current.start ?? editor?.selectionStart ?? current.length;
+    const end = editorSelectionRef.current.end ?? editor?.selectionEnd ?? start;
+    const safeStart = Math.min(Math.max(start, 0), current.length);
+    const safeEnd = Math.min(Math.max(end, safeStart), current.length);
+    const before = current.slice(0, safeStart);
+    const after = current.slice(safeEnd);
+    const prefix = before && !before.endsWith('\n') ? '\n' : '';
+    const suffix = after && !after.startsWith('\n') ? '\n' : '';
+    const next = `${before}${prefix}${reference}${suffix}${after}`;
+    cursor = before.length + prefix.length + reference.length + suffix.length;
+    markdownRef.current = next;
+    editorSelectionRef.current = { start: cursor, end: cursor };
+    setMarkdown(next);
+    window.setTimeout(() => {
+      editorRef.current?.focus();
+      editorRef.current?.setSelectionRange(cursor, cursor);
+    }, 0);
+    return reference;
   }, []);
 
   const currentDraftId = useCallback(() => {
@@ -194,26 +226,33 @@ export default function AdminPage() {
     return draftID.current;
   }, []);
 
-  async function uploadMedia(file: File, existingId?: string) {
+  async function uploadMedia(file: File, existingId?: string, existingReference?: string) {
     if (!isSupportedMedia(file)) { setMessage(`仅支持 ${Math.round(MAX_MEDIA_BYTES / 1024 / 1024)}MiB 以内的图片、音频、视频或 PDF；断点续传由后端 uploadUrl 能力决定`); return; }
     if (!mediaCapability.checked) { setMessage('正在检查媒体存储，请稍后再试'); return; }
     if (file.type.startsWith('image/') && !mediaCapability.imageUploadEnabled) { setMessage(mediaCapability.reason || '图片上传暂不可用，请先配置可写的媒体存储'); return; }
     if (!file.type.startsWith('image/') && !mediaCapability.nonImageUploadEnabled) { setMessage(mediaCapability.reason || '媒体上传暂不可用，请先配置可写的媒体存储'); return; }
     const item = createUploadItem(file, existingId);
+    const reference = existingId && existingReference
+      ? existingReference
+      : mediaMarkdownReference(item.id, file.name, file.type);
+    const itemWithReference: UploadItem = { ...item, markdownReference: reference };
     cancelledUploads.current.delete(item.id);
     const controller = new AbortController();
+    let serverMediaId = '';
     uploadControllers.current.set(item.id, controller);
-    setUploads(current => current.some(value => value.id === item.id) ? current.map(value => value.id === item.id ? item : value) : [...current, item]);
-    void persistMediaQueueItem(item, file);
-    const token = mediaMarkdown(item.id);
-    setMarkdown(current => current.includes(token) ? current : `${current}${current && !current.endsWith('\n') ? '\n' : ''}${token}`);
+    setUploads(current => current.some(value => value.id === item.id) ? current.map(value => value.id === item.id ? itemWithReference : value) : [...current, itemWithReference]);
+    void persistMediaQueueItem(itemWithReference, file);
+    const token = existingId && markdownRef.current.includes(reference)
+      ? reference
+      : insertMediaReference(reference);
     try {
       const sessionCsrf = csrfRef.current || csrf || await refreshSessionCSRF();
       const ticketResponse = await fetch(`${API}/admin/media/upload-ticket`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionCsrf, 'Idempotency-Key': item.id }, body: JSON.stringify({ name: file.name, size: file.size, mime: file.type, visibility: status === 'private' ? 'private' : 'public' }), signal: controller.signal });
       if (!ticketResponse.ok) throw await responseError(ticketResponse, '创建上传任务失败');
       const ticket = await ticketResponse.json() as { media: { id: string }; uploadUrl: string; finalizeUrl?: string };
+      serverMediaId = ticket.media.id;
       setUploads(current => current.map(value => value.id === item.id ? { ...value, status: 'uploading', progress: 0 } : value));
-      void persistMediaQueueItem({ ...item, status: 'uploading' }, file);
+      void persistMediaQueueItem({ ...itemWithReference, status: 'uploading' }, file);
       const uploadUrl = mediaUploadUrl(ticket.uploadUrl, window.location.origin);
       if (ticket.finalizeUrl) {
         await uploadResumable(uploadUrl, file, { csrfToken: sessionCsrf, idempotencyKey: item.id, signal: controller.signal, onProgress: (progress: number) => setUploads(current => current.map(value => value.id === item.id ? { ...value, progress } : value)) });
@@ -228,9 +267,10 @@ export default function AdminPage() {
         signal: controller.signal,
       });
       if (!finalize.ok) throw await responseError(finalize, '完成上传失败');
-      const resolved = mediaMarkdown(ticket.media.id);
-      setMarkdown(current => replaceMediaToken(current, token, resolved));
-      const ready: UploadItem = { ...item, status: 'ready', mediaId: ticket.media.id };
+      const resolved = mediaMarkdownReference(ticket.media.id, file.name, file.type);
+      markdownRef.current = replaceMediaOccurrence(markdownRef.current, token, resolved);
+      setMarkdown(current => replaceMediaOccurrence(current, token, resolved));
+      const ready: UploadItem = { ...itemWithReference, status: 'ready', mediaId: ticket.media.id, markdownReference: resolved };
       setUploads(current => current.map(value => value.id === item.id ? ready : value));
       void persistMediaQueueItem(ready);
       setMessage('媒体已上传并写入 Markdown');
@@ -239,7 +279,7 @@ export default function AdminPage() {
         setUploads(current => current.filter(value => value.id !== item.id));
         return;
       }
-      const failed: UploadItem = { ...item, status: 'failed', error: '上传失败', progress: 0 };
+      const failed: UploadItem = { ...itemWithReference, status: 'failed', mediaId: serverMediaId || undefined, error: '上传失败', progress: 0 };
       setUploads(current => current.map(value => value.id === item.id ? failed : value));
       void persistMediaQueueItem(failed);
       setMessage(error instanceof AdminRequestError ? `媒体上传失败：${error.message}` : '媒体上传失败，保留引用占位符，可稍后重试');
@@ -252,10 +292,19 @@ export default function AdminPage() {
       setMessage(`请重新选择 ${item.fileName} 后再重试；浏览器不会把文件内容自动写入离线队列`);
       return;
     }
-    await uploadMedia(file || new File([item.file as Blob], item.fileName, { type: item.mime }), item.id);
+    await uploadMedia(file || new File([item.file as Blob], item.fileName, { type: item.mime }), item.id, item.markdownReference);
   }
 
   function handleFiles(files: FileList | File[]) { for (const file of Array.from(files)) void uploadMedia(file); }
+
+  async function deleteServerMedia(mediaId: string) {
+    const requestCsrf = csrfRef.current || csrf;
+    if (!requestCsrf || !mediaId) return;
+    try {
+      const response = await fetch(`${API}/admin/media/${encodeURIComponent(mediaId)}`, { method: 'DELETE', credentials: 'include', headers: { 'X-CSRF-Token': requestCsrf } });
+      if (!response.ok && response.status !== 404 && response.status !== 409) setMessage('附件已从草稿移除，但服务器清理未完成');
+    } catch { setMessage('附件已从草稿移除，但服务器清理未完成'); }
+  }
 
   function cancelUpload(item: UploadItem) {
     cancelledUploads.current.add(item.id);
@@ -264,6 +313,7 @@ export default function AdminPage() {
     setUploads(current => current.filter(value => value.id !== item.id));
     setMarkdown(current => removeMediaToken(current, item));
     void dbDelete(MEDIA_QUEUE_STORE, item.id);
+    if (item.mediaId) void deleteServerMedia(item.mediaId);
     setMessage(`已取消上传 ${item.fileName}`);
   }
 
@@ -275,6 +325,7 @@ export default function AdminPage() {
     setMarkdown(current => removeMediaToken(current, item));
     setUploads(current => current.filter(value => value.id !== item.id));
     void dbDelete(MEDIA_QUEUE_STORE, item.id);
+    if (item.status === 'failed' && item.mediaId) void deleteServerMedia(item.mediaId);
     setMessage('已从当前草稿移除附件；媒体文件仍保留在媒体库中');
   }
 
@@ -524,9 +575,10 @@ export default function AdminPage() {
     </div>
     <div className={`media-capability${uploadDisabled ? ' is-unavailable' : ''}`} role="status">{!mediaCapability.checked ? mediaCapability.reason : uploadDisabled ? mediaCapability.reason : '本地媒体存储已就绪 · 图片与附件可上传'}</div>
     {kind === 'article' && <><input className="title-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="文章标题" aria-label="文章标题"/><input className="summary-input" value={summary} onChange={e => setSummary(e.target.value)} placeholder="摘要（可选）" aria-label="文章摘要"/><input className="summary-input" value={slug} onChange={e => setSlug(e.target.value)} placeholder="地址 slug（可选，编辑时保持原值）" aria-label="文章地址"/></>}
-    <textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => setMarkdown(e.target.value)} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder={mode === 'simple' ? '从一句话开始。可直接粘贴图片或添加媒体附件。' : '使用 Markdown 写作；右侧或下方会同步显示预览。'} aria-label="Markdown 正文编辑" />
+    <textarea id="editor-panel" role="tabpanel" aria-labelledby={`tab-${mode}`} ref={editorRef} value={markdown} onChange={e => setMarkdown(e.target.value)} onSelect={e => { editorSelectionRef.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd }; }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; editorSelectionRef.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd }; setMarkdown(e.currentTarget.value); }} onPaste={e => { const files = Array.from(e.clipboardData.files); editorSelectionRef.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd }; if (files.length) { e.preventDefault(); handleFiles(files); } }} onDrop={e => { e.preventDefault(); editorSelectionRef.current = { start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd }; handleFiles(e.dataTransfer.files); }} onDragOver={e => e.preventDefault()} placeholder={mode === 'simple' ? '从一句话开始。可直接粘贴图片或添加媒体附件。' : '使用 Markdown 写作；右侧或下方会同步显示预览。'} aria-label="Markdown 正文编辑" />
     {mode === 'simple' && uploadPanel}
-    {mode === 'markdown' && <Preview markdown={markdown}/>} {mode === 'markdown' && uploadPanel}
+    {mode === 'simple' && <Preview markdown={markdown} uploads={uploads} className="simple-media-preview" />}
+    {mode === 'markdown' && <Preview markdown={markdown} uploads={uploads}/>} {mode === 'markdown' && uploadPanel}
     <div className="status" aria-live="polite">{message}</div>
     {uploads.length > 0 && <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <li key={item.id}><div className="upload-item-main"><span className="upload-name">{item.fileName}</span>{item.status === 'uploading' && <div className="upload-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((item.progress || 0) * 100)}><span style={{ width: `${Math.round((item.progress || 0) * 100)}%` }} /></div>}</div><span className="upload-actions"><span className={`tag upload-${item.status}`}>{item.status === 'ready' ? <><Check aria-hidden="true" />已完成</> : item.status === 'uploading' ? <><LoaderCircle className="spin" aria-hidden="true" />上传中</> : item.status === 'failed' ? <><AlertCircle aria-hidden="true" />失败</> : '排队中'}</span>{item.status === 'uploading' && <button type="button" className="inline-action" onClick={() => cancelUpload(item)}><X aria-hidden="true" />取消</button>}{item.status === 'failed' && <label className="inline-action">{item.needsReselect ? '重选' : '重试'}<input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={e => { const file = e.target.files?.[0]; if (file) void retryUpload(item, file); e.currentTarget.value = ''; }}/></label>}<button type="button" className="inline-action remove-media" onClick={() => removeUpload(item)} aria-label={`从当前草稿移除 ${item.fileName}`}><Trash2 aria-hidden="true" />移除附件</button></span></li>)}</ul>}
     <div className="composer-footer"><label>日期 <input type="date" value={date} onChange={e => setDate(e.target.value)}/></label><label>类型 <select value={kind} onChange={e => setKind(e.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label><label>状态 <select value={status} onChange={e => setStatus(e.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label><label>分类 <input value={categories} onChange={e => setCategories(e.target.value)} placeholder="日常, 工作" aria-label="分类"/></label><label>标签 <input value={tags} onChange={e => setTags(e.target.value)} placeholder="#阅读 #想法" aria-label="标签"/></label><button className="primary" disabled={saving || loadingEdit || !markdown.trim()} onClick={save}>{saving ? '保存中…' : editingEntryID ? '保存修改' : '保存'}</button>{undoToken && <button className="secondary" onClick={undo}>撤销保存</button>}</div>

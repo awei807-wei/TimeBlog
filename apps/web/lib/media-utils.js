@@ -25,8 +25,42 @@ export function mediaMarkdown(mediaId) {
   return `media://${mediaId}`;
 }
 
+function markdownLabel(value, fallback = '媒体附件') {
+  const label = String(value || '').trim().replace(/[\[\]\\()_*`#!<>\r\n]/g, ' ').replace(/\s+/g, ' ').trim();
+  return label || fallback;
+}
+
+/**
+ * Return the canonical Markdown reference used by the editor for an upload.
+ * Markdown remains the source of truth while the media resolver owns the
+ * authenticated `media://` URL lookup at render time.
+ */
+export function mediaMarkdownReference(mediaId, fileName = '', mime = '') {
+  const label = markdownLabel(fileName, mediaId);
+  return /^image\//i.test(String(mime || ''))
+    ? `![${label}](media://${mediaId})`
+    : `[${label}](media://${mediaId})`;
+}
+
+/** Remove both canonical Markdown references and legacy bare media tokens. */
+export function removeMediaReferences(markdown, mediaId) {
+  const escaped = String(mediaId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(markdown)
+    .replace(new RegExp(`!\\[[^\\]]*\\]\\(media://${escaped}\\)`, 'g'), '')
+    .replace(new RegExp(`\\[[^\\]]*\\]\\(media://${escaped}\\)`, 'g'), '')
+    .replace(new RegExp(`media://${escaped}(?![A-Za-z0-9._~-])`, 'g'), '');
+}
+
 export function replaceMediaToken(markdown, oldToken, newToken) {
   return markdown.split(oldToken).join(newToken);
+}
+
+/** Replace only the first exact reference occurrence. */
+export function replaceMediaOccurrence(markdown, oldReference, newReference) {
+  const source = String(markdown);
+  const index = source.indexOf(oldReference);
+  if (index < 0) return source;
+  return `${source.slice(0, index)}${newReference}${source.slice(index + oldReference.length)}`;
 }
 
 export function mediaUploadUrl(value, origin = '') {

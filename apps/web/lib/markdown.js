@@ -45,23 +45,31 @@ function highlightCode(code, language) {
 
 export function renderInline(value) {
   let output = escapeHtml(value);
+  const mediaPlaceholders = [];
+  const holdMedia = html => { const index = mediaPlaceholders.push(html) - 1; return `\u0000MEDIA${index}\u0000`; };
   output = output.replace(/`([^`]+)`/g, '<code>$1</code>');
   output = output.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
     const label = alt || '未命名媒体';
     const mediaId = mediaIdFromUrl(url);
-    if (mediaId) return `<span class="media-reference" data-media-id="${escapeHtml(mediaId)}" data-media-label="${escapeHtml(label)}">媒体：${escapeHtml(label)}</span>`;
+    if (mediaId) return holdMedia(`<span class="media-reference" data-media-id="${escapeHtml(mediaId)}" data-media-kind="image" data-media-label="${escapeHtml(label)}">媒体：${escapeHtml(label)}</span>`);
     return `<span class="media-reference" data-media-ref="${safeUrl(url)}">媒体：${escapeHtml(label)}</span>`;
   });
-  output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => `<a href="${safeUrl(url)}" rel="noreferrer noopener">${text}</a>`);
+  output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    const mediaId = mediaIdFromUrl(url);
+    if (mediaId) return holdMedia(`<span class="media-reference" data-media-id="${escapeHtml(mediaId)}" data-media-kind="file" data-media-label="${escapeHtml(text)}">附件：${escapeHtml(text)}</span>`);
+    return `<a href="${safeUrl(url)}" rel="noreferrer noopener">${text.replaceAll('media://', 'media&#58;//')}</a>`;
+  });
   output = output.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>');
   output = output.replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/_([^_]+)_/g, '<em>$1</em>');
-  output = output.replace(/media:\/\/([A-Za-z0-9._~-]+)/g, '<span class="media-reference" data-media-id="$1" data-media-label="媒体引用：$1">媒体引用：$1</span>');
-  return output;
+  // Canonical Markdown references have already been converted to placeholders;
+  // only bare tokens in the original source are expanded here.
+  output = output.replace(/(^|[\s>])media:\/\/([A-Za-z0-9._~-]+)/g, '$1<span class="media-reference" data-media-id="$2" data-media-kind="unknown" data-media-label="媒体引用：$2">媒体引用：$2</span>');
+  return output.replace(/\u0000MEDIA(\d+)\u0000/g, (_, index) => mediaPlaceholders[Number(index)] || '');
 }
 
 /** Decorate references emitted by the backend's minimal renderer. */
 export function decorateMediaReferences(html) {
-  return html.replace(/(^|[\s>])media:\/\/([A-Za-z0-9._~-]+)/g, (_, prefix, mediaId) => `${prefix}<span class="media-reference" data-media-id="${mediaId}" data-media-label="媒体引用：${mediaId}">媒体引用：${mediaId}</span>`);
+  return html.replace(/(^|[\s>])media:\/\/([A-Za-z0-9._~-]+)/g, (_, prefix, mediaId) => `${prefix}<span class="media-reference" data-media-id="${mediaId}" data-media-kind="unknown" data-media-label="媒体引用：${mediaId}">媒体引用：${mediaId}</span>`);
 }
 
 export function extractToc(markdown) {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { editorHTMLToMarkdown, groupDayEntries, hasUnsupportedStructure, nextRetryAt, serializeEditorStatus } from '../lib/editor-utils.js';
-import { isSupportedMedia, mediaMarkdown, mediaQueueStoragePlan, replaceMediaToken, mediaUploadUrl, uploadResumable, MAX_MEDIA_BYTES, MEDIA_BLOB_MAX_BYTES, MEDIA_QUEUE_MAX_BYTES } from '../lib/media-utils.js';
+import { isSupportedMedia, mediaMarkdown, mediaMarkdownReference, mediaQueueStoragePlan, removeMediaReferences, replaceMediaOccurrence, replaceMediaToken, mediaUploadUrl, uploadResumable, MAX_MEDIA_BYTES, MEDIA_BLOB_MAX_BYTES, MEDIA_QUEUE_MAX_BYTES } from '../lib/media-utils.js';
 import { decorateMediaReferences, renderMarkdown } from '../lib/markdown.js';
 import { mediaContentUrl, mediaKind, probeMediaContentType } from '../lib/media-resolver.js';
 import { mergeTimelineDays } from '../lib/timeline.js';
@@ -151,6 +151,22 @@ test('editor accepts every native input event during IME and keeps media control
   assert.match(source, /aria-disabled=\{uploadDisabled\}/);
 });
 
+test('simple mode inserts canonical media Markdown at the current cursor and renders inline previews', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const resolver = await fs.readFile(new URL('../app/article/MediaResolver.tsx', import.meta.url), 'utf8');
+  assert.match(source, /mediaMarkdownReference/);
+  assert.match(source, /selectionStart/);
+  assert.match(source, /setSelectionRange/);
+  assert.match(source, /simple-media-preview/);
+  assert.match(source, /正文中的媒体预览/);
+  assert.match(source, /removeMediaReferences/);
+  assert.match(source, /replaceMediaOccurrence/);
+  assert.match(resolver, /resolved-image-card/);
+  assert.match(resolver, /resolved-file-card/);
+  assert.match(resolver, /打开 \/ 下载/);
+});
+
 test('editor reuses one CSRF token across upload and save, surfaces API details, and cancels active attachments', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
@@ -229,6 +245,8 @@ test('GFM renderer escapes raw HTML and unsafe URLs while producing TOC', () => 
   assert.match(rendered.html, /<table>/);
   assert.match(rendered.html, /data-media-id="abc"/);
   assert.match(renderMarkdown('![cover](media://img-1)').html, /data-media-label="cover"/);
+  assert.doesNotMatch(renderMarkdown('![label media://abc](media://img-1)').html, /data-media-id="abc"/);
+  assert.doesNotMatch(renderMarkdown('[link media://abc](https://example.test)').html, /data-media-id="abc"/);
   assert.match(decorateMediaReferences('<p>media://pdf-1</p>'), /data-media-id="pdf-1"/);
   assert.deepEqual(rendered.toc[0], { level: 1, title: 'Title', id: 'title' });
 });
@@ -323,6 +341,11 @@ test('media queue accepts bounded media and replaces temporary token', () => {
   assert.equal(isSupportedMedia({ type: 'application/pdf', size: 100 }), true);
   const token = mediaMarkdown('temp');
   assert.equal(replaceMediaToken(`before ${token}`, token, mediaMarkdown('real')), 'before media://real');
+  assert.equal(mediaMarkdownReference('img-1', 'cover.png', 'image/png'), '![cover.png](media://img-1)');
+  assert.equal(mediaMarkdownReference('doc-1', 'notes.pdf', 'application/pdf'), '[notes.pdf](media://doc-1)');
+  assert.equal(mediaMarkdownReference('doc-2', '[notes](final).pdf', 'application/pdf'), '[notes final .pdf](media://doc-2)');
+  assert.equal(replaceMediaOccurrence('a\nmedia://temp\nmedia://temp', 'media://temp', '![a](media://real)'), 'a\n![a](media://real)\nmedia://temp');
+  assert.equal(removeMediaReferences('a\n![a](media://real)\n[real](media://real)\nmedia://real\nb', 'real'), 'a\n\n\n\nb');
   assert.equal(mediaUploadUrl('/api/v1/admin/media/a/finalize', 'https://example.test'), 'https://example.test/api/v1/admin/media/a/finalize');
   assert.equal(mediaContentUrl('a/b', '/api/v1'), '/api/v1/media/a%2Fb/content');
   assert.equal(mediaKind('image/webp; charset=binary'), 'image');
