@@ -86,6 +86,10 @@ type customPublicProvider struct {
 	verified        bool
 }
 
+func encryptedSecretConfigured(value sql.NullString) bool {
+	return value.Valid && strings.TrimSpace(value.String) != ""
+}
+
 func (customPublicProvider) ProtocolStatus() string { return "ou_image_hosting_v1" }
 func (p customPublicProvider) PublishEnabled() bool {
 	return p.config.Enabled && p.config.StablePublic && p.tokenConfigured && p.verified
@@ -101,16 +105,16 @@ func imageHostResponse(record integrationRecord) map[string]any {
 		"workspaceId":      config.WorkspaceID,
 		"stablePublicUrls": config.StablePublic,
 		"syncDeletes":      config.SyncDeletes,
-		"tokenConfigured":  record.SecretEncrypted.Valid && record.SecretEncrypted.String != "",
+		"tokenConfigured":  encryptedSecretConfigured(record.SecretEncrypted),
 		"tokenMasked": func() string {
-			if record.SecretEncrypted.Valid && record.SecretEncrypted.String != "" {
+			if encryptedSecretConfigured(record.SecretEncrypted) {
 				return "********"
 			}
 			return ""
 		}(),
 		"protocolStatus": "ou_image_hosting_v1",
 		"verified":       record.TestStatus == "verified" || record.TestStatus == "scope_limited",
-		"publishEnabled": customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}.PublishEnabled(),
+		"publishEnabled": customPublicProvider{config: config, tokenConfigured: encryptedSecretConfigured(record.SecretEncrypted), verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}.PublishEnabled(),
 		"status":         record.TestStatus,
 		"statusMessage":  record.TestMessage,
 		"lastTestedAt":   nullableTime(record.TestedAt),
@@ -287,7 +291,7 @@ func (srv *Server) updateExternalImageHost(w http.ResponseWriter, r *http.Reques
 		}
 		secret = sql.NullString{String: encrypted, Valid: true}
 	}
-	if patch.Enabled && !secret.Valid {
+	if patch.Enabled && !encryptedSecretConfigured(secret) {
 		problem(w, 400, "启用图床前必须保存 Token")
 		return
 	}
@@ -374,7 +378,7 @@ func (srv *Server) probeExternalImageHost(ctx context.Context, request externalI
 	token := strings.TrimSpace(request.Token)
 	if token == "" {
 		record, readErr := integrationRecordByName(ctx, srv.store.database, externalImageHostName)
-		if readErr == nil && record.SecretEncrypted.Valid {
+		if readErr == nil && encryptedSecretConfigured(record.SecretEncrypted) {
 			token, err = decryptConfigSecret(externalTokenScope, record.SecretEncrypted.String)
 		}
 	}

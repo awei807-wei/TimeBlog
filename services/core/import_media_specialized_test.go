@@ -263,7 +263,7 @@ func TestValidateMediaFileChecksSizeAndMIME(t *testing.T) {
 
 func TestMemoryMediaResumableUploadAndFinalize(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	root := t.TempDir()
 	s := NewStore()
 	s.media["upload-1"] = &Media{ID: "upload-1", OriginalName: "asset.txt", MimeType: "text/plain", SizeBytes: 6, Visibility: "private", Status: "uploading", CreatedAt: time.Now()}

@@ -151,6 +151,35 @@ test('editor accepts every native input event during IME and keeps media control
   assert.match(source, /aria-disabled=\{uploadDisabled\}/);
 });
 
+test('editor reuses one CSRF token across upload and save, surfaces API details, and cancels active attachments', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const uploadSource = source.slice(source.indexOf('async function uploadMedia'), source.indexOf('async function retryUpload'));
+  assert.match(source, /const csrfRef = useRef\(''\)/);
+  assert.match(source, /const refreshSessionCSRF = useCallback/);
+  assert.match(source, /sessionRequestRef\.current/);
+  assert.doesNotMatch(uploadSource, /fetch\(`\$\{API\}\/auth\/session`/);
+  assert.match(source, /responseError\(ticketResponse, '创建上传任务失败'\)/);
+  assert.match(source, /if \(item\.status === 'uploading' \|\| item\.status === 'queued'\)/);
+  assert.match(source, /cancelUpload\(item\)/);
+});
+
+test('external image host probe refreshes enabled status after server-side verification', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const refreshIntegrationStatus = useCallback/);
+  assert.match(source, /await refreshIntegrationStatus\(\)/);
+  assert.match(source, /setRuntimeStatus\(runtime\)/);
+  assert.match(source, /setImageHost\(image\)/);
+});
+
+test('upload action labels stay on one line', async () => {
+  const fs = await import('node:fs/promises');
+  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(css, /\.upload-actions \.inline-action\{[^}]*white-space:nowrap/);
+  assert.match(css, /word-break:keep-all/);
+});
+
 test('writing surface has responsive touch-safe controls and bounded editor height', async () => {
   const fs = await import('node:fs/promises');
   const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');

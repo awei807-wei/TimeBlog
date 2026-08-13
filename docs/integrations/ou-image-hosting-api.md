@@ -264,9 +264,9 @@ curl --fail-with-body \
 
 ## 8. TimeBlog 适配映射
 
-TimeBlog 当前实现仍有意关闭外发：`customPublicProvider.ProtocolStatus()` 固定为 `unverified`、`PublishEnabled()` 固定为 `false`，保存后状态固定写入 `configured_unverified`；测试只做不带 Token 的 HEAD 可达性探测，见 [`services/core/integration_settings.go:L68-L100`](../../services/core/integration_settings.go#L68-L100)、[`L218-L266`](../../services/core/integration_settings.go#L218-L266)、[`L292-L352`](../../services/core/integration_settings.go#L292-L352)。本文完成的是可实施的源码合同，不等于运行时代码已经启用上传。
+TimeBlog 当前运行时已实现 `ou_image_hosting_v1` 异步适配器：保存启用意图后初始状态为 `credentials_unverified`，不会立即发布；无副作用验证成功后状态为 `verified`，仅有 `images:write` 时为 `scope_limited`。`PublishEnabled()` 只有在 `enabled`、`stablePublicUrls`、Token 已配置且状态为 `verified`/`scope_limited` 时才返回 `true`。配置读取会返回当前门禁结果，重复保存同一 Endpoint/工作区且保持 Token 不会清除已验证状态。验证调用 `GET /api/uploads?limit=1`，不是 HEAD，不上传探针图片。
 
-后续实现 `ou_image_hosting_v1` 适配器时，应采用以下映射：
+当前 `ou_image_hosting_v1` 适配器采用以下协议映射：
 
 | TimeBlog 字段/动作 | OU Image Hosting |
 | --- | --- |
@@ -281,7 +281,7 @@ TimeBlog 当前实现仍有意关闭外发：`customPublicProvider.ProtocolStatu
 | 缩略图 | 可选保存绝对化后的 `image.thumbnailUrl` |
 | 删除 | `POST /api/uploads/bulk`，`action=trash`；不声称永久删除 |
 
-### 8.1 从 `configured_unverified` 升级为可发布的门禁
+### 8.1 从 `credentials_unverified` 升级为可发布的门禁
 
 只有同时满足以下条件，`PublishEnabled()` 才能返回 `true`：
 
@@ -306,7 +306,8 @@ TimeBlog 当前实现仍有意关闭外发：`customPublicProvider.ProtocolStatu
 
 - 当前审计版本没有供 API Token 使用的永久删除能力。
 - 当前审计版本没有显式的批量多文件认证上传合同，每张图片单独请求。
-- 当前审计版本没有 `Idempotency-Key`，仅有工作区内 SHA-256 内容去重。
+- OU 上游 `POST /api/uploads` 不接收也不发送 `Idempotency-Key`；相同字节的重试依靠工作区内 SHA-256 内容去重。
+- TimeBlog 的 `/admin/media/upload-ticket` 当前未承诺持久化幂等语义；客户端携带的 `Idempotency-Key` 不应被当作跨请求、跨进程或重启后的票据去重保证，也不会作为 OU 上游请求的幂等键转发。
 - 当前审计版本的 `originalUrl` 可能为相对地址，也可能在启用签名后成为短期 URL。
 - `publicVisible` 不代表原图访问授权，不能依赖该字段保护私人媒体。
 - 本文没有向真实图床发送请求或上传文件；所有结论来自固定提交的源码。

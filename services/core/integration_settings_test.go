@@ -2,9 +2,53 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"strings"
 	"testing"
 )
+
+func TestExternalImageHostPublishGateAfterProbeStatus(t *testing.T) {
+	for _, status := range []string{"verified", "scope_limited"} {
+		provider := customPublicProvider{
+			config:          externalImageHostConfig{Enabled: true, StablePublic: true},
+			tokenConfigured: true,
+			verified:        status == "verified" || status == "scope_limited",
+		}
+		if !provider.PublishEnabled() {
+			t.Fatalf("publish gate should open for probe status %s", status)
+		}
+	}
+	for name, provider := range map[string]customPublicProvider{
+		"disabled":      {config: externalImageHostConfig{Enabled: false, StablePublic: true}, tokenConfigured: true, verified: true},
+		"unstable-url":  {config: externalImageHostConfig{Enabled: true, StablePublic: false}, tokenConfigured: true, verified: true},
+		"missing-token": {config: externalImageHostConfig{Enabled: true, StablePublic: true}, tokenConfigured: false, verified: true},
+		"unverified":    {config: externalImageHostConfig{Enabled: true, StablePublic: true}, tokenConfigured: true, verified: false},
+	} {
+		if provider.PublishEnabled() {
+			t.Fatalf("publish gate unexpectedly open for %s", name)
+		}
+	}
+}
+
+func TestImageHostResponseDoesNotTreatEmptyCiphertextAsConfigured(t *testing.T) {
+	record := integrationRecord{Config: []byte(`{"enabled":true,"stablePublicUrls":true}`), SecretEncrypted: sql.NullString{Valid: true, String: "   "}, TestStatus: "verified"}
+	response := imageHostResponse(record)
+	if response["tokenConfigured"] != false || response["publishEnabled"] != false {
+		t.Fatalf("empty encrypted token must not enable publishing: %+v", response)
+	}
+}
+
+func TestImageHostResponseReflectsVerifiedProbeImmediately(t *testing.T) {
+	record := integrationRecord{
+		Config:          []byte(`{"enabled":true,"endpoint":"https://image.example.test/api/uploads","stablePublicUrls":true}`),
+		SecretEncrypted: sql.NullString{Valid: true, String: "v1.encrypted"},
+		TestStatus:      "verified",
+	}
+	response := imageHostResponse(record)
+	if response["verified"] != true || response["publishEnabled"] != true || response["status"] != "verified" {
+		t.Fatalf("verified probe status not reflected by GET response: %+v", response)
+	}
+}
 
 func TestValidateExternalEndpoint(t *testing.T) {
 	if got, err := validateExternalEndpoint(defaultImageHostURL); err != nil || got != defaultImageHostURL {

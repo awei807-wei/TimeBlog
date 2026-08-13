@@ -30,6 +30,13 @@ export default function EntriesAdmin() {
   const [imageHost, setImageHost] = useState<ExternalImageHostConfig | null>(null);
   const [nasBackup, setNASBackup] = useState<NASBackupConfig | null>(null);
 
+  const refreshIntegrationStatus = useCallback(async () => {
+    const [runtime, image] = await Promise.all([getRuntimeStatus(), getExternalImageHostConfig()]);
+    setRuntimeStatus(runtime);
+    setImageHost(image);
+    return { runtime, image };
+  }, []);
+
   const returnToEntries = useCallback(() => {
     setSection('entries');
     setSelectedId('');
@@ -126,12 +133,14 @@ export default function EntriesAdmin() {
 
   async function saveImageHost(patch: { enabled: boolean; endpoint: string; workspaceId: string; stablePublicUrls: boolean; syncDeletes: boolean; token: { action: 'keep' | 'replace' | 'clear'; value?: string } }) {
     setError(''); setMessage('保存图床配置中…');
-    try { const value = await integrationMutation<ExternalImageHostConfig>('/admin/integrations/external_image_host', 'PATCH', patch); setImageHost(value); setMessage('图床配置已安全入库；协议验证前仍使用本地媒体'); }
+    try { const value = await integrationMutation<ExternalImageHostConfig>('/admin/integrations/external_image_host', 'PATCH', patch); setImageHost(value); await refreshIntegrationStatus(); setMessage('图床配置已安全入库；协议验证前仍使用本地媒体'); }
     catch (cause) { setError(cause instanceof Error ? cause.message : '图床配置保存失败'); throw cause; }
   }
 
   async function testImageHost(endpoint: string, workspaceId: string, token: string) {
-    return integrationMutation<{ status: string; message: string }>('/admin/integrations/external_image_host/test', 'POST', { endpoint, workspaceId, token });
+    const result = await integrationMutation<{ status: string; message: string }>('/admin/integrations/external_image_host/test', 'POST', { endpoint, workspaceId, token });
+    await refreshIntegrationStatus();
+    return result;
   }
 
   async function saveNASBackup(value: Omit<NASBackupConfig, 'applyStatus' | 'status' | 'statusMessage' | 'lastTestedAt' | 'updatedAt'>) {

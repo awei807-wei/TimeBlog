@@ -45,8 +45,8 @@ func (srv *Server) mediaCapabilityStatus() map[string]any {
 		if record, err := integrationRecordByName(context.Background(), srv.store.database, externalImageHostName); err == nil {
 			config := externalImageHostConfig{}
 			_ = json.Unmarshal(record.Config, &config)
-			provider := customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
-			external = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": provider.ProtocolStatus(), "publishEnabled": provider.PublishEnabled()}
+			provider := customPublicProvider{config: config, tokenConfigured: encryptedSecretConfigured(record.SecretEncrypted), verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
+			external = map[string]any{"provider": "custom_public", "configured": encryptedSecretConfigured(record.SecretEncrypted), "enabled": config.Enabled, "protocolStatus": provider.ProtocolStatus(), "publishEnabled": provider.PublishEnabled()}
 		}
 	}
 	return map[string]any{
@@ -216,6 +216,27 @@ func mediaPathWithinRoot(root, path string) bool {
 	return cleanPath != cleanRoot && strings.HasPrefix(cleanPath, cleanRoot+string(os.PathSeparator))
 }
 
+func mediaDeletionPath(root, id, status, storagePath string) (string, error) {
+	if strings.TrimSpace(id) == "" {
+		return "", fmt.Errorf("媒体 ID 缺失")
+	}
+	var path string
+	switch status {
+	case "uploading":
+		// A resumable upload has no storage_path until finalize. DELETE must
+		// still remove the partial <id>-upload file and database row.
+		path = filepath.Join(root, id+"-upload")
+	case "ready":
+		path = storagePath
+	default:
+		return "", fmt.Errorf("媒体当前不可删除")
+	}
+	if !mediaPathWithinRoot(root, path) {
+		return "", fmt.Errorf("媒体存储路径无效")
+	}
+	return path, nil
+}
+
 func (srv *Server) mediaEndpoint(w http.ResponseWriter, r *http.Request) {
 	if srv.store.persistent && srv.store.database != nil {
 		srv.mediaEndpointDatabase(w, r)
@@ -234,6 +255,35 @@ func (srv *Server) mediaEndpoint(w http.ResponseWriter, r *http.Request) {
 	srv.store.mu.RUnlock()
 	if m == nil {
 		problem(w, 404, "媒体不存在")
+		return
+	}
+	if r.Method == http.MethodDelete && len(parts) == 1 {
+		lock := mediaUploadLock(id)
+		lock.Lock()
+		defer lock.Unlock()
+		srv.store.mu.Lock()
+		m = srv.store.media[id]
+		if m == nil {
+			srv.store.mu.Unlock()
+			problem(w, http.StatusNotFound, "媒体不存在")
+			return
+		}
+		path, pathErr := mediaDeletionPath(srv.mediaRoot, id, m.Status, m.StoragePath)
+		if pathErr != nil {
+			srv.store.mu.Unlock()
+			problem(w, http.StatusConflict, pathErr.Error())
+			return
+		}
+		delete(srv.store.media, id)
+		srv.store.mu.Unlock()
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			srv.store.mu.Lock()
+			srv.store.media[id] = m
+			srv.store.mu.Unlock()
+			problem(w, http.StatusInternalServerError, "清理媒体文件失败")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	if len(parts) > 1 && parts[1] == "finalize" {
@@ -544,21 +594,46 @@ func (srv *Server) mediaEndpointDatabase(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if r.Method == http.MethodDelete {
-		res, delErr := srv.store.database.ExecContext(r.Context(), `UPDATE media m SET status='deleting' WHERE m.id=$1::uuid AND m.owner_id=$2::uuid AND m.status <> 'deleting' AND NOT EXISTS (SELECT 1 FROM media_refs mr WHERE mr.media_id=m.id)`, id, ownerID)
+		lock := mediaUploadLock(id)
+		lock.Lock()
+		defer lock.Unlock()
+		tx, txErr := srv.store.database.BeginTx(r.Context(), nil)
+		if txErr != nil {
+			problem(w, http.StatusInternalServerError, "删除媒体失败")
+			return
+		}
+		defer tx.Rollback()
+		if _, txErr = tx.ExecContext(r.Context(), `SELECT pg_advisory_xact_lock(hashtext($1))`, id); txErr != nil {
+			problem(w, http.StatusInternalServerError, "删除媒体失败")
+			return
+		}
+		var status, storagePath string
+		if txErr = tx.QueryRowContext(r.Context(), `SELECT status,COALESCE(storage_path,'') FROM media WHERE id=$1::uuid AND owner_id=$2::uuid FOR UPDATE`, id, ownerID).Scan(&status, &storagePath); txErr != nil {
+			problem(w, http.StatusNotFound, "媒体不存在")
+			return
+		}
+		deletePath, pathErr := mediaDeletionPath(srv.mediaRoot, id, status, storagePath)
+		if pathErr != nil {
+			problem(w, http.StatusConflict, pathErr.Error())
+			return
+		}
+		res, delErr := tx.ExecContext(r.Context(), `UPDATE media m SET status='deleting' WHERE m.id=$1::uuid AND m.owner_id=$2::uuid AND m.status IN ('uploading','ready') AND NOT EXISTS (SELECT 1 FROM media_refs mr WHERE mr.media_id=m.id)`, id, ownerID)
 		if delErr != nil {
-			problem(w, 500, "删除媒体失败")
+			problem(w, http.StatusInternalServerError, "删除媒体失败")
 			return
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
 			problem(w, http.StatusConflict, "媒体不存在或仍被内容引用")
 			return
 		}
-		if m.StoragePath != "" {
-			payload, _ := json.Marshal(map[string]any{"path": m.StoragePath, "mediaId": id})
-			if _, err := srv.store.database.ExecContext(r.Context(), `INSERT INTO jobs(type,payload) VALUES('media_delete',$1)`, payload); err != nil {
-				problem(w, 500, "排队清理媒体失败")
-				return
-			}
+		payload, _ := json.Marshal(map[string]any{"path": deletePath, "mediaId": id})
+		if _, err := tx.ExecContext(r.Context(), `INSERT INTO jobs(type,payload) VALUES('media_delete',$1)`, payload); err != nil {
+			problem(w, http.StatusInternalServerError, "排队清理媒体失败")
+			return
+		}
+		if txErr = tx.Commit(); txErr != nil {
+			problem(w, http.StatusInternalServerError, "删除媒体失败")
+			return
 		}
 		jsonResponse(w, http.StatusNoContent, nil)
 		return
@@ -578,7 +653,7 @@ func (srv *Server) externalPublishPlan(ctx context.Context, mimeType string, siz
 	if json.Unmarshal(record.Config, &config) != nil {
 		return "not_requested", nil
 	}
-	provider := customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
+	provider := customPublicProvider{config: config, tokenConfigured: encryptedSecretConfigured(record.SecretEncrypted), verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
 	if !provider.PublishEnabled() {
 		return "not_requested", nil
 	}

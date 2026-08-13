@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -454,13 +455,9 @@ func (srv *Server) entryDatabase(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, mediaID := range mediaIDs {
-			var path sql.NullString
-			if err := tx.QueryRowContext(r.Context(), `UPDATE media SET status='deleting' WHERE id=$1::uuid AND status='ready' AND NOT EXISTS (SELECT 1 FROM media_refs WHERE media_id=$1::uuid) RETURNING storage_path`, mediaID).Scan(&path); err == nil && path.Valid && path.String != "" {
-				payload, _ := json.Marshal(map[string]any{"path": path.String, "mediaId": mediaID})
-				if _, err := tx.ExecContext(r.Context(), `INSERT INTO jobs(type,payload) VALUES('media_delete',$1)`, payload); err != nil {
-					problem(w, 500, "排队清理媒体失败")
-					return
-				}
+			if err := queueMediaDeleteTx(r.Context(), tx, mediaID); err != nil {
+				problem(w, 500, "排队清理媒体失败")
+				return
 			}
 		}
 		if err := tx.Commit(); err != nil {
@@ -756,17 +753,28 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 		problem(w, 500, "提交内容失败")
 		return
 	}
+	// Validate the complete reference set before changing rows.  This keeps an
+	// invalid media:// token from ever turning a valid existing draft into an
+	// entry with silently dropped references.
+	mediaIDs := extractMediaReferences(in.Markdown)
+	for _, mediaID := range mediaIDs {
+		if !validImportUUID(mediaID) {
+			problem(w, http.StatusBadRequest, "媒体引用无效")
+			return
+		}
+	}
+	previousMediaIDs, err := entryMediaIDsTx(r.Context(), tx, entryID)
+	if err != nil {
+		problem(w, 500, "读取媒体引用失败")
+		return
+	}
 	// Rebuild media references atomically with the entry so cleanup workers can
 	// safely distinguish referenced files from orphaned uploads.
 	if _, err := tx.ExecContext(r.Context(), `DELETE FROM media_refs WHERE entry_id=$1::uuid`, entryID); err != nil {
 		problem(w, 500, "清理媒体引用失败")
 		return
 	}
-	for _, mediaID := range extractMediaReferences(in.Markdown) {
-		if !validImportUUID(mediaID) {
-			problem(w, http.StatusBadRequest, "媒体引用无效")
-			return
-		}
+	for _, mediaID := range mediaIDs {
 		res, err := tx.ExecContext(r.Context(), `INSERT INTO media_refs(entry_id,media_id) SELECT $1::uuid,id FROM media WHERE id=$2::uuid AND owner_id=$3::uuid AND status='ready' ON CONFLICT DO NOTHING`, entryID, mediaID, ownerID)
 		if err != nil {
 			problem(w, 500, "保存媒体引用失败")
@@ -774,6 +782,19 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 		}
 		if n, _ := res.RowsAffected(); n != 1 {
 			problem(w, http.StatusBadRequest, "媒体不存在或无权引用")
+			return
+		}
+	}
+	currentMediaSet := make(map[string]struct{}, len(mediaIDs))
+	for _, mediaID := range mediaIDs {
+		currentMediaSet[mediaID] = struct{}{}
+	}
+	for _, mediaID := range previousMediaIDs {
+		if _, retained := currentMediaSet[mediaID]; retained {
+			continue
+		}
+		if err := queueMediaDeleteTx(r.Context(), tx, mediaID); err != nil {
+			problem(w, 500, "排队清理未引用媒体失败")
 			return
 		}
 	}
@@ -839,6 +860,47 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 		resp["undoToken"] = undoToken
 	}
 	jsonResponse(w, 200, resp)
+}
+
+func entryMediaIDsTx(ctx context.Context, tx *sql.Tx, entryID string) ([]string, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT media_id::text FROM media_refs WHERE entry_id=$1::uuid`, entryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+func queueMediaDeleteTx(ctx context.Context, tx *sql.Tx, mediaID string) error {
+	var path string
+	err := tx.QueryRowContext(ctx, `
+		UPDATE media
+		SET status='deleting'
+		WHERE id=$1::uuid
+		  AND status='ready'
+		  AND COALESCE(storage_path,'') <> ''
+		  AND NOT EXISTS (SELECT 1 FROM media_refs WHERE media_id=$1::uuid)
+		RETURNING storage_path`, mediaID).Scan(&path)
+	if err == sql.ErrNoRows {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(map[string]any{"path": path, "mediaId": mediaID})
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO jobs(type,payload) VALUES('media_delete',$1)`, payload)
+	return err
 }
 
 func (srv *Server) undoEntry(w http.ResponseWriter, r *http.Request) {

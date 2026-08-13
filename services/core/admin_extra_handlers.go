@@ -1563,8 +1563,8 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 		if record, err := integrationRecordByName(r.Context(), srv.store.database, externalImageHostName); err == nil {
 			config := externalImageHostConfig{}
 			_ = json.Unmarshal(record.Config, &config)
-			provider := customPublicProvider{config: config, tokenConfigured: record.SecretEncrypted.Valid, verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
-			externalStatus = map[string]any{"provider": "custom_public", "configured": record.SecretEncrypted.Valid, "enabled": config.Enabled, "protocolStatus": "ou_image_hosting_v1", "probeStatus": record.TestStatus, "publishEnabled": provider.PublishEnabled(), "status": record.TestStatus}
+			provider := customPublicProvider{config: config, tokenConfigured: encryptedSecretConfigured(record.SecretEncrypted), verified: record.TestStatus == "verified" || record.TestStatus == "scope_limited"}
+			externalStatus = map[string]any{"provider": "custom_public", "configured": encryptedSecretConfigured(record.SecretEncrypted), "enabled": config.Enabled, "protocolStatus": "ou_image_hosting_v1", "probeStatus": record.TestStatus, "publishEnabled": provider.PublishEnabled(), "status": record.TestStatus}
 		}
 		if record, err := integrationRecordByName(r.Context(), srv.store.database, nasBackupName); err == nil {
 			config := nasBackupConfig{}

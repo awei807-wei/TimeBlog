@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pquerna/otp/totp"
 )
 
 func TestOpenAPIContractHasUniqueOperations(t *testing.T) {
@@ -48,7 +50,7 @@ func TestPersistentAuthRejectsUnknownCookieWithoutDB(t *testing.T) {
 
 func TestMediaCapabilityRequiresAuthAndProbesLocalStorage(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	t.Setenv("MEDIA_ROOT", t.TempDir())
 	s := NewStore()
 	h := NewServer(s).routes()
@@ -83,7 +85,7 @@ func TestMediaCapabilityRequiresAuthAndProbesLocalStorage(t *testing.T) {
 
 func TestRuntimeStatusIsAuthenticatedAndMetadataOnly(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	t.Setenv("TOTP_ENCRYPTION_KEY", "not-returned")
 	t.Setenv("DATABASE_URL", "postgres://secret@example.invalid/db")
 	t.Setenv("MEDIA_ROOT", t.TempDir())
@@ -115,7 +117,7 @@ func TestRuntimeStatusIsAuthenticatedAndMetadataOnly(t *testing.T) {
 
 func TestSettingsRejectsUnknownKeysAndMethods(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	h := NewServer(NewStore()).routes()
 	_, raw := loginForTest(t, h)
 	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
@@ -142,7 +144,7 @@ func TestSettingsRejectsUnknownKeysAndMethods(t *testing.T) {
 
 func TestLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	srv := NewServer(NewStore())
 	h := srv.routes()
 	_, raw := loginForTest(t, h)
@@ -179,7 +181,7 @@ func TestLogoutRevokesSessionAndClearsCookie(t *testing.T) {
 
 func TestAuthSessionStatusValidatesCookieWithoutCSRF(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	srv := NewServer(NewStore())
 	h := srv.routes()
 	_, raw := loginForTest(t, h)
@@ -192,10 +194,100 @@ func TestAuthSessionStatusValidatesCookieWithoutCSRF(t *testing.T) {
 		t.Fatalf("session status=%d body=%s", rr.Code, rr.Body.String())
 	}
 	var body struct {
-		Authenticated bool `json:"authenticated"`
+		Authenticated bool   `json:"authenticated"`
+		CSRFToken     string `json:"csrfToken"`
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil || !body.Authenticated {
+	if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil || !body.Authenticated || body.CSRFToken == "" {
 		t.Fatalf("unexpected status body=%s", rr.Body.String())
+	}
+}
+
+func TestAuthSessionCSRFIsStableAcrossConsecutiveReads(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+	srv := NewServer(NewStore())
+	h := srv.routes()
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	cookie := string(parts[0])
+	read := func() string {
+		r := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+		r.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, r)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("session read status=%d body=%s", rr.Code, rr.Body.String())
+		}
+		var body struct {
+			CSRFToken string `json:"csrfToken"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		return body.CSRFToken
+	}
+	first, second := read(), read()
+	if first == "" || first != second {
+		t.Fatalf("CSRF token changed across reads: first=%q second=%q", first, second)
+	}
+	mutation := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/settings", strings.NewReader(`{"theme":"dark"}`))
+	mutation.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+	mutation.Header.Set("Origin", "http://localhost:3000")
+	mutation.Header.Set("X-CSRF-Token", first)
+	mutation.Header.Set("Content-Type", "application/json")
+	mutationRR := httptest.NewRecorder()
+	h.ServeHTTP(mutationRR, mutation)
+	if mutationRR.Code == http.StatusForbidden {
+		t.Fatalf("stable CSRF token rejected after repeated session reads: %s", mutationRR.Body.String())
+	}
+}
+
+func TestAuthSessionCSRFIsStableAcrossConcurrentReads(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+	srv := NewServer(NewStore())
+	h := srv.routes()
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	cookie := string(parts[0])
+	const readers = 16
+	tokens := make(chan string, readers)
+	errors := make(chan string, readers)
+	for i := 0; i < readers; i++ {
+		go func() {
+			r := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+			r.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+			rr := httptest.NewRecorder()
+			h.ServeHTTP(rr, r)
+			if rr.Code != http.StatusOK {
+				errors <- fmt.Sprintf("status=%d body=%s", rr.Code, rr.Body.String())
+				return
+			}
+			var body struct {
+				CSRFToken string `json:"csrfToken"`
+			}
+			if err := json.Unmarshal(rr.Body.Bytes(), &body); err != nil {
+				errors <- err.Error()
+				return
+			}
+			tokens <- body.CSRFToken
+		}()
+	}
+	var first string
+	for i := 0; i < readers; i++ {
+		select {
+		case err := <-errors:
+			t.Fatal(err)
+		case token := <-tokens:
+			if token == "" {
+				t.Fatal("concurrent session read returned empty CSRF token")
+			}
+			if first == "" {
+				first = token
+			} else if first != token {
+				t.Fatalf("concurrent session reads returned different CSRF tokens: first=%q next=%q", first, token)
+			}
+		}
 	}
 }
 
@@ -227,7 +319,7 @@ func TestTOTPChallengeSurvivesInvalidCode(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
 	s := NewStore()
 	s.userPassword = "test-password"
-	s.userTOTP = "123456"
+	s.userTOTP = "JBSWY3DPEHPK3PXP"
 	h := NewServer(s).routes()
 	p := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/password", bytes.NewBufferString(`{"password":"test-password"}`))
 	p.Header.Set("Content-Type", "application/json")
@@ -249,10 +341,18 @@ func TestTOTPChallengeSurvivesInvalidCode(t *testing.T) {
 		h.ServeHTTP(rr, r)
 		return rr
 	}
-	if rr := postTOTP("000000"); rr.Code != http.StatusUnauthorized {
+	validCode, err := totp.GenerateCode(s.userTOTP, time.Now())
+	if err != nil {
+		t.Fatalf("generate TOTP code: %v", err)
+	}
+	invalidCode := "000000"
+	if invalidCode == validCode {
+		invalidCode = "999999"
+	}
+	if rr := postTOTP(invalidCode); rr.Code != http.StatusUnauthorized {
 		t.Fatalf("invalid code status=%d", rr.Code)
 	}
-	if rr := postTOTP("123456"); rr.Code != http.StatusOK {
+	if rr := postTOTP(validCode); rr.Code != http.StatusOK {
 		t.Fatalf("valid code after invalid status=%d body=%s", rr.Code, rr.Body.String())
 	}
 }
@@ -284,7 +384,12 @@ func loginForTest(t *testing.T, h http.Handler) (*http.Client, string) {
 		Challenge string `json:"challenge"`
 	}
 	_ = json.Unmarshal(rr.Body.Bytes(), &challenge)
-	tResp := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/totp", bytes.NewBufferString(`{"code":"123456","challenge":"`+challenge.Challenge+`"}`))
+	secret := os.Getenv("ADMIN_TOTP_SECRET")
+	code, err := totp.GenerateCode(secret, time.Now())
+	if err != nil {
+		t.Fatalf("generate test TOTP code: %v", err)
+	}
+	tResp := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/totp", bytes.NewBufferString(`{"code":"`+code+`","challenge":"`+challenge.Challenge+`"}`))
 	tResp.Header.Set("Content-Type", "application/json")
 	rr = httptest.NewRecorder()
 	h.ServeHTTP(rr, tResp)
@@ -310,7 +415,7 @@ func loginForTest(t *testing.T, h http.Handler) (*http.Client, string) {
 
 func TestPrivateEntryIsPlaceholderOnly(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	srv := NewServer(NewStore())
 	h := srv.routes()
 	_, raw := loginForTest(t, h)
@@ -363,7 +468,7 @@ func TestPrivateEntryIsPlaceholderOnly(t *testing.T) {
 
 func TestWorkingCopyIdempotentAndTagRules(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	if got := extractTags("#标题\n正文 #One `#inline` https://x.test/#anchor #二\n```\n#code\n```"); len(got) != 2 || got[0] != "One" || got[1] != "二" {
 		t.Fatalf("tags=%v", got)
 	}
@@ -579,7 +684,7 @@ func TestPublicFilteredListsPaginateWithoutDuplicates(t *testing.T) {
 
 func TestMediaCollectionCursor(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	s := NewStore()
 	now := time.Now()
 	for i := 0; i < 3; i++ {
@@ -637,7 +742,7 @@ func TestMediaCollectionCursor(t *testing.T) {
 
 func TestMediaCollectionRejectsUnknownCursor(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
-	t.Setenv("ADMIN_TOTP_SECRET", "123456")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	s := NewStore()
 	s.media["media-1"] = &Media{ID: "media-1", OriginalName: "one.png", MimeType: "image/png", Status: "ready", Visibility: "public", CreatedAt: time.Now()}
 	h := NewServer(s).routes()

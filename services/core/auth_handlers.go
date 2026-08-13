@@ -218,7 +218,7 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		validCode = srv.store.userTOTP != "" && in.Code == srv.store.userTOTP
+		validCode = srv.store.userTOTP != "" && totp.Validate(in.Code, srv.store.userTOTP)
 	}
 	if !validCode {
 		srv.throttleFailure(r, "owner-totp")
@@ -248,7 +248,10 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 	srv.throttleSuccess(r, "owner-totp")
 	token := randomToken()
 	now := time.Now()
-	csrf := randomToken()
+	// Bind the CSRF token to the session cookie with a server-only key.  The
+	// value is stable for the lifetime of this session, so parallel page reads
+	// cannot invalidate a mutation request that already captured the token.
+	csrf := csrfToken(srv.store.csrfKey, token)
 	if srv.store.persistent && srv.store.database != nil {
 		var uid string
 		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT id::text FROM users WHERE username='owner'`).Scan(&uid); err != nil {
@@ -446,9 +449,9 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		c, _ := r.Cookie("timeline_session")
-		csrf := randomToken()
+		csrf := csrfToken(srv.store.csrfKey, c.Value)
 		if _, err := srv.store.database.ExecContext(r.Context(), `UPDATE sessions SET csrf_token_hash=$1 WHERE token_hash=$2`, tokenHash(csrf), tokenHash(c.Value)); err != nil {
-			problem(w, 500, "CSRF token 轮换失败")
+			problem(w, 500, "CSRF token 同步失败")
 			return
 		}
 		var idle, absolute time.Time
@@ -464,17 +467,8 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, _ := r.Cookie("timeline_session")
-	if srv.store.persistent && srv.store.database != nil {
-		var expires time.Time
-		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT idle_expires FROM sessions WHERE token_hash=$1 AND revoked_at IS NULL`, tokenHash(c.Value)).Scan(&expires); err != nil {
-			problem(w, 401, "未登录")
-			return
-		}
-		jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "idleExpiresAt": expires, "absoluteExpiresInDays": 90, "csrfToken": ""})
-		return
-	}
 	srv.store.mu.RLock()
-	csrf := srv.store.sessions[tokenHash(c.Value)].CSRFToken
+	csrf := csrfToken(srv.store.csrfKey, c.Value)
 	srv.store.mu.RUnlock()
 	jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "idleExpiresInDays": 30, "absoluteExpiresInDays": 90, "csrfToken": csrf})
 }
@@ -483,6 +477,12 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 // the CSRF token. Navigation can safely call this endpoint without racing
 // with page mutations that use /auth/session for their CSRF token.
 func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
+	var cookie *http.Cookie
+	var err error
+	if cookie, err = r.Cookie("timeline_session"); err != nil || cookie.Value == "" {
+		problem(w, http.StatusUnauthorized, "未登录")
+		return
+	}
 	if srv.store.persistent && srv.store.database != nil {
 		if !srv.authenticatedPersistent(r) {
 			problem(w, http.StatusUnauthorized, "未登录")
@@ -492,7 +492,17 @@ func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusUnauthorized, "未登录")
 		return
 	}
-	jsonResponse(w, http.StatusOK, map[string]any{"authenticated": true, "username": "owner"})
+	csrf := csrfToken(srv.store.csrfKey, cookie.Value)
+	if srv.store.persistent && srv.store.database != nil {
+		// Keep legacy sessions created before deterministic CSRF tokens were
+		// introduced usable while converging them to the stable token exactly
+		// once.  Repeating this idempotent update is safe under concurrency.
+		if _, err := srv.store.database.ExecContext(r.Context(), `UPDATE sessions SET csrf_token_hash=$1 WHERE token_hash=$2 AND revoked_at IS NULL`, tokenHash(csrf), tokenHash(cookie.Value)); err != nil {
+			problem(w, http.StatusInternalServerError, "CSRF token 同步失败")
+			return
+		}
+	}
+	jsonResponse(w, http.StatusOK, map[string]any{"authenticated": true, "username": "owner", "csrfToken": csrf})
 }
 
 func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {

@@ -101,10 +101,15 @@ type Store struct {
 	persistent      bool
 	ownerID         string
 	settings        map[string]any
+	// csrfKey is process-local in memory mode and derived from the stable
+	// encryption key in persistent mode.  CSRF tokens are deterministic for a
+	// session cookie, so repeated session reads cannot invalidate a mutation
+	// request that is still using the same token.
+	csrfKey []byte
 }
 
 func NewStore() *Store {
-	s := &Store{entries: map[string]*Entry{}, working: map[string]*WorkingCopy{}, media: map[string]*Media{}, sessions: map[string]*Session{}, undo: map[string]undoRecord{}, mfaChallenges: map[string]time.Time{}, loginThrottle: map[string]loginThrottle{}, settings: map[string]any{}, userPassword: getenv("ADMIN_PASSWORD", ""), userTOTP: getenv("ADMIN_TOTP_SECRET", ""), recoveryKeyHash: getenv("ACCOUNT_RECOVERY_KEY_HASH", "")}
+	s := &Store{entries: map[string]*Entry{}, working: map[string]*WorkingCopy{}, media: map[string]*Media{}, sessions: map[string]*Session{}, undo: map[string]undoRecord{}, mfaChallenges: map[string]time.Time{}, loginThrottle: map[string]loginThrottle{}, settings: map[string]any{}, userPassword: getenv("ADMIN_PASSWORD", ""), userTOTP: getenv("ADMIN_TOTP_SECRET", ""), recoveryKeyHash: getenv("ACCOUNT_RECOVERY_KEY_HASH", ""), csrfKey: newCSRFKey()}
 	return s
 }
 

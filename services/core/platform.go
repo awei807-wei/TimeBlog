@@ -1,8 +1,10 @@
 package main
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -53,3 +55,37 @@ func decode(r *http.Request, dst any) error {
 func tokenHash(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
 
 func randomToken() string { b := make([]byte, 24); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+
+// newCSRFKey derives a dedicated CSRF signing key from a configured secret.
+// Persistent deployments already require TOTP_ENCRYPTION_KEY; deriving a
+// separate key by domain separation avoids introducing another secret while
+// keeping the CSRF construction independent from the TOTP ciphertext.
+func newCSRFKey() []byte {
+	for _, raw := range []string{os.Getenv("TOTP_ENCRYPTION_KEY"), os.Getenv("CONFIG_ENCRYPTION_KEY")} {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		key, err := base64.RawURLEncoding.DecodeString(raw)
+		if err != nil || len(key) != 32 {
+			key, err = base64.RawStdEncoding.DecodeString(raw)
+		}
+		if err == nil && len(key) == 32 {
+			h := sha256.Sum256(append([]byte("timeblog/csrf/v1/"), key...))
+			return h[:]
+		}
+	}
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		h := sha256.Sum256([]byte("timeblog/csrf/fallback"))
+		return h[:]
+	}
+	return key
+}
+
+func csrfToken(key []byte, sessionToken string) string {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte("session:"))
+	_, _ = mac.Write([]byte(sessionToken))
+	return hex.EncodeToString(mac.Sum(nil))
+}

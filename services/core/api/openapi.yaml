@@ -334,7 +334,7 @@ paths:
       responses: {'201': {description: 上传票据, content: {application/json: {schema: {$ref: '#/components/schemas/UploadTicketResponse'}}}}, '413': {$ref: '#/components/responses/PayloadTooLarge'}}
   /admin/media/capability:
     get:
-      description: 返回服务端媒体存储能力。当前 provider 为 local_private；writable 由 API 对媒体卷执行安全写入探测得出。
+      description: 返回服务端媒体存储能力。规范原件始终为 local_private；externalPublic.publishEnabled 仅表示图片完成后是否会异步排入外部图床发布，不改变本地原件保留策略。writable 由 API 对媒体卷执行安全写入探测得出。
       tags: [media]
       operationId: getMediaCapability
       security: [SessionCookie: []]
@@ -380,7 +380,7 @@ paths:
       operationId: deleteMedia
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/MediaID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
-      responses: {'204': {description: 已删除}, '409': {$ref: '#/components/responses/Conflict'}}
+      responses: {'204': {description: 已标记删除并排队清理；上传中的媒体会同时取消并清理临时文件}, '409': {$ref: '#/components/responses/Conflict'}}
   /admin/media/{id}/retry-publish:
     post:
       tags: [media]
@@ -482,7 +482,7 @@ paths:
       tags: [settings]
       operationId: getExternalImageHostConfig
       security: [SessionCookie: []]
-      responses: {'200': {description: 图床配置；Token 仅返回掩码状态, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostConfig'}}}}}
+      responses: {'200': {description: 图床配置；Token 仅返回掩码状态。publishEnabled 只有在 enabled、stablePublicUrls、Token 已配置且 probeStatus 为 verified 或 scope_limited 时才为 true, content: {application/json: {schema: {$ref: '#/components/schemas/ExternalImageHostConfig'}}}}}
     patch:
       tags: [settings]
       operationId: updateExternalImageHostConfig
@@ -749,7 +749,7 @@ components:
     MFAChallengeResponse: {type: object, required: [challenge, requiresTotp], properties: {challenge: {type: string}, requiresTotp: {type: boolean}}}
     TOTPLoginRequest: {type: object, required: [challenge, code], properties: {challenge: {type: string}, code: {type: string, minLength: 6, maxLength: 8}}}
     SessionResponse: {type: object, required: [authenticated, csrfToken], properties: {authenticated: {type: boolean}, username: {type: string}, csrfToken: {type: string}, idleExpiresInDays: {type: integer}, absoluteExpiresInDays: {type: integer}}}
-    SessionStatusResponse: {type: object, required: [authenticated], properties: {authenticated: {type: boolean}, username: {type: string}}}
+    SessionStatusResponse: {type: object, required: [authenticated, csrfToken], properties: {authenticated: {type: boolean}, username: {type: string}, csrfToken: {type: string, description: 当前会话稳定的 CSRF token；不会因重复读取 session 状态而轮换}}}
     Session: {type: object, required: [id, createdAt, lastSeen], properties: {id: {type: string, format: uuid}, createdAt: {type: string, format: date-time}, lastSeen: {type: string, format: date-time}}}
     SessionListResponse: {type: object, required: [sessions], properties: {sessions: {type: array, items: {$ref: '#/components/schemas/Session'}}}}
     RecoveryRequest: {type: object, required: [recoveryKey, newPassword], properties: {recoveryKey: {type: string}, newPassword: {type: string, format: password, minLength: 12}}}

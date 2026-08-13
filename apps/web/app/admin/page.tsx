@@ -23,6 +23,22 @@ type MediaCapability = {
   reason: string;
 };
 
+class AdminRequestError extends Error {
+  status: number;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = 'AdminRequestError';
+    this.status = status;
+  }
+}
+
+async function responseError(response: Response, fallback: string): Promise<AdminRequestError> {
+  const body = await response.json().catch(() => ({})) as { detail?: string; title?: string };
+  const detail = typeof body.detail === 'string' && body.detail.trim() ? body.detail.trim() : fallback;
+  return new AdminRequestError(response.status, detail);
+}
+
 const DB_NAME = 'timeline-editor';
 const DB_VERSION = 2;
 const DRAFT_STORE = 'drafts';
@@ -135,11 +151,36 @@ export default function AdminPage() {
   const [undoToken, setUndoToken] = useState('');
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [csrf, setCsrf] = useState('');
+  const csrfRef = useRef('');
+  const sessionRequestRef = useRef<Promise<string> | null>(null);
   const [online, setOnline] = useState(true);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [mediaCapability, setMediaCapability] = useState<MediaCapability>({ checked: false, provider: '', imageUploadEnabled: false, nonImageUploadEnabled: false, reason: '正在检查媒体存储…' });
   const [requestedEditID, setRequestedEditID] = useState('');
   const editRequested = useRef(false);
+
+  const setSessionCSRF = useCallback((value: string) => {
+    csrfRef.current = value;
+    setCsrf(value);
+  }, []);
+
+  const refreshSessionCSRF = useCallback(async () => {
+    if (sessionRequestRef.current) return sessionRequestRef.current;
+    const request = (async () => {
+      const response = await fetch(`${API}/auth/session`, { credentials: 'include', headers: { Accept: 'application/json' } });
+      if (!response.ok) throw await responseError(response, '登录会话已失效');
+      const value = await response.json() as { csrfToken?: string };
+      if (!value.csrfToken) throw new AdminRequestError(401, '登录会话已失效');
+      setSessionCSRF(value.csrfToken);
+      return value.csrfToken;
+    })();
+    sessionRequestRef.current = request;
+    try {
+      return await request;
+    } finally {
+      if (sessionRequestRef.current === request) sessionRequestRef.current = null;
+    }
+  }, [setSessionCSRF]);
 
   const removeMediaToken = useCallback((source: string, item: UploadItem) => {
     let next = source;
@@ -167,26 +208,26 @@ export default function AdminPage() {
     const token = mediaMarkdown(item.id);
     setMarkdown(current => current.includes(token) ? current : `${current}${current && !current.endsWith('\n') ? '\n' : ''}${token}`);
     try {
-      const session = await fetch(`${API}/auth/session`, { credentials: 'include', signal: controller.signal }).then(r => r.json());
-      const ticketResponse = await fetch(`${API}/admin/media/upload-ticket`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id }, body: JSON.stringify({ name: file.name, size: file.size, mime: file.type, visibility: status === 'private' ? 'private' : 'public' }), signal: controller.signal });
-      if (!ticketResponse.ok) throw new Error('ticket');
+      const sessionCsrf = csrfRef.current || csrf || await refreshSessionCSRF();
+      const ticketResponse = await fetch(`${API}/admin/media/upload-ticket`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionCsrf, 'Idempotency-Key': item.id }, body: JSON.stringify({ name: file.name, size: file.size, mime: file.type, visibility: status === 'private' ? 'private' : 'public' }), signal: controller.signal });
+      if (!ticketResponse.ok) throw await responseError(ticketResponse, '创建上传任务失败');
       const ticket = await ticketResponse.json() as { media: { id: string }; uploadUrl: string; finalizeUrl?: string };
       setUploads(current => current.map(value => value.id === item.id ? { ...value, status: 'uploading', progress: 0 } : value));
       void persistMediaQueueItem({ ...item, status: 'uploading' }, file);
       const uploadUrl = mediaUploadUrl(ticket.uploadUrl, window.location.origin);
       if (ticket.finalizeUrl) {
-        await uploadResumable(uploadUrl, file, { csrfToken: session.csrfToken || '', idempotencyKey: item.id, signal: controller.signal, onProgress: (progress: number) => setUploads(current => current.map(value => value.id === item.id ? { ...value, progress } : value)) });
+        await uploadResumable(uploadUrl, file, { csrfToken: sessionCsrf, idempotencyKey: item.id, signal: controller.signal, onProgress: (progress: number) => setUploads(current => current.map(value => value.id === item.id ? { ...value, progress } : value)) });
       }
       if (cancelledUploads.current.has(item.id)) throw new Error('cancelled');
       const finalizeUrl = ticket.finalizeUrl ? mediaUploadUrl(ticket.finalizeUrl, window.location.origin) : uploadUrl;
       const finalize = await fetch(finalizeUrl, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id },
-        ...(ticket.finalizeUrl ? {} : { 'body': file, headers: { 'X-CSRF-Token': session.csrfToken || '', 'Idempotency-Key': item.id, 'Content-Type': 'application/octet-stream' } }),
+        headers: { 'X-CSRF-Token': sessionCsrf, 'Idempotency-Key': item.id },
+        ...(ticket.finalizeUrl ? {} : { 'body': file, headers: { 'X-CSRF-Token': sessionCsrf, 'Idempotency-Key': item.id, 'Content-Type': 'application/octet-stream' } }),
         signal: controller.signal,
       });
-      if (!finalize.ok) throw new Error('finalize');
+      if (!finalize.ok) throw await responseError(finalize, '完成上传失败');
       const resolved = mediaMarkdown(ticket.media.id);
       setMarkdown(current => replaceMediaToken(current, token, resolved));
       const ready: UploadItem = { ...item, status: 'ready', mediaId: ticket.media.id };
@@ -201,7 +242,7 @@ export default function AdminPage() {
       const failed: UploadItem = { ...item, status: 'failed', error: '上传失败', progress: 0 };
       setUploads(current => current.map(value => value.id === item.id ? failed : value));
       void persistMediaQueueItem(failed);
-      setMessage('媒体上传失败，保留引用占位符，可稍后重试');
+      setMessage(error instanceof AdminRequestError ? `媒体上传失败：${error.message}` : '媒体上传失败，保留引用占位符，可稍后重试');
     } finally { uploadControllers.current.delete(item.id); }
   }
 
@@ -227,6 +268,10 @@ export default function AdminPage() {
   }
 
   function removeUpload(item: UploadItem) {
+    if (item.status === 'uploading' || item.status === 'queued') {
+      cancelUpload(item);
+      return;
+    }
     setMarkdown(current => removeMediaToken(current, item));
     setUploads(current => current.filter(value => value.id !== item.id));
     void dbDelete(MEDIA_QUEUE_STORE, item.id);
@@ -260,7 +305,7 @@ export default function AdminPage() {
     }, 0);
     const update = () => setOnline(navigator.onLine);
     update(); window.addEventListener('online', update); window.addEventListener('offline', update);
-    fetch(`${API}/auth/session`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(v => setCsrf(v?.csrfToken || '')).catch(() => undefined);
+    void refreshSessionCSRF().catch(() => undefined);
     fetch(`${API}/admin/media/capability`, { credentials: 'include', headers: { Accept: 'application/json' } }).then(async response => {
       const body = await response.json().catch(() => ({}));
       const writable = response.ok && body.writable === true;
@@ -270,7 +315,7 @@ export default function AdminPage() {
   // Recovery runs once per editor mount; uploadMedia intentionally uses the
   // current editor/session state rather than restarting the recovery scan.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshDrafts]);
+  }, [refreshDrafts, refreshSessionCSRF]);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('edit') || '';
@@ -376,25 +421,36 @@ export default function AdminPage() {
   async function save() {
     const effectiveMarkdown = markdown;
     const savePayload = { ...payload, markdown: effectiveMarkdown, ...(editingBaseRevision > 0 ? { baseRevision: editingBaseRevision } : {}) };
-    if (!effectiveMarkdown.trim() || !csrf) { setMessage(csrf ? '请输入正文' : '请先登录'); return; }
+    const initialCsrf = csrfRef.current || csrf;
+    if (!effectiveMarkdown.trim() || !initialCsrf) { setMessage(effectiveMarkdown.trim() ? '登录状态未确认，请刷新后重试' : '请输入正文'); return; }
     setSaving(true); setMessage('保存中…');
-    const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf, 'Idempotency-Key': currentDraftId() };
+    const idempotencyKey = currentDraftId();
+    const latestDraft: Draft = { id: currentDraftId(), clientDraftId: currentDraftId(), payload: savePayload, updatedAt: new Date().toISOString() };
+    const submit = async (requestCsrf: string) => {
+      const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': requestCsrf, 'Idempotency-Key': idempotencyKey };
+      let working: { id: string } | null = editingWorkingID ? { id: editingWorkingID } : null;
+      if (!working) {
+        const draftResponse = await fetch(`${API}/admin/working-copies`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify({ clientDraftId: currentDraftId(), payload: savePayload }) });
+        if (!draftResponse.ok) throw await responseError(draftResponse, '保存工作草稿失败');
+        working = await draftResponse.json() as { id: string };
+      }
+      // Keep the explicit working.id interpolation in this request contract;
+      // it also makes the update path easy to audit in browser/network tests.
+      const workingCommitPath = `/admin/working-copies/${working.id}/commit`;
+      const commitResponse = await fetch(`${API}${workingCommitPath}`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(savePayload) });
+      if (!commitResponse.ok) throw await responseError(commitResponse, '提交内容失败');
+      return commitResponse.json();
+    };
     try {
       // Always persist the latest local revision before asking the API to commit.
-      const latestDraft: Draft = { id: currentDraftId(), clientDraftId: currentDraftId(), payload: savePayload, updatedAt: new Date().toISOString() };
       await dbPut(DRAFT_STORE, latestDraft);
-      let workingID = editingWorkingID;
-      if (!workingID) {
-        const draftResponse = await fetch(`${API}/admin/working-copies`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify({ clientDraftId: currentDraftId(), payload: savePayload }) });
-        if (!draftResponse.ok) throw new Error('draft');
-        const working = await draftResponse.json() as { id: string };
-        workingID = working.id;
+      let result;
+      try {
+        result = await submit(initialCsrf);
+      } catch (cause) {
+        if (!(cause instanceof AdminRequestError) || (cause.status !== 401 && cause.status !== 403)) throw cause;
+        result = await submit(await refreshSessionCSRF());
       }
-      // New-entry path historically used working-copies/${working.id}/commit;
-      // keep this contract explicit while edits reuse the loaded working copy.
-      const commitResponse = await fetch(`${API}/admin/working-copies/${workingID}/commit`, { method: 'POST', credentials: 'include', headers, body: JSON.stringify(savePayload) });
-      if (!commitResponse.ok) throw new Error('commit');
-      const result = await commitResponse.json();
       await invalidatePublicCaches({ entryId: editingEntryID || result.entry?.id, slug: String(savePayload.slug || ''), reason: 'edit' });
       router.refresh();
       setUndoToken(result.undoToken || '');
@@ -405,7 +461,11 @@ export default function AdminPage() {
         setMarkdown(''); setTitle(''); setSummary(''); setSlug(''); setMessage('已保存，15 秒内可撤销'); editorRef.current?.focus();
       }
       await dbDelete(DRAFT_STORE, currentDraftId()); await refreshDrafts();
-    } catch (error) { setMessage(error instanceof Error && error.message === 'commit' ? '保存失败：内容已被其他位置修改，请重新载入后合并' : '保存失败：请检查登录状态或 API 服务'); }
+    } catch (error) {
+      if (error instanceof AdminRequestError && error.status === 409) setMessage('保存失败：内容已被其他位置修改，请重新载入后合并');
+      else if (error instanceof AdminRequestError && (error.status === 401 || error.status === 403)) setMessage(`保存失败：${error.message}`);
+      else setMessage(error instanceof Error ? `保存失败：${error.message}` : '保存失败：API 服务未响应');
+    }
     finally { setSaving(false); }
   }
 

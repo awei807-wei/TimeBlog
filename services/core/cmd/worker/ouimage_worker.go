@@ -117,8 +117,16 @@ func trashExternalMedia(ctx context.Context, db *sql.DB, mediaID, providerKey st
 	if providerKey == "" {
 		return nil
 	}
-	client, config, err := loadWorkerImageClientConfig(ctx, db, configRevision)
-	if err != nil {
+	// Deleting a local media file must not require the external publish gate
+	// when syncDeletes is disabled.  A configuration can be intentionally
+	// disabled or unverified after an earlier publish; in that case retain the
+	// remote copy and still complete local cleanup.
+	var raw []byte
+	if err := db.QueryRowContext(ctx, `SELECT config FROM integration_settings WHERE name='external_image_host'`).Scan(&raw); err != nil {
+		return err
+	}
+	var config workerImageHostConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
 		return err
 	}
 	if !config.SyncDeletes {
@@ -128,13 +136,20 @@ func trashExternalMedia(ctx context.Context, db *sql.DB, mediaID, providerKey st
 		fmt.Fprintf(os.Stderr, "external_media_retained media_id=%s provider_key=%s reason=sync_deletes_disabled\n", mediaID, providerKey)
 		return nil
 	}
+	client, _, err := loadWorkerImageClientConfig(ctx, db, configRevision)
+	if err != nil {
+		return err
+	}
 	trashCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	if err := client.Trash(trashCtx, providerKey); err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, `UPDATE media SET external_publish_status='trash_pending',public_url=NULL WHERE id=$1::uuid`, mediaID)
-	return err
+	// deleteMediaJob holds a FOR UPDATE lock on this media row.  Updating it
+	// through db here would wait for the same transaction that is waiting for
+	// this function, causing a self-deadlock. The row is deleted immediately
+	// after the remote soft-trash succeeds, so no intermediate update is needed.
+	return nil
 }
 
 func publicJobError(err error) string {
