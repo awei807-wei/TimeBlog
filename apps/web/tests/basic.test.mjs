@@ -98,7 +98,10 @@ test('content management exposes a safe edit entry and editor uses the update wo
   assert.match(list, /href=\{`\/admin\?edit=\$\{encodeURIComponent\(entry\.id\)\}`\}/);
   assert.match(list, /aria-label=\{`编辑\$\{entry\.title/);
   assert.match(editor, /\/admin\/entries\/\$\{encodeURIComponent\(requestedEditID\)\}\/edit/);
-  assert.match(editor, /setMarkdown\(String\(value\.markdown/);
+  assert.match(editor, /const nextMarkdown = String\(value\.markdown/);
+  assert.match(editor, /applyMarkdown\(nextMarkdown\)/);
+  assert.match(editor, /const applyMarkdown = useCallback/);
+  assert.match(editor, /applyMarkdown\(nextMarkdown\)/);
   assert.match(editor, /setEditingBaseRevision\(Number\(working\.baseRevision/);
   assert.match(editor, /working-copies\/\$\{working\.id\}\/commit/);
   assert.match(editor, /editingEntryID \? '保存修改' : '保存'/);
@@ -125,58 +128,123 @@ test('sidebar has no trigger and maps theme tokens for desktop and mobile', asyn
   assert.match(css, /transform:\s*none/);
 });
 
-test('editor keeps Markdown as the source of truth and protects Chinese IME composition', async () => {
+test('MDXEditor is the sole Markdown source of truth and supports rich/source modes', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /Markdown 模式直接同页展示预览/);
-  assert.doesNotMatch(source, /value === 'preview'/);
-  assert.doesNotMatch(source, source.includes('实时预览</button>') ? /实时预览/ : /a^/);
-  assert.match(source, /aria-label="Markdown 正文编辑"/);
-  assert.match(source, /onCompositionStart/);
-  assert.match(source, /onCompositionEnd/);
-  assert.match(source, /composingRef\.current/);
-  assert.doesNotMatch(source, /contentEditable/);
-  assert.doesNotMatch(source, /所见即所得/);
+  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const attachment = await fs.readFile(new URL('../app/admin/AttachmentPreview.tsx', import.meta.url), 'utf8');
+  assert.match(source, /<MdxMarkdownEditor/);
+  assert.doesNotMatch(source, /<textarea/);
+  assert.match(source, /AttachmentPreview/);
+  assert.match(attachment, /!\/\^image/);
+  assert.doesNotMatch(source, /renderMarkdown\(markdown\)/);
+  assert.match(editor, /<MDXEditor/);
+  assert.match(editor, /diffSourcePlugin/);
+  assert.match(editor, /options=\{\['rich-text', 'source'\]\}/);
+  assert.match(editor, /markdown !== markdownRef\.current/);
+  assert.match(editor, /markdownRef\.current = markdown/);
+  assert.match(editor, /editor\.setMarkdown\(markdown\)/);
+  assert.match(editor, /trim=\{false\}/);
+  assert.match(editor, /onError=\{\(\{ error \}\)/);
+  assert.match(source, /editorRef\.current\?\.getMarkdown\(\) \?\? markdown/);
+  assert.match(source, /applyMarkdown\(nextMarkdown\)/);
 });
 
-test('editor accepts every native input event during IME and keeps media controls cross-mode', async () => {
+test('MDXEditor captures media paste/drop and keeps media controls available', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /onChange=\{e => setMarkdown\(e\.target\.value\)\}/);
-  assert.doesNotMatch(source, /if \(!composingRef\.current\) setMarkdown/);
+  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  assert.match(editor, /onPasteCapture/);
+  assert.match(editor, /onDropCapture/);
+  assert.match(editor, /files\.every\(file => file\.type\.startsWith/);
+  assert.match(editor, /event\.stopPropagation\(\)/);
+  assert.match(editor, /onFilesRef\.current\(files\)/);
   assert.match(source, /Paperclip/);
   assert.match(source, /Trash2/);
   assert.match(source, /admin\/media\/capability/);
   assert.match(source, /从当前草稿移除/);
-  assert.match(source, /aria-disabled=\{uploadDisabled\}/);
+  assert.match(source, /aria-disabled=\{mediaInputDisabled\}/);
 });
 
-test('simple mode inserts canonical media Markdown at the current cursor and renders inline previews', async () => {
+test('source and diff modes block media insertion and bridge the current editor view mode', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const wrapper = await fs.readFile(new URL('../app/admin/MdxMarkdownEditor.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  assert.match(wrapper, /onViewModeChange\?\:/);
+  assert.match(wrapper, /onReady\?\:/);
+  assert.match(editor, /useCellValue/);
+  assert.match(editor, /viewMode\$/);
+  assert.match(editor, /function ViewModeBridge/);
+  assert.match(editor, /<ViewModeBridge onChange=\{handleViewModeChange\}/);
+  assert.ok(editor.indexOf('<ViewModeBridge') < editor.indexOf('<DiffSourceToggleWrapper'));
+  assert.match(editor, /viewModeRef\.current !== 'rich-text'/);
+  assert.match(editor, /onErrorRef\.current\?\.\(MEDIA_MODE_HINT\)/);
+  assert.match(editor, /const setEditorRef/);
+  assert.match(editor, /onReadyRef\.current\?\.\(methods !== null\)/);
+  assert.match(source, /const \[editorViewMode, setEditorViewMode\]/);
+  assert.match(source, /const canInsertMedia = editorViewMode === 'rich-text'/);
+  assert.match(source, /const mediaInputDisabled = uploadDisabled \|\| !canInsertMedia/);
+  assert.match(source, /const \[editorReady, setEditorReady\]/);
+  assert.match(source, /!editorReady/);
+  assert.match(source, /onReady=\{setEditorReady\}/);
+  assert.match(source, /MEDIA_MODE_HINT/);
+  assert.match(source, /disabled=\{mediaInputDisabled\}/);
+  assert.match(source, /onViewModeChange=\{handleEditorViewModeChange\}/);
+});
+
+test('media uploads insert canonical Markdown while MDXEditor resolves image previews', async () => {
+  const fs = await import('node:fs/promises');
+  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const uploads = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
   const resolver = await fs.readFile(new URL('../app/article/MediaResolver.tsx', import.meta.url), 'utf8');
-  assert.match(source, /mediaMarkdownReference/);
-  assert.match(source, /selectionStart/);
-  assert.match(source, /setSelectionRange/);
-  assert.match(source, /simple-media-preview/);
-  assert.match(source, /正文中的媒体预览/);
-  assert.match(source, /removeMediaReferences/);
-  assert.match(source, /replaceMediaOccurrence/);
+  assert.match(uploads, /mediaMarkdownReference/);
+  assert.match(source, /insertMarkdown\(`\\n\$\{reference\}\\n`\)/);
+  assert.match(editor, /imagePlugin/);
+  assert.match(editor, /imageUploadHandler/);
+  assert.match(editor, /imagePreviewHandler/);
+  assert.match(editor, /mediaContentUrl/);
+  assert.match(uploads, /return `media:\/\/\$\{result\.mediaId\}`/);
+  assert.match(uploads, /removeMediaReferences/);
+  assert.match(uploads, /replaceMediaOccurrence/);
+  assert.match(source, /if \(!editor\)/);
+  assert.match(source, /编辑器正在加载，请稍后再试/);
+  assert.match(source, /附件仍在上传，请完成后再保存/);
+  assert.match(source, /mediaStillProcessing/);
   assert.match(resolver, /resolved-image-card/);
   assert.match(resolver, /resolved-file-card/);
   assert.match(resolver, /打开 \/ 下载/);
 });
 
+test('media links keep safe hrefs while standard links retain Lexical sanitization', async () => {
+  const fs = await import('node:fs/promises');
+  const plugin = await fs.readFile(new URL('../app/admin/media-link-plugin.ts', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  assert.match(plugin, /class MediaLinkNode extends LinkNode/);
+  assert.match(plugin, /const MEDIA_LINK_URL = \/\^media:/);
+  assert.match(plugin, /A-Za-z0-9\._~-/);
+  assert.match(plugin, /\+\$\//);
+  assert.match(plugin, /isMediaLinkUrl\(url\) \? url : super\.sanitizeUrl\(url\)/);
+  assert.match(plugin, /addImportVisitor\$/);
+  assert.match(plugin, /addExportVisitor\$/);
+  assert.match(plugin, /addLexicalNode\$/);
+  assert.match(plugin, /priority: 100/);
+  assert.match(plugin, /actions\.addAndStepInto\('link'/);
+  assert.match(editor, /mediaLinkPlugin\(\)/);
+  assert.match(editor, /mediaContentUrl\(source\.slice\('media:\/\/'\.length\), API\)/);
+});
+
 test('editor reuses one CSRF token across upload and save, surfaces API details, and cancels active attachments', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
-  const uploadSource = source.slice(source.indexOf('async function uploadMedia'), source.indexOf('async function retryUpload'));
+  const uploadSource = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
   assert.match(source, /const csrfRef = useRef\(''\)/);
   assert.match(source, /const refreshSessionCSRF = useCallback/);
   assert.match(source, /sessionRequestRef\.current/);
   assert.doesNotMatch(uploadSource, /fetch\(`\$\{API\}\/auth\/session`/);
-  assert.match(source, /responseError\(ticketResponse, '创建上传任务失败'\)/);
-  assert.match(source, /if \(item\.status === 'uploading' \|\| item\.status === 'queued'\)/);
+  assert.match(uploadSource, /responseError\(ticketResponse, '创建上传任务失败'\)/);
+  assert.match(uploadSource, /if \(item\.status === 'uploading' \|\| item\.status === 'queued'\)/);
   assert.match(source, /cancelUpload\(item\)/);
 });
 
@@ -418,17 +486,21 @@ test('timeline cursor request and media queue recovery contract remain explicit'
   const source = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/page.tsx', import.meta.url), 'utf8'));
   const api = await import('node:fs/promises').then(fs => fs.readFile(new URL('../lib/api.ts', import.meta.url), 'utf8'));
   const admin = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8'));
+  const storage = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/editor-storage.ts', import.meta.url), 'utf8'));
+  const uploads = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8'));
   assert.match(source, /<HomeTimeline initialDays=\{days\} initialCursor=\{nextCursor\}\/>/);
   assert.match(api, /getTimeline\(limit = 20, cursor = ''\)/);
   assert.match(api, /cursor=\$\{encodeURIComponent\(cursor\)\}/);
-  assert.match(admin, /MEDIA_QUEUE_STORE = 'media-queue'/);
-  assert.match(admin, /dbGetAll<UploadItem>\(MEDIA_QUEUE_STORE\)/);
-  assert.match(admin, /浏览器不会把文件内容自动写入离线队列/);
-  assert.match(admin, /uploadResumable\(uploadUrl, file/);
-  assert.match(admin, /finalizeUrl/);
-  assert.doesNotMatch(admin, /fetch\(uploadUrl, \{ method: 'POST'/);
-  assert.match(admin, /mediaQueueStoragePlan/);
-  assert.match(admin, /浏览器未保存此文件，需重新选择文件/);
+  assert.match(storage, /MEDIA_QUEUE_STORE = 'media-queue'/);
+  assert.match(uploads, /dbGetAll<UploadItem>\(MEDIA_QUEUE_STORE\)/);
+  assert.match(uploads, /浏览器不会把文件内容自动写入离线队列/);
+  assert.match(uploads, /uploadResumable\(uploadUrl, file/);
+  assert.match(uploads, /finalizeUrl/);
+  assert.doesNotMatch(uploads, /fetch\(uploadUrl, \{ method: 'POST'/);
+  assert.match(storage, /mediaQueueStoragePlan/);
+  assert.match(uploads, /浏览器未保存此文件，需重新选择文件/);
+  assert.match(uploads, /媒体存储不可用，请重新选择文件后重试/);
+  assert.match(uploads, /mediaCapability\.imageUploadEnabled/);
   assert.doesNotMatch(admin, /将在对应服务接入后启用/);
 });
 

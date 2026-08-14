@@ -2,6 +2,11 @@
   "name": "personal-timeline",
   "private": true,
   "workspaces": ["apps/web"],
+  "overrides": {
+    "@mdxeditor/editor": {
+      "js-yaml": "4.3.1"
+    }
+  },
   "scripts": {
     "lint": "npm --workspace apps/web run lint",
     "typecheck": "npm --workspace apps/web run typecheck",
