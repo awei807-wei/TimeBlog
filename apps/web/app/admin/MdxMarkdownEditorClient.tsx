@@ -36,6 +36,7 @@ import { API } from '@/lib/api';
 import { mediaContentUrl } from '@/lib/media-resolver';
 import { MEDIA_MODE_HINT, type MdxMarkdownEditorProps } from './MdxMarkdownEditor';
 import { mediaLinkPlugin } from './media-link-plugin';
+import { prepareMarkdownForMdxEditor, restoreMarkdownFromMdxEditor, type PreparedMarkdown } from './mdx-compat';
 
 const TRANSLATIONS: Record<string, string> = {
   'toolbar.richText': '所见即所得',
@@ -73,25 +74,33 @@ export default function MdxMarkdownEditorClient({
   onFiles,
   onImageUpload,
   onError,
+  onNotice,
   onReady,
   onViewModeChange,
   disabled = false,
 }: MdxMarkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   const onErrorRef = useRef(onError);
+  const onNoticeRef = useRef(onNotice);
   const onFilesRef = useRef(onFiles);
   const onImageUploadRef = useRef(onImageUpload);
   const onReadyRef = useRef(onReady);
   const onViewModeChangeRef = useRef(onViewModeChange);
   const viewModeRef = useRef<ViewMode>('rich-text');
   const markdownRef = useRef(markdown);
+  const preparedMarkdown = useMemo(() => prepareMarkdownForMdxEditor(markdown), [markdown]);
+  const compatibilityRef = useRef<PreparedMarkdown>(preparedMarkdown);
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
+  useEffect(() => { onNoticeRef.current = onNotice; }, [onNotice]);
   useEffect(() => { onFilesRef.current = onFiles; }, [onFiles]);
   useEffect(() => { onImageUploadRef.current = onImageUpload; }, [onImageUpload]);
   useEffect(() => { onReadyRef.current = onReady; }, [onReady]);
   useEffect(() => { onViewModeChangeRef.current = onViewModeChange; }, [onViewModeChange]);
+  useEffect(() => {
+    if (compatibilityRef.current.replacements.length > 0) onNoticeRef.current?.('检测到历史 HTML 标签，已转为可编辑文本；保存时会恢复原始 Markdown。');
+  }, []);
 
   const setEditorRef = useCallback((methods: MDXEditorMethods | null) => {
     editorRef.current = methods;
@@ -168,14 +177,18 @@ export default function MdxMarkdownEditorClient({
     const editor = editorRef.current;
     if (!editor) return;
     if (markdown !== markdownRef.current) {
-      editor.setMarkdown(markdown);
+      const prepared = prepareMarkdownForMdxEditor(markdown);
+      compatibilityRef.current = prepared;
+      editor.setMarkdown(prepared.markdown);
       markdownRef.current = markdown;
+      if (prepared.replacements.length > 0) onNoticeRef.current?.('检测到历史 HTML 标签，已转为可编辑文本；保存时会恢复原始 Markdown。');
     }
   }, [editorRef, markdown]);
 
   const handleChange = (next: string) => {
-    markdownRef.current = next;
-    onChangeRef.current(next);
+    const restored = restoreMarkdownFromMdxEditor(next, compatibilityRef.current.replacements);
+    markdownRef.current = restored;
+    onChangeRef.current(restored);
   };
 
   const handlePasteCapture = (event: React.ClipboardEvent<HTMLDivElement>) => {
@@ -229,9 +242,10 @@ export default function MdxMarkdownEditorClient({
       }}
       aria-label="Markdown 正文编辑器"
     >
+      {preparedMarkdown.replacements.length > 0 && <div className="mdx-compat-notice" role="status">历史 HTML 标签已安全显示为文本；可切换 Markdown 源码模式修正，保存时会恢复原始内容。</div>}
       <MDXEditor
         ref={setEditorRef}
-        markdown={markdown}
+        markdown={preparedMarkdown.markdown}
         plugins={plugins}
         onChange={handleChange}
         onError={({ error }) => onErrorRef.current?.(`Markdown 解析失败：${error}`)}

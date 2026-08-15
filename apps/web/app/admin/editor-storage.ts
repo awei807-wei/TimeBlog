@@ -55,7 +55,7 @@ export async function dbGetAll<T>(store: string): Promise<T[]> {
   }
 }
 
-export async function dbDelete(store: string, id: string): Promise<void> {
+export async function dbDelete(store: string, id: string): Promise<boolean> {
   try {
     const db = await openDB();
     await new Promise<void>((resolve, reject) => {
@@ -64,8 +64,10 @@ export async function dbDelete(store: string, id: string): Promise<void> {
       request.onerror = () => reject(request.error);
     });
     db.close();
+    return true;
   } catch {
     // Ignore offline cleanup errors.
+    return false;
   }
 }
 

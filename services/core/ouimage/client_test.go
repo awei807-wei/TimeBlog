@@ -38,6 +38,7 @@ func TestUploadContractAndRelativeURL(t *testing.T) {
 	_, _ = file.Write([]byte("test-image"))
 	_ = file.Close()
 	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		defer r.Body.Close()
 		if r.Header.Get("Authorization") != "Bearer ouh_prefix_secret" || r.Header.Get("X-Workspace-ID") != "space-1" {
 			t.Fatal("missing auth headers")
 		}
@@ -60,12 +61,65 @@ func TestUploadContractAndRelativeURL(t *testing.T) {
 	}
 }
 
+func TestUploadEarlyResponseWithoutConsumingBody(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "image-*.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = file.Write([]byte("jpeg"))
+	_ = file.Close()
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		// Deliberately model an early response that leaves the request body
+		// untouched. uploadOnce must close its own pipe reader defensively.
+		return response(200, `{"image":{"id":"early","originalUrl":"/api/files/early/original","sha256":"def"},"duplicate":false}`), nil
+	})
+	done := make(chan struct{})
+	var got UploadResult
+	var uploadErr error
+	go func() {
+		got, uploadErr = c.UploadFile(context.Background(), "photo.jpg", "image/jpeg", file.Name(), "def")
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("early response upload did not return promptly")
+	}
+	if uploadErr != nil || got.Image.ID != "early" {
+		t.Fatalf("early response upload failed: %+v %v", got, uploadErr)
+	}
+}
+
+func TestUploadEarlyResponseStillRetries(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "image-*.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = file.Write([]byte("jpeg"))
+	_ = file.Close()
+	var calls atomic.Int32
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		// The first response arrives before the body is consumed. The client
+		// must close the pipe and still preserve the 429 retry contract.
+		if calls.Add(1) == 1 {
+			return response(429, `{"error":{"code":"RATE_LIMITED"}}`), nil
+		}
+		return response(200, `{"image":{"id":"retried","originalUrl":"/api/files/retried/original","sha256":"def"},"duplicate":true}`), nil
+	})
+	got, err := c.UploadFile(context.Background(), "photo.jpg", "image/jpeg", file.Name(), "def")
+	if err != nil || !got.Duplicate || got.Image.ID != "retried" || calls.Load() != 2 {
+		t.Fatalf("early response retry failed: %+v %v calls=%d", got, err, calls.Load())
+	}
+}
+
 func TestUploadDuplicateAndRetry(t *testing.T) {
 	file, _ := os.CreateTemp(t.TempDir(), "image-*.jpg")
 	_, _ = file.Write([]byte("jpeg"))
 	_ = file.Close()
 	var calls atomic.Int32
 	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		defer r.Body.Close()
+		_, _ = io.Copy(io.Discard, r.Body)
 		if calls.Add(1) < 3 {
 			return response(429, `{"error":{"code":"RATE_LIMITED"}}`), nil
 		}
@@ -83,12 +137,40 @@ func TestUploadDoesNotRetryOrdinary4xx(t *testing.T) {
 	_ = file.Close()
 	var calls atomic.Int32
 	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		defer r.Body.Close()
+		_, _ = io.Copy(io.Discard, r.Body)
 		calls.Add(1)
 		return response(403, `{"error":{"code":"TOKEN_SCOPE_DENIED"}}`), nil
 	})
 	_, err := c.UploadFile(context.Background(), "photo.png", "image/png", file.Name(), "abc")
 	if err == nil || calls.Load() != 1 {
 		t.Fatalf("4xx must not retry: %v calls=%d", err, calls.Load())
+	}
+}
+
+func TestUploadContextCancelUnblocksWriter(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "image-*.jpg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = file.Write([]byte("jpeg"))
+	_ = file.Close()
+	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		defer r.Body.Close()
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	})
+	c.sleep = func(ctx context.Context, _ time.Duration) error { return ctx.Err() }
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(20*time.Millisecond, cancel)
+	defer cancel()
+	start := time.Now()
+	_, uploadErr := c.UploadFile(ctx, "photo.jpg", "image/jpeg", file.Name(), "def")
+	if uploadErr == nil {
+		t.Fatal("expected context cancellation error")
+	}
+	if elapsed := time.Since(start); elapsed > 500*time.Millisecond {
+		t.Fatalf("context cancellation took too long: %s", elapsed)
 	}
 }
 
@@ -104,6 +186,9 @@ func TestRejectSignedOrCrossOriginDeliveryURL(t *testing.T) {
 func TestProbeAndTrashContracts(t *testing.T) {
 	var paths []string
 	c := testClient(t, func(r *http.Request) (*http.Response, error) {
+		if r.Body != nil {
+			defer r.Body.Close()
+		}
 		paths = append(paths, r.Method+" "+r.URL.RequestURI())
 		if r.Method == http.MethodGet {
 			return response(200, `{"images":[],"page":1,"limit":1,"total":0,"totalPages":1}`), nil

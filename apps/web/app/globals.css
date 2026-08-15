@@ -55,11 +55,49 @@
 @media(max-width:640px){.composer textarea{min-height:clamp(220px,44vh,420px);font-size:17px}.composer-footer{grid-template-columns:1fr;gap:9px}.composer-footer label:nth-of-type(4),.composer-footer label:nth-of-type(5){grid-column:auto}.composer-footer input,.composer-footer select,.composer-footer .primary,.composer-footer .secondary{height:44px;min-height:44px}.upload-list li{align-items:flex-start;flex-direction:column}.upload-actions{width:100%;justify-content:flex-start}.upload-dropzone{padding:21px 14px}}
 @media(prefers-reduced-motion:reduce){.upload-dropzone,.upload-progress span{transition:none}.spin{animation:none}}
 
+/* Accessible date picker built from React Aria's headless primitives. The
+   popup is rendered in a portal, so it does not inherit native date-input
+   chrome or the browser-specific calendar popup edge. */
+.journal-date-picker{display:grid;gap:5px;min-width:0}
+.journal-date-label{color:var(--muted);font-size:12px;line-height:1.2}
+.journal-date-group{display:flex;align-items:stretch;width:100%;height:40px;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--surface);overflow:hidden}
+.journal-date-group[data-focus-within]{border-color:#9acfc5;outline:3px solid var(--accent-soft);outline-offset:1px}
+.journal-date-input{display:flex;align-items:center;gap:2px;min-width:0;flex:1;padding:0 10px;color:var(--ink);font-size:14px;line-height:1;white-space:nowrap}
+.journal-date-input [data-placeholder]{color:var(--muted)}
+.journal-date-input [data-focused]{color:var(--accent);font-weight:700;background:var(--accent-soft);border-radius:3px;outline:none}
+.journal-date-trigger{display:grid;place-items:center;width:40px;min-width:40px;border:0;border-left:1px solid var(--line);background:transparent;color:var(--muted)}
+.journal-date-trigger:hover,.journal-date-trigger[data-hovered]{background:var(--accent-soft);color:var(--accent)}
+.journal-date-trigger svg{width:17px;height:17px}
+.journal-date-popover{z-index:50;min-width:300px;max-width:calc(100vw - 20px);border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:0 18px 45px rgb(16 25 29 / 18%);color:var(--ink)}
+.journal-date-dialog{padding:14px;outline:none}
+.journal-calendar{display:grid;gap:12px;outline:none}
+.journal-calendar-header{display:grid;grid-template-columns:36px minmax(0,1fr) 36px;align-items:center;gap:8px}
+.journal-calendar-heading{margin:0;text-align:center;font-size:15px;font-weight:700;line-height:36px}
+.journal-calendar-nav{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted)}
+.journal-calendar-nav:hover,.journal-calendar-nav[data-hovered]{border-color:#9acfc5;background:var(--accent-soft);color:var(--accent)}
+.journal-calendar-nav svg{width:17px;height:17px}
+.journal-calendar-grid{width:100%;border-collapse:separate;border-spacing:3px}
+.journal-calendar-grid th{padding:4px 0;color:var(--muted);font-size:11px;font-weight:650;text-align:center}
+.journal-calendar-grid td{padding:0;text-align:center}
+.journal-calendar-cell{display:grid;place-items:center;width:34px;height:34px;margin:auto;border:1px solid transparent;border-radius:8px;color:var(--ink);font-size:13px;line-height:1;cursor:pointer}
+.journal-calendar-cell:hover,.journal-calendar-cell[data-hovered]{background:var(--accent-soft);color:var(--accent)}
+.journal-calendar-cell[data-selected]{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:700}
+.journal-calendar-cell[data-today]:not([data-selected]){border-color:#9acfc5;color:var(--accent);font-weight:700}
+.journal-calendar-cell[data-outside-month]{color:#aab2b8}
+.journal-calendar-cell[data-disabled],.journal-calendar-cell[data-unavailable]{color:#b7bec3;cursor:not-allowed;text-decoration:line-through}
+.journal-calendar-cell[data-focus-visible]{outline:3px solid #9ad4cb;outline-offset:2px}
+.journal-calendar-actions{display:flex;justify-content:space-between;gap:8px;margin-top:12px;border-top:1px solid var(--line);padding-top:12px}
+.journal-calendar-action{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--muted);font-size:13px}
+.journal-calendar-action:hover,.journal-calendar-action[data-hovered]{border-color:#9acfc5;background:var(--accent-soft);color:var(--accent)}
+.journal-calendar-today{color:var(--accent);font-weight:700}
+@media(max-width:640px){.journal-date-group{height:44px}.journal-date-trigger{width:44px;min-width:44px}.journal-date-popover{min-width:min(300px,calc(100vw - 20px))}.journal-date-dialog{padding:12px}.journal-calendar-cell{width:36px;height:36px}}
+
 /* MDXEditor writing surface: keep the official editor as the only editable
    surface while aligning its chrome with the existing paper/teal design. */
 .mdx-editor-shell{margin-top:12px;min-height:clamp(340px,52vh,680px);border:1px solid var(--line);border-radius:14px;background:var(--surface);overflow:hidden;box-shadow:0 7px 20px rgb(35 48 62 / 4%)}
 .mdx-editor{--accentColor:var(--accent);--basePageBg:var(--surface);--baseBase:var(--surface);--baseBgSubtle:#f7f8f6;--baseBg:#fff;--baseText:var(--ink);--baseTextContrast:var(--ink);--baseTextSubtle:var(--muted);--baseBorder:var(--line);--baseBorderHover:#9acfc5;--baseSolid:var(--accent);--baseSolidHover:#175c56;--baseSolidContrast:#fff;min-height:100%}
-.mdx-editor .mdxeditor-toolbar{min-height:52px;display:flex;align-items:center;gap:4px;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 92%,var(--accent-soft));scrollbar-width:thin}
+.mdx-editor .mdxeditor-toolbar{min-height:52px;display:flex;align-items:center;gap:4px;overflow-x:auto;padding:6px 10px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 92%,var(--accent-soft));scrollbar-width:none;-ms-overflow-style:none}
+.mdx-editor .mdxeditor-toolbar::-webkit-scrollbar{display:none}
 .mdx-editor .mdxeditor-toolbar button,.mdx-editor .mdxeditor-toolbar [role="button"]{min-width:40px;min-height:40px}
 .mdx-editor-content{min-height:clamp(280px,46vh,610px);padding:20px 22px;font-size:18px;line-height:1.72;color:var(--ink);background:var(--surface);outline:none}
 .mdx-editor-content:focus-visible{outline:3px solid var(--accent-soft);outline-offset:-4px}
@@ -72,6 +110,30 @@
 .editor-toolbar-actions{justify-content:space-between}.editor-toolbar-label{font-size:13px;font-weight:700;color:var(--muted);letter-spacing:.04em}.editor-toolbar-actions .tool{min-height:44px}
 @media(max-width:760px){.mdx-editor-shell{min-height:clamp(320px,58vh,560px);border-radius:12px}.mdx-editor-content{min-height:clamp(260px,50vh,470px);padding:16px;font-size:17px}.mdx-editor .mdxeditor-toolbar{padding-inline:6px}.mdx-editor .mdxeditor-toolbar button,.mdx-editor .mdxeditor-toolbar [role="button"]{min-width:44px;min-height:44px}.editor-toolbar-label{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.mdx-editor .mdxeditor-toolbar{scroll-behavior:auto}}
+
+/* MDXEditor placeholder is a separate, non-editable layer. Keep it visually
+   distinct from authored paragraphs while retaining the library's built-in
+   empty-state behavior (it never enters Markdown). */
+.mdx-editor-content[class*="placeholder"]{color:var(--muted);font-size:15px;font-style:italic;opacity:.9}
+.mdx-editor-content[class*="placeholder"] p{margin:0;color:inherit;font-size:inherit}
+.mdx-compat-notice{padding:9px 14px;border-bottom:1px solid #ead9ae;background:#fff9e8;color:#7a5b20;font-size:12px;line-height:1.5}
+
+/* Tag inputs keep the field compact on desktop and wrap naturally on phones. */
+.taxonomy-field{display:grid;gap:5px;min-width:0;flex:1 1 180px}
+.taxonomy-label{font-size:12px;color:var(--muted)}
+.tag-input{min-height:44px;border:1px solid var(--line);border-radius:9px;background:var(--surface);padding:5px 7px}
+.tag-input:focus-within{border-color:#9acfc5;outline:3px solid var(--accent-soft);outline-offset:1px}
+.tag-input-list{display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-height:32px}
+.taxonomy-tag{display:inline-flex;align-items:center;gap:3px;max-width:100%;min-height:44px;padding:2px 4px 2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-size:13px;line-height:1.2}
+.taxonomy-tag:focus-visible{outline:3px solid #9ad4cb;outline-offset:2px}
+.taxonomy-tag-value{overflow-wrap:anywhere}
+.taxonomy-tag-remove{display:grid;place-items:center;width:44px;height:44px;min-width:44px;padding:0;border:0;border-radius:50%;background:transparent;color:inherit;font-size:18px;line-height:1}
+.taxonomy-tag-remove:hover,.taxonomy-tag-remove:focus-visible{background:rgb(30 111 104 / 13%)}
+.tag-input-editor,.taxonomy-tag-edit{min-width:90px;min-height:44px;flex:1 1 100px;height:44px;border:0;outline:0;background:transparent;color:var(--ink);font-size:13px}
+.tag-input-editor::placeholder{color:#9aa6af}
+.taxonomy-tag-edit{flex:0 1 140px;padding:2px 7px;border:1px solid #9acfc5;border-radius:999px;background:var(--surface)}
+@media(max-width:900px){.taxonomy-field{grid-column:span 2}.taxonomy-field+.taxonomy-field{grid-column:span 2}}
+@media(max-width:640px){.taxonomy-field,.taxonomy-field+.taxonomy-field{grid-column:auto;flex-basis:100%}.tag-input-editor{min-width:120px}}
 .upload-actions .inline-action{white-space:nowrap;word-break:keep-all;flex:0 0 auto}
 .admin-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:18px 0;padding-bottom:10px}.management-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.management-actions time{font-size:12px;color:var(--muted);white-space:nowrap}.management-actions .secondary{display:inline-flex;align-items:center;justify-content:center;min-width:56px;height:36px;padding:0 12px;line-height:1;font-size:14px;white-space:nowrap}.management-actions .secondary:focus-visible{outline:3px solid #9ad4cb;outline-offset:3px}.admin-tabs+.status{margin-bottom:8px}@media (max-width:640px){.management-row{align-items:flex-start;flex-direction:column}.management-actions{width:100%;justify-content:flex-start}.management-actions time{width:100%}.management-actions .secondary{flex:1 1 96px}}
 .entry-actions-trigger{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}.entry-actions-trigger:hover{background:var(--accent-soft);color:var(--accent)}.entry-actions-trigger svg{width:20px;height:20px}.entry-action-destructive{color:#a4352d}.entry-action-destructive:focus,.entry-action-destructive:hover{background:#fff0ee;color:#8a2f25}

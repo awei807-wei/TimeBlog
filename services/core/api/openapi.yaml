@@ -266,7 +266,7 @@ paths:
       operationId: undoEntry
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/UndoToken'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
-      responses: {'200': {description: 15 秒内撤销短记录, content: {application/json: {schema: {$ref: '#/components/schemas/CommitResponse'}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+      responses: {'200': {description: 15 秒内撤销短记录；响应中的 entry 与提交响应保持一致并用于回填编辑器, content: {application/json: {schema: {$ref: '#/components/schemas/CommitResponse'}}}}, '404': {$ref: '#/components/responses/NotFound'}}
 
   /admin/categories:
     get:
@@ -767,7 +767,7 @@ components:
     WorkingCopyCreateRequest: {type: object, required: [clientDraftId, payload], properties: {clientDraftId: {type: string}, payload: {type: object, additionalProperties: true}}}
     WorkingCopyPatchRequest: {type: object, required: [payload], properties: {baseRevision: {type: integer, format: int64}, payload: {type: object, additionalProperties: true}}}
     WorkingCopyListResponse: {type: object, required: [workingCopies], properties: {workingCopies: {type: array, items: {$ref: '#/components/schemas/WorkingCopy'}}}}
-    CommitRequest: {type: object, required: [markdown, status, visibility, journalDate], properties: {kind: {$ref: '#/components/schemas/EntryKind'}, status: {$ref: '#/components/schemas/EntryStatus'}, visibility: {$ref: '#/components/schemas/Visibility'}, title: {type: string}, slug: {type: string}, summary: {type: string}, markdown: {type: string}, journalDate: {type: string, format: date}, journalTime: {type: string, nullable: true}, categories: {type: array, items: {type: string}}, tags: {type: array, items: {type: string}}, baseRevision: {type: integer, format: int64}}}
+    CommitRequest: {type: object, required: [markdown, status, visibility, journalDate], properties: {kind: {$ref: '#/components/schemas/EntryKind'}, status: {$ref: '#/components/schemas/EntryStatus'}, visibility: {$ref: '#/components/schemas/Visibility'}, title: {type: string}, slug: {type: string}, summary: {type: string}, markdown: {type: string}, journalDate: {type: string, format: date}, journalTime: {type: string, nullable: true}, categories: {type: array, items: {type: string}, description: 未提供时继承工作副本；传空数组清空已有分类}, tags: {type: array, items: {type: string}, description: 未提供时继承工作副本并合并正文 hashtag；提供数组后仅使用该数组，空数组清空已有标签}, baseRevision: {type: integer, format: int64}}}
     CommitResponse: {type: object, required: [entry], properties: {entry: {$ref: '#/components/schemas/Entry'}, undoToken: {type: string}}}
     Category: {type: object, required: [id, name, slug], properties: {id: {type: string, format: uuid}, name: {type: string}, slug: {type: string}, description: {type: string}}}
     CategoryRequest: {type: object, required: [name], properties: {name: {type: string}, slug: {type: string}, description: {type: string}}}

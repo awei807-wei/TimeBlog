@@ -496,6 +496,169 @@ func TestWorkingCopyIdempotentAndTagRules(t *testing.T) {
 	}
 }
 
+func TestCommitWorkingRequestDistinguishesOmittedAndEmptyTaxonomy(t *testing.T) {
+	tests := []struct {
+		name          string
+		body          string
+		categories    []string
+		tags          []string
+		categoriesSet bool
+		tagsSet       bool
+	}{
+		{name: "omitted", body: `{}`, categories: nil, tags: nil},
+		{name: "empty arrays", body: `{"categories":[],"tags":[]}`, categories: []string{}, tags: []string{}, categoriesSet: true, tagsSet: true},
+		{name: "non-empty arrays", body: `{"categories":["新分类"],"tags":["新标签"]}`, categories: []string{"新分类"}, tags: []string{"新标签"}, categoriesSet: true, tagsSet: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var in commitWorkingRequest
+			if err := json.Unmarshal([]byte(tt.body), &in); err != nil {
+				t.Fatal(err)
+			}
+			if in.categoriesPresent != tt.categoriesSet || in.tagsPresent != tt.tagsSet {
+				t.Fatalf("presence categories=%v tags=%v", in.categoriesPresent, in.tagsPresent)
+			}
+			if !equalStringSlices(in.Categories, tt.categories) || !equalStringSlices(in.Tags, tt.tags) {
+				t.Fatalf("taxonomy categories=%v tags=%v", in.Categories, in.Tags)
+			}
+		})
+	}
+}
+
+func TestWorkingCopyCommitTaxonomyFieldPresence(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+	tests := []struct {
+		name       string
+		categories []string
+		tags       []string
+		request    map[string]any
+	}{
+		{
+			name:       "omitted fields inherit working copy",
+			categories: []string{"旧分类"},
+			tags:       []string{"旧标签", "自动标签"},
+			request:    map[string]any{"markdown": "正文 #自动标签", "status": "draft", "visibility": "public", "journalDate": "2026-08-15"},
+		},
+		{
+			name:       "empty arrays clear working copy",
+			categories: []string{},
+			tags:       []string{},
+			request:    map[string]any{"markdown": "正文 #自动标签", "status": "draft", "visibility": "public", "journalDate": "2026-08-15", "categories": []string{}, "tags": []string{}},
+		},
+		{
+			name:       "non-empty arrays replace working copy",
+			categories: []string{"新分类"},
+			tags:       []string{"新标签"},
+			request:    map[string]any{"markdown": "正文 #自动标签", "status": "draft", "visibility": "public", "journalDate": "2026-08-15", "categories": []string{"新分类"}, "tags": []string{"新标签"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := NewServer(NewStore())
+			h := srv.routes()
+			_, raw := loginForTest(t, h)
+			parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+			cookie, csrf := string(parts[0]), string(parts[1])
+			payload := map[string]any{"markdown": "工作副本", "categories": []string{"旧分类"}, "tags": []string{"旧标签"}}
+			wcBody, err := json.Marshal(map[string]any{"clientDraftId": "taxonomy-" + strings.ReplaceAll(tt.name, " ", "-"), "payload": payload})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wcReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/working-copies", bytes.NewReader(wcBody))
+			wcReq.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+			wcReq.Header.Set("X-CSRF-Token", csrf)
+			wcReq.Header.Set("Origin", "http://localhost:3000")
+			wcRR := httptest.NewRecorder()
+			h.ServeHTTP(wcRR, wcReq)
+			if wcRR.Code != http.StatusOK {
+				t.Fatalf("working copy: %d %s", wcRR.Code, wcRR.Body.String())
+			}
+			var wc WorkingCopy
+			if err := json.Unmarshal(wcRR.Body.Bytes(), &wc); err != nil {
+				t.Fatal(err)
+			}
+
+			commitBody, err := json.Marshal(tt.request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			commitReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/working-copies/"+wc.ID+"/commit", bytes.NewReader(commitBody))
+			commitReq.AddCookie(&http.Cookie{Name: "timeline_session", Value: cookie})
+			commitReq.Header.Set("X-CSRF-Token", csrf)
+			commitReq.Header.Set("Origin", "http://localhost:3000")
+			commitRR := httptest.NewRecorder()
+			h.ServeHTTP(commitRR, commitReq)
+			if commitRR.Code != http.StatusOK {
+				t.Fatalf("commit: %d %s", commitRR.Code, commitRR.Body.String())
+			}
+			var response struct {
+				Entry Entry `json:"entry"`
+			}
+			if err := json.Unmarshal(commitRR.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if !equalStringSlices(response.Entry.Categories, tt.categories) || !equalStringSlices(response.Entry.Tags, tt.tags) {
+				t.Fatalf("entry taxonomy categories=%v tags=%v", response.Entry.Categories, response.Entry.Tags)
+			}
+		})
+	}
+}
+
+func TestUndoEntryForResponseUsesWorkingPayload(t *testing.T) {
+	data := map[string]any{
+		"markdown": "发布内容",
+		"title":    "发布标题",
+		"workingPayload": map[string]any{
+			"kind":       "article",
+			"markdown":   "撤销后的草稿",
+			"title":      "草稿标题",
+			"categories": []any{"分类"},
+			"tags":       []any{"标签"},
+		},
+	}
+	entry := undoEntryForResponse(data, "entry-1", "draft", "public")
+	if entry["id"] != "entry-1" || entry["kind"] != "article" || entry["markdown"] != "撤销后的草稿" || entry["title"] != "草稿标题" {
+		t.Fatalf("unexpected editor entry: %#v", entry)
+	}
+	if entry["status"] != "draft" || entry["visibility"] != "public" {
+		t.Fatalf("unexpected entry state: %#v", entry)
+	}
+	if !equalAnySlices(entry["categories"], []any{"分类"}) || !equalAnySlices(entry["tags"], []any{"标签"}) {
+		t.Fatalf("taxonomy missing: %#v", entry)
+	}
+
+	legacy := undoEntryForResponse(map[string]any{"markdown": "旧内容", "title": "旧标题"}, "entry-2", "draft", "private")
+	if legacy["markdown"] != "旧内容" || legacy["title"] != "旧标题" {
+		t.Fatalf("legacy undo payload not supported: %#v", legacy)
+	}
+}
+
+func equalStringSlices(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func equalAnySlices(value any, want []any) bool {
+	got, ok := value.([]any)
+	if !ok || len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestUndoExpires(t *testing.T) {
 	s := NewStore()
 	id := newID()

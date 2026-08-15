@@ -11,3 +11,14 @@
   - [js-yaml Security Advisories](https://github.com/nodeca/js-yaml/security/advisories)
   - [NVD：js-yaml 漏洞检索](https://nvd.nist.gov/vuln/search/results?query=js-yaml)
   - [NVD：Next.js 漏洞检索](https://nvd.nist.gov/vuln/search/results?query=Next.js)
+
+## 2026-08-15
+
+- 日期选择器改用 Adobe React Spectrum 官方的无样式可访问组件：`react-aria-components@1.20.0` 与 `@internationalized/date@3.12.3`。
+- `react-aria-components@1.20.0` 的 peer dependency 明确支持 React `^19.0.0-rc.1`，与项目 `react@19.1.1`、`react-dom@19.1.1` 兼容；`@internationalized/date@3.12.3` 无 peer dependency 限制。
+- 安装后执行 `npm audit`，生产依赖审计结果为 0 vulnerabilities；锁文件记录完整版本与完整性校验。
+- 组件与日期算法均来自官方包，项目只提供主题样式和 `YYYY-MM-DD` 值适配，不自定义日历计算或原生日期弹层。
+- 参考链接：
+  - [React Aria DatePicker](https://react-spectrum.adobe.com/react-aria/DatePicker.html)
+  - [react-aria-components npm](https://www.npmjs.com/package/react-aria-components)
+  - [@internationalized/date npm](https://www.npmjs.com/package/@internationalized/date)

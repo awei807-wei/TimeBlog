@@ -14,6 +14,7 @@ export type MdxMarkdownEditorProps = {
   onFiles?: (files: File[]) => void;
   onImageUpload?: (file: File) => Promise<string>;
   onError?: (message: string) => void;
+  onNotice?: (message: string) => void;
   onReady?: (ready: boolean) => void;
   onViewModeChange?: (viewMode: MdxEditorViewMode) => void;
   disabled?: boolean;

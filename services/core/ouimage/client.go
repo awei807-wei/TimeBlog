@@ -20,7 +20,10 @@ import (
 const (
 	MaxImageBytes    int64 = 20 * 1024 * 1024
 	MaxResponseBytes       = 256 * 1024
+	uploadWriterWait       = time.Second
 )
+
+var errUploadResponseClosed = errors.New("upload request body closed after response")
 
 var supportedMIME = map[string]bool{
 	"image/jpeg": true, "image/png": true, "image/webp": true, "image/gif": true,
@@ -203,18 +206,31 @@ func (c *Client) uploadOnce(ctx context.Context, filename, mimeType, filePath, e
 	}()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.config.Endpoint, pr)
 	if err != nil {
+		_ = pr.CloseWithError(err)
+		_, _ = waitUploadWriter(writeErr)
 		return UploadResult{}, false, err
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	c.authorize(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		_ = pr.CloseWithError(err)
-		<-writeErr
+		_, _ = waitUploadWriter(writeErr)
 		return UploadResult{}, true, fmt.Errorf("图床网络请求失败")
 	}
 	defer resp.Body.Close()
-	if write := <-writeErr; write != nil {
+	// A server or RoundTripper may return a response before consuming the
+	// request body. Close the read side first so the multipart writer cannot
+	// remain blocked on io.Pipe, then wait only for a bounded period.
+	_ = pr.CloseWithError(errUploadResponseClosed)
+	write, writerDone := waitUploadWriter(writeErr)
+	if !writerDone {
+		return UploadResult{}, false, fmt.Errorf("上传请求体写入超时")
+	}
+	if write != nil && !errors.Is(write, errUploadResponseClosed) && !errors.Is(write, io.ErrClosedPipe) {
 		return UploadResult{}, false, fmt.Errorf("读取本地媒体失败")
 	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
@@ -242,6 +258,17 @@ func (c *Client) uploadOnce(ctx context.Context, filename, mimeType, filePath, e
 		}
 	}
 	return result, false, nil
+}
+
+func waitUploadWriter(writeErr <-chan error) (error, bool) {
+	timer := time.NewTimer(uploadWriterWait)
+	defer timer.Stop()
+	select {
+	case err := <-writeErr:
+		return err, true
+	case <-timer.C:
+		return fmt.Errorf("上传请求体写入超时"), false
+	}
 }
 
 func (c *Client) Trash(ctx context.Context, imageID string) error {

@@ -11,6 +11,53 @@ import (
 	"time"
 )
 
+// commitWorkingRequest keeps taxonomy field presence separate from its value.
+// An omitted categories/tags field inherits the working copy, while an
+// explicitly supplied empty array clears the persisted relations.
+type commitWorkingRequest struct {
+	Kind         string   `json:"kind"`
+	Status       string   `json:"status"`
+	Visibility   string   `json:"visibility"`
+	Title        string   `json:"title"`
+	Slug         string   `json:"slug"`
+	Summary      string   `json:"summary"`
+	Markdown     string   `json:"markdown"`
+	JournalDate  string   `json:"journalDate"`
+	JournalTime  *string  `json:"journalTime"`
+	Categories   []string `json:"categories"`
+	Tags         []string `json:"tags"`
+	BaseRevision int64    `json:"baseRevision"`
+
+	categoriesPresent bool
+	tagsPresent       bool
+}
+
+func (in *commitWorkingRequest) UnmarshalJSON(data []byte) error {
+	type plainCommitWorkingRequest commitWorkingRequest
+	var decoded plainCommitWorkingRequest
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*in = commitWorkingRequest(decoded)
+	_, in.categoriesPresent = fields["categories"]
+	_, in.tagsPresent = fields["tags"]
+	return nil
+}
+
+// commitTags keeps Markdown hashtag extraction as a compatibility behavior
+// only for requests that omit tags. An explicit tags array is authoritative,
+// including an empty array used to clear all tags.
+func commitTags(in commitWorkingRequest) []string {
+	if in.tagsPresent {
+		return mergeTags(in.Tags, "")
+	}
+	return mergeTags(in.Tags, in.Markdown)
+}
+
 func (srv *Server) workingCopies(w http.ResponseWriter, r *http.Request) {
 	if srv.store.persistent {
 		if !srv.requirePersistent(w) {
@@ -549,20 +596,7 @@ func (srv *Server) commitWorking(w http.ResponseWriter, r *http.Request, wc *Wor
 		srv.commitWorkingDatabase(w, r, wc)
 		return
 	}
-	var in struct {
-		Kind         string   `json:"kind"`
-		Status       string   `json:"status"`
-		Visibility   string   `json:"visibility"`
-		Title        string   `json:"title"`
-		Slug         string   `json:"slug"`
-		Summary      string   `json:"summary"`
-		Markdown     string   `json:"markdown"`
-		JournalDate  string   `json:"journalDate"`
-		JournalTime  *string  `json:"journalTime"`
-		Categories   []string `json:"categories"`
-		Tags         []string `json:"tags"`
-		BaseRevision int64    `json:"baseRevision"`
-	}
+	var in commitWorkingRequest
 	if decode(r, &in) != nil {
 		problem(w, 400, "请求无效")
 		return
@@ -608,8 +642,14 @@ func (srv *Server) commitWorking(w http.ResponseWriter, r *http.Request, wc *Wor
 			in.Title = v
 		}
 	}
+	if !in.categoriesPresent {
+		in.Categories = stringSlice(wc.Payload["categories"])
+	}
+	if !in.tagsPresent {
+		in.Tags = stringSlice(wc.Payload["tags"])
+	}
 	htmlOut, plain := renderMarkdown(in.Markdown)
-	e := &Entry{ID: wc.EntryID, Kind: in.Kind, Status: in.Status, Visibility: in.Visibility, Title: in.Title, Slug: in.Slug, Summary: in.Summary, Markdown: in.Markdown, RenderedHTML: htmlOut, PlainText: plain, JournalDate: in.JournalDate, JournalTime: in.JournalTime, TimePrecision: "day", DayPosition: srv.store.nextPosition, CreatedAt: time.Now(), UpdatedAt: time.Now(), Revision: 1, Categories: in.Categories, Tags: mergeTags(in.Tags, in.Markdown)}
+	e := &Entry{ID: wc.EntryID, Kind: in.Kind, Status: in.Status, Visibility: in.Visibility, Title: in.Title, Slug: in.Slug, Summary: in.Summary, Markdown: in.Markdown, RenderedHTML: htmlOut, PlainText: plain, JournalDate: in.JournalDate, JournalTime: in.JournalTime, TimePrecision: "day", DayPosition: srv.store.nextPosition, CreatedAt: time.Now(), UpdatedAt: time.Now(), Revision: 1, Categories: in.Categories, Tags: commitTags(in)}
 	if e.JournalTime != nil {
 		e.TimePrecision = "minute"
 	}
@@ -646,12 +686,7 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 		problem(w, http.StatusUnauthorized, "需要登录")
 		return
 	}
-	var in struct {
-		Kind, Status, Visibility, Title, Slug, Summary, Markdown, JournalDate string
-		JournalTime                                                           *string `json:"journalTime"`
-		Categories, Tags                                                      []string
-		BaseRevision                                                          int64
-	}
+	var in commitWorkingRequest
 	if decode(r, &in) != nil {
 		problem(w, 400, "请求无效")
 		return
@@ -684,10 +719,10 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 			in.JournalTime = &v
 		}
 	}
-	if len(in.Categories) == 0 {
+	if !in.categoriesPresent {
 		in.Categories = stringSlice(wc.Payload["categories"])
 	}
-	if len(in.Tags) == 0 {
+	if !in.tagsPresent {
 		in.Tags = stringSlice(wc.Payload["tags"])
 	}
 	if in.Status == "private" {
@@ -836,7 +871,7 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 			return
 		}
 	}
-	for _, tag := range mergeTags(in.Tags, in.Markdown) {
+	for _, tag := range commitTags(in) {
 		norm := strings.ToLower(tag)
 		_, _ = tx.ExecContext(r.Context(), `INSERT INTO tags(id,display_name,normalized_name,slug) VALUES(gen_random_uuid(),$1,$2,$3) ON CONFLICT(normalized_name) DO NOTHING`, tag, norm, slugify(tag))
 		_, _ = tx.ExecContext(r.Context(), `INSERT INTO entry_tags(entry_id,tag_id) SELECT $1::uuid,id FROM tags WHERE normalized_name=$2 ON CONFLICT DO NOTHING`, entryID, norm)
@@ -854,7 +889,7 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 			return "minute"
 		}
 		return "day"
-	}(), Revision: revision}
+	}(), Revision: revision, Categories: in.Categories, Tags: commitTags(in)}
 	resp := map[string]any{"entry": e}
 	if undoToken != "" {
 		resp["undoToken"] = undoToken
@@ -931,6 +966,34 @@ func (srv *Server) undoEntry(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, map[string]any{"entry": e})
 }
 
+// undoEntryForResponse adapts the persisted undo snapshot to the same
+// editor-facing entry shape returned by the in-memory implementation.  The
+// working payload is preferred because it contains the draft the editor had
+// before publishing; the top-level snapshot remains a compatibility fallback
+// for older undo tokens that predate workingPayload.
+func undoEntryForResponse(data map[string]any, entryID, status, visibility string) map[string]any {
+	source := data
+	if payload, ok := data["workingPayload"].(map[string]any); ok {
+		source = payload
+	}
+	entry := map[string]any{
+		"id":         entryID,
+		"kind":       "note",
+		"status":     status,
+		"visibility": visibility,
+	}
+	for _, key := range []string{"kind", "title", "slug", "summary", "markdown", "journalDate", "journalTime", "categories", "tags"} {
+		if value, ok := source[key]; ok {
+			entry[key] = value
+			continue
+		}
+		if value, ok := data[key]; ok {
+			entry[key] = value
+		}
+	}
+	return entry
+}
+
 func (srv *Server) undoEntryDatabase(w http.ResponseWriter, r *http.Request) {
 	ownerID, err := srv.persistentUserID(r)
 	if err != nil {
@@ -982,5 +1045,5 @@ func (srv *Server) undoEntryDatabase(w http.ResponseWriter, r *http.Request) {
 		problem(w, 500, "撤销失败")
 		return
 	}
-	jsonResponse(w, 200, map[string]any{"entryId": entryID, "payload": data, "status": status, "visibility": visibility})
+	jsonResponse(w, 200, map[string]any{"entryId": entryID, "entry": undoEntryForResponse(data, entryID, status, visibility), "payload": data, "status": status, "visibility": visibility})
 }
