@@ -9,7 +9,9 @@ import { PUBLIC_CACHE_INVALIDATED_EVENT } from '@/lib/cache-invalidation';
 function EntryCard({ entry }: { entry: PublicEntry }) {
   if (entry.placeholder) return <article className="entry private"><span aria-hidden="true">◌</span><span>{entry.journalTime ? `${entry.journalTime} · ` : ''}{entry.text}</span></article>;
   const body = entry.summary || entry.markdown || '';
-  return <article className="entry"><div className="entry-meta"><span>{entry.journalTime || '当日随记'}</span><span className="tag">{entry.kind === 'article' ? '文章' : '随记'}</span>{entry.tags?.slice(0, 2).map(tag => <span className="tag" key={tag}>#{tag}</span>)}</div>{entry.title ? <h2>{entry.slug ? <Link href={`/article/${entry.slug}`}>{entry.title}</Link> : entry.title}</h2> : null}<p>{body}</p></article>;
+  const articleIdentifier = entry.slug || entry.id;
+  const articleHref = entry.kind === 'article' && articleIdentifier ? `/article/${encodeURIComponent(articleIdentifier)}` : '';
+  return <article className="entry"><div className="entry-meta"><span>{entry.journalTime || '当日随记'}</span><span className="tag">{entry.kind === 'article' ? '文章' : '随记'}</span>{entry.tags?.slice(0, 2).map(tag => <span className="tag" key={tag}>#{tag}</span>)}</div>{entry.title ? <h2>{articleHref ? <Link href={articleHref} aria-label={`文章标题：${entry.title}`}>{entry.title}</Link> : entry.title}</h2> : null}<p>{body}</p>{articleHref ? <Link className="entry-read-more" href={articleHref} aria-label={`阅读全文：${entry.title || '文章'}`}>阅读全文<span aria-hidden="true"> →</span></Link> : null}</article>;
 }
 
 function Day({ day }: { day: TimelineDay }) {

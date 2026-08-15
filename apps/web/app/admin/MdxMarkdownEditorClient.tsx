@@ -4,7 +4,6 @@ import {
   BlockTypeSelect,
   BoldItalicUnderlineToggles,
   CreateLink,
-  DiffSourceToggleWrapper,
   InsertCodeBlock,
   InsertImage,
   InsertTable,
@@ -26,6 +25,7 @@ import {
   thematicBreakPlugin,
   toolbarPlugin,
   useCellValue,
+  usePublisher,
   viewMode$,
   type ViewMode,
   type MDXEditorMethods,
@@ -65,6 +65,42 @@ function ViewModeBridge({ onChange }: { onChange: (viewMode: ViewMode) => void }
   }, [onChange, viewMode]);
 
   return null;
+}
+
+function ViewModeToggle() {
+  const viewMode = useCellValue(viewMode$);
+  const publishViewMode = usePublisher(viewMode$);
+
+  return (
+    <div className="mdx-view-mode-toggle" role="group" aria-label="编辑模式">
+      <button type="button" aria-pressed={viewMode === 'rich-text'} onClick={() => publishViewMode('rich-text')}>所见即所得</button>
+      <button type="button" aria-pressed={viewMode === 'source'} onClick={() => publishViewMode('source')}>Markdown 源码</button>
+    </div>
+  );
+}
+
+function EditorToolbar({ onViewModeChange }: { onViewModeChange: (viewMode: ViewMode) => void }) {
+  const viewMode = useCellValue(viewMode$);
+
+  return (
+    <>
+      <ViewModeBridge onChange={onViewModeChange} />
+      {viewMode === 'rich-text'
+        ? <>
+          <UndoRedo />
+          <Separator />
+          <BlockTypeSelect />
+          <BoldItalicUnderlineToggles />
+          <ListsToggle options={['bullet', 'number', 'check']} />
+          <CreateLink />
+          <InsertImage />
+          <InsertTable />
+          <InsertCodeBlock />
+        </>
+        : <span className="mdx-editor-mode-title">{viewMode === 'diff' ? '差异对比' : 'Markdown 源码'}</span>}
+      <ViewModeToggle />
+    </>
+  );
 }
 
 export default function MdxMarkdownEditorClient({
@@ -155,20 +191,7 @@ export default function MdxMarkdownEditorClient({
     diffSourcePlugin({ viewMode: 'rich-text' }),
     toolbarPlugin({
       toolbarContents: () => (
-        <>
-          <ViewModeBridge onChange={handleViewModeChange} />
-          <DiffSourceToggleWrapper options={['rich-text', 'source']}>
-            <UndoRedo />
-            <Separator />
-            <BlockTypeSelect />
-            <BoldItalicUnderlineToggles />
-            <ListsToggle options={['bullet', 'number', 'check']} />
-            <CreateLink />
-            <InsertImage />
-            <InsertTable />
-            <InsertCodeBlock />
-          </DiffSourceToggleWrapper>
-        </>
+        <EditorToolbar onViewModeChange={handleViewModeChange} />
       ),
     }),
   ], [handleViewModeChange, imageUploadHandler]);
@@ -254,7 +277,7 @@ export default function MdxMarkdownEditorClient({
         spellCheck
         placeholder="从一句话开始。支持 Markdown、图片和附件。"
         trim={false}
-        contentEditableClassName="mdx-editor-content"
+        contentEditableClassName="mdx-editor-content article-prose"
         className="mdx-editor"
       />
     </div>

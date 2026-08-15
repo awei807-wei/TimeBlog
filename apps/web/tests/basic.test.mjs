@@ -140,7 +140,11 @@ test('MDXEditor is the sole Markdown source of truth and supports rich/source mo
   assert.doesNotMatch(source, /renderMarkdown\(markdown\)/);
   assert.match(editor, /<MDXEditor/);
   assert.match(editor, /diffSourcePlugin/);
-  assert.match(editor, /options=\{\['rich-text', 'source'\]\}/);
+  assert.match(editor, /usePublisher/);
+  assert.match(editor, /所见即所得/);
+  assert.match(editor, /Markdown 源码/);
+  assert.match(editor, /<ViewModeToggle \/>/);
+  assert.doesNotMatch(editor, /DiffSourceToggleWrapper/);
   assert.match(editor, /markdown !== markdownRef\.current/);
   assert.match(editor, /markdownRef\.current = markdown/);
   assert.match(editor, /editor\.setMarkdown\(prepared\.markdown\)/);
@@ -202,6 +206,58 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(css, /\.mdx-editor \.mdxeditor-toolbar\{[^}]*scrollbar-width:none/);
 });
 
+test('article-prose is the shared Markdown typography contract without card pollution', async () => {
+  const fs = await import('node:fs/promises');
+  const prose = await fs.readFile(new URL('../app/article-prose.css', import.meta.url), 'utf8');
+  const chrome = await fs.readFile(new URL('../app/mdx-editor-chrome.css', import.meta.url), 'utf8');
+  const layout = await fs.readFile(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const article = await fs.readFile(new URL('../app/article/[slug]/page.tsx', import.meta.url), 'utf8');
+  for (const selector of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'blockquote', 'code', 'pre', 'a', 'table', 'img', 'video', 'audio', 'hr']) {
+    assert.match(prose, new RegExp(`\\.article-prose ${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`));
+  }
+  assert.match(layout, /import ['"]\.\/article-prose\.css['"]/);
+  assert.match(layout, /import ['"]\.\/mdx-editor-chrome\.css['"]/);
+  assert.match(editor, /contentEditableClassName="mdx-editor-content article-prose"/);
+  assert.match(article, /className="markdown article-prose"/);
+  assert.match(prose, /\.article-prose \.tok-keyword/);
+  assert.match(prose, /\.article-prose \.chroma/);
+  assert.doesNotMatch(prose, /\.mdx-view-mode-toggle|\.mdx-editor-mode-title|\.mdx-editor-content\.article-prose\[class\*="placeholder"\]/);
+  assert.match(chrome, /\.mdx-view-mode-toggle/);
+  assert.match(chrome, /\.mdx-editor-mode-title/);
+  assert.match(chrome, /\.mdx-editor-content\.article-prose\[class\*="placeholder"\]/);
+  const timeline = await fs.readFile(new URL('../app/HomeTimeline.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(timeline, /article-prose/);
+});
+
+test('public article entries have explicit detail navigation and notes stay non-linking', async () => {
+  const fs = await import('node:fs/promises');
+  const files = [
+    '../app/HomeTimeline.tsx',
+    '../app/day/[date]/page.tsx',
+    '../app/search/SearchResults.tsx',
+    '../app/categories/[slug]/CategoryResults.tsx',
+    '../app/tag/[tag]/TagResults.tsx',
+  ];
+  for (const file of files) {
+    const source = await fs.readFile(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /entry\.kind === 'article' && articleIdentifier/);
+    assert.match(source, /entry\.slug \|\| entry\.id/);
+    assert.match(source, /阅读全文/);
+  }
+  const sitemap = await fs.readFile(new URL('../app/sitemap.ts', import.meta.url), 'utf8');
+  assert.match(sitemap, /const articleIdentifier = entry\.slug \|\| entry\.id/);
+  assert.match(sitemap, /encodeURIComponent\(articleIdentifier\)/);
+  const articlePage = await fs.readFile(new URL('../app/article/[slug]/page.tsx', import.meta.url), 'utf8');
+  assert.match(articlePage, /import \{ notFound, redirect \} from 'next\/navigation'/);
+  assert.match(articlePage, /redirect\(`\/article\/\$\{encodeURIComponent\(article\.slug\)\}`\)/);
+  assert.match(articlePage, /const canonicalSlug = article\.slug\?\.trim\(\) \|\| slug/);
+  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(css, /\.entry h2 a\{/);
+  assert.match(css, /\.entry-read-more\{/);
+  assert.match(css, /@media\(max-width:1280px\)\{\.admin-grid\{grid-template-columns:minmax\(0,1fr\)\}\}/);
+});
+
 test('legacy MDX compatibility skips code, handles quoted attributes, and restores paired custom tags', async () => {
   const fs = await import('node:fs/promises');
   const ts = await import('typescript');
@@ -247,8 +303,11 @@ test('source and diff modes block media insertion and bridge the current editor 
   assert.match(editor, /useCellValue/);
   assert.match(editor, /viewMode\$/);
   assert.match(editor, /function ViewModeBridge/);
-  assert.match(editor, /<ViewModeBridge onChange=\{handleViewModeChange\}/);
-  assert.ok(editor.indexOf('<ViewModeBridge') < editor.indexOf('<DiffSourceToggleWrapper'));
+  assert.match(editor, /<ViewModeBridge onChange=\{onViewModeChange\}/);
+  assert.match(editor, /function ViewModeToggle/);
+  assert.match(editor, /<ViewModeToggle \/>/);
+  assert.ok(editor.indexOf('<ViewModeBridge') < editor.indexOf('<ViewModeToggle />'));
+  assert.doesNotMatch(editor, /DiffSourceToggleWrapper/);
   assert.match(editor, /viewModeRef\.current !== 'rich-text'/);
   assert.match(editor, /onErrorRef\.current\?\.\(MEDIA_MODE_HINT\)/);
   assert.match(editor, /const setEditorRef/);
@@ -467,6 +526,9 @@ test('shared GFM fixture stays safe and resolves media references', async () => 
   const fixture = await fs.readFile(new URL('../../../tests/fixtures/markdown/gfm.md', import.meta.url), 'utf8');
   const rendered = renderMarkdown(fixture);
   assert.match(rendered.html, /<table>/);
+  assert.match(rendered.html, /<h4 id="四级标题">/);
+  assert.match(rendered.html, /<h5 id="五级标题">/);
+  assert.match(rendered.html, /<h6 id="六级标题">/);
   assert.match(rendered.html, /data-media-id="00000000-0000-0000-0000-000000000001"/);
   assert.doesNotMatch(rendered.html.toLowerCase(), /<iframe|<script/);
   assert.match(rendered.html, /id="中文标题"/);

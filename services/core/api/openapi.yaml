@@ -41,7 +41,7 @@ paths:
       tags: [public]
       operationId: getPublicArticle
       parameters:
-        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/ArticleIdentifier'
       responses:
         '200': {description: 公开文章, content: {application/json: {schema: {$ref: '#/components/schemas/PublicEntry'}}}}
         '404': {$ref: '#/components/responses/NotFound'}
@@ -533,6 +533,7 @@ components:
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
     Cursor: {name: cursor, in: query, schema: {type: string}}
     Date: {name: date, in: path, required: true, schema: {type: string, format: date}}
+    ArticleIdentifier: {name: slug, in: path, required: true, description: 公开文章使用 canonical slug；历史空 slug 文章允许使用合法 UUID entry ID 回退查询，slug 匹配优先，非 UUID ID 不接受, schema: {type: string, minLength: 1, maxLength: 200}}
     Slug: {name: slug, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 200}}
     CSRF: {name: X-CSRF-Token, in: header, required: true, schema: {type: string, minLength: 16}}
     Origin: {name: Origin, in: header, required: false, schema: {type: string, format: uri}}
@@ -552,6 +553,7 @@ components:
     Problem: {description: Problem Details, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
     BadRequest: {description: 请求无效, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
     Unauthorized: {description: 未认证, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Forbidden: {description: 禁止访问, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
     CSRF: {description: CSRF 或来源校验失败, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
     Conflict: {description: 乐观锁或资源冲突, content: {application/problem+json: {schema: {$ref: '#/components/schemas/ProblemConflict'}}}}
     NotFound: {description: 资源不存在, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
@@ -700,7 +702,7 @@ components:
         status: {$ref: '#/components/schemas/EntryStatus'}
         visibility: {$ref: '#/components/schemas/Visibility'}
         title: {type: string}
-        slug: {type: string}
+        slug: {type: string, description: 文章保存后稳定的 canonical slug；历史导入的空 slug 文章仍可通过 UUID entry ID 读取}
         summary: {type: string}
         markdown: {type: string}
         renderedHtml: {type: string}

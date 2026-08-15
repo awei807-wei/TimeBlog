@@ -115,7 +115,7 @@ export function renderMarkdown(markdown) {
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
-    const heading = /^(#{1,3})\s+(.+?)\s*$/.exec(line);
+    const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (heading) { flushParagraph(); const title = heading[2].trim(); const id = idByTitle.get(title) || slugifyHeading(title); html.push(`<h${heading[1].length} id="${escapeHtml(id)}">${renderInline(title)}</h${heading[1].length}>`); continue; }
     const table = renderTable(lines, i);
     if (table) { flushParagraph(); html.push(table.html); i = table.next - 1; continue; }

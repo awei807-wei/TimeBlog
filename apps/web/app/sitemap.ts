@@ -15,7 +15,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       urls.push({ url: `${base}/day/${day.date}`, ...(lastModified ? { lastModified } : {}) });
         for (const entry of entries) {
           for (const tag of entry.tags || []) tagSlugs.add(tag);
-          if (entry.slug && entry.kind === 'article') urls.push({ url: `${base}/article/${entry.slug}`, ...(entry.updatedAt ? { lastModified: entry.updatedAt } : {}) });
+          const articleIdentifier = entry.slug || entry.id;
+          if (articleIdentifier && entry.kind === 'article') urls.push({ url: `${base}/article/${encodeURIComponent(articleIdentifier)}`, ...(entry.updatedAt ? { lastModified: entry.updatedAt } : {}) });
         }
       }
       if (!timeline.nextCursor || timeline.nextCursor === cursor) break;

@@ -1,4 +1,6 @@
 import './globals.css';
+import './article-prose.css';
+import './mdx-editor-chrome.css';
 import type { Metadata } from 'next';
 import ServiceWorkerRegister from './ServiceWorkerRegister';
 import AppShell from './AppShell';

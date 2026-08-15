@@ -1,0 +1,86 @@
+/* MDXEditor-only toolbar and placeholder presentation. Keep editor chrome
+   separate from the shared Markdown body typography contract. */
+
+/* Explicit labels are intentionally text, not icon-only controls. */
+.mdx-view-mode-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+  margin-inline-start: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface) 82%, var(--accent-soft));
+}
+
+.mdx-editor .mdx-view-mode-toggle button {
+  min-width: auto;
+  min-height: 40px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mdx-editor .mdx-view-mode-toggle button + button {
+  border-inline-start: 1px solid var(--line);
+}
+
+.mdx-editor .mdx-view-mode-toggle button:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mdx-editor .mdx-view-mode-toggle button[aria-pressed="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mdx-editor .mdx-view-mode-toggle button[aria-pressed="true"]:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mdx-editor-mode-title {
+  min-width: 0;
+  margin-inline: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* MDXEditor adds a placeholder marker to the content root. Keep that layer
+   intentionally lighter than real Markdown paragraphs and headings. */
+.mdx-editor-content.article-prose[class*="placeholder"] {
+  color: var(--muted);
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.mdx-editor-content.article-prose[class*="placeholder"] p {
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+}
+
+@media (max-width: 760px) {
+  .mdx-editor .mdx-view-mode-toggle button {
+    min-height: 44px;
+    padding-inline: 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mdx-editor .mdx-view-mode-toggle button {
+    transition: none;
+  }
+}

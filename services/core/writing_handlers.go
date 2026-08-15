@@ -601,6 +601,17 @@ func (srv *Server) commitWorking(w http.ResponseWriter, r *http.Request, wc *Wor
 		problem(w, 400, "请求无效")
 		return
 	}
+	if in.Kind == "" {
+		if v, ok := wc.Payload["kind"].(string); ok && v != "" {
+			in.Kind = v
+		} else if wc.EntryID != "" {
+			srv.store.mu.RLock()
+			if current := srv.store.entries[wc.EntryID]; current != nil {
+				in.Kind = current.Kind
+			}
+			srv.store.mu.RUnlock()
+		}
+	}
 	if wc.EntryID != "" && in.BaseRevision > 0 {
 		srv.store.mu.RLock()
 		current := srv.store.entries[wc.EntryID]
@@ -653,18 +664,21 @@ func (srv *Server) commitWorking(w http.ResponseWriter, r *http.Request, wc *Wor
 	if e.JournalTime != nil {
 		e.TimePrecision = "minute"
 	}
-	if e.Kind == "article" && e.Slug == "" {
-		e.Slug = slugify(e.Title)
-	}
 	srv.store.mu.Lock()
 	if e.ID != "" {
 		if old := srv.store.entries[e.ID]; old != nil {
 			e.CreatedAt = old.CreatedAt
 			e.Revision = old.Revision + 1
+			if e.Kind == "article" && e.Slug == "" {
+				e.Slug = old.Slug
+			}
 		}
 	} else {
 		e.ID = newID()
 		srv.store.nextPosition++
+	}
+	if e.Kind == "article" {
+		e.Slug = uniqueMemoryArticleSlug(srv.store.entries, e.Slug, e.Title, e.ID)
 	}
 	srv.store.entries[e.ID] = e
 	delete(srv.store.working, wc.ID)
@@ -731,9 +745,6 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 			in.Visibility = "private"
 		}
 	}
-	if in.Kind == "" {
-		in.Kind = "note"
-	}
 	if in.Status == "" {
 		in.Status = "draft"
 	}
@@ -757,11 +768,12 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 	defer tx.Rollback()
 	var entryID string
 	var revision int64
+	var existingKind, existingTitle, existingSlug string
 	previousStatus := "draft"
 	previousVisibility := "private"
 	isNewEntry := wc.EntryID == ""
 	if wc.EntryID != "" {
-		err = tx.QueryRowContext(r.Context(), `SELECT id::text,revision,status,visibility FROM entries WHERE id=$1::uuid AND author_id=$2::uuid FOR UPDATE`, wc.EntryID, ownerID).Scan(&entryID, &revision, &previousStatus, &previousVisibility)
+		err = tx.QueryRowContext(r.Context(), `SELECT id::text,kind,revision,status,visibility,COALESCE(title,''),COALESCE(slug,'') FROM entries WHERE id=$1::uuid AND author_id=$2::uuid FOR UPDATE`, wc.EntryID, ownerID).Scan(&entryID, &existingKind, &revision, &previousStatus, &previousVisibility, &existingTitle, &existingSlug)
 		if err != nil {
 			problem(w, 404, "内容不存在")
 			return
@@ -770,19 +782,43 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 			problem(w, 409, "内容已在其他位置修改")
 			return
 		}
+		if in.Kind == "" {
+			in.Kind = existingKind
+		}
+		if in.Title == "" {
+			in.Title = existingTitle
+		}
+		if in.Slug == "" {
+			in.Slug = existingSlug
+		}
+	} else {
+		entryID = newID()
+		err = nil
+	}
+	if in.Kind == "" {
+		in.Kind = "note"
+	}
+	if in.Kind == "article" {
+		in.Slug, err = uniqueDatabaseArticleSlug(r.Context(), tx, in.Slug, in.Title, entryID)
+		if err != nil {
+			problem(w, 500, "生成文章地址失败")
+			return
+		}
+	}
+	if wc.EntryID == "" {
+		err = tx.QueryRowContext(r.Context(), `INSERT INTO entries(id,author_id,kind,status,visibility,title,slug,summary,markdown,rendered_html,plain_text,journal_date,journal_time,time_precision,day_position) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE((SELECT max(day_position)+1 FROM entries WHERE journal_date=$12),0)) RETURNING id::text,revision`, entryID, ownerID, in.Kind, in.Status, in.Visibility, in.Title, in.Slug, in.Summary, in.Markdown, htmlOut, plain, in.JournalDate, in.JournalTime, func() string {
+			if in.JournalTime != nil {
+				return "minute"
+			}
+			return "day"
+		}()).Scan(&entryID, &revision)
+	} else {
 		_, err = tx.ExecContext(r.Context(), `UPDATE entries SET kind=$2,status=$3,visibility=$4,title=$5,slug=$6,summary=$7,markdown=$8,rendered_html=$9,plain_text=$10,journal_date=$11,journal_time=$12,time_precision=$13,revision=revision+1,updated_at=now() WHERE id=$1::uuid`, entryID, in.Kind, in.Status, in.Visibility, in.Title, in.Slug, in.Summary, in.Markdown, htmlOut, plain, in.JournalDate, in.JournalTime, func() string {
 			if in.JournalTime != nil {
 				return "minute"
 			}
 			return "day"
 		}())
-	} else {
-		err = tx.QueryRowContext(r.Context(), `INSERT INTO entries(id,author_id,kind,status,visibility,title,slug,summary,markdown,rendered_html,plain_text,journal_date,journal_time,time_precision,day_position) VALUES(gen_random_uuid(),$1::uuid,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,COALESCE((SELECT max(day_position)+1 FROM entries WHERE journal_date=$11),0)) RETURNING id::text,revision`, ownerID, in.Kind, in.Status, in.Visibility, in.Title, in.Slug, in.Summary, in.Markdown, htmlOut, plain, in.JournalDate, in.JournalTime, func() string {
-			if in.JournalTime != nil {
-				return "minute"
-			}
-			return "day"
-		}()).Scan(&entryID, &revision)
 	}
 	if err != nil {
 		problem(w, 500, "提交内容失败")

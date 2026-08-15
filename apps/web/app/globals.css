@@ -264,3 +264,13 @@
 @media(max-width:900px){.composer-footer{grid-template-columns:repeat(2,minmax(0,1fr))}.composer-footer label:nth-of-type(4),.composer-footer label:nth-of-type(5){grid-column:span 2}.composer-footer .primary,.composer-footer .secondary{width:100%}}
 @media(max-width:640px){.composer textarea{min-height:clamp(220px,44vh,420px);font-size:17px}.composer-footer{grid-template-columns:1fr;gap:9px}.composer-footer label:nth-of-type(4),.composer-footer label:nth-of-type(5){grid-column:auto}.composer-footer input,.composer-footer select,.composer-footer .primary,.composer-footer .secondary{height:44px;min-height:44px}.upload-list li{align-items:flex-start;flex-direction:column}.upload-actions{width:100%;justify-content:flex-start}.upload-dropzone{padding:21px 14px}}
 @media(prefers-reduced-motion:reduce){.upload-dropzone,.upload-progress span{transition:none}.spin{animation:none}}
+
+/* Public article entries remain visibly navigable without making note cards look like articles. */
+.entry h2 a{color:var(--ink);text-decoration:underline;text-decoration-thickness:.08em;text-underline-offset:.16em}
+.entry h2 a:hover{color:var(--accent)}
+.entry-read-more{display:inline-flex;align-items:center;min-height:44px;margin-top:10px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--accent);font-size:13px;font-weight:700;white-space:nowrap}
+.entry-read-more:hover{border-color:#9acfc5;background:var(--accent-soft)}
+
+/* At medium widths the writing surface gets the full row; the draft tray stays
+   visible below it instead of permanently stealing editor width. */
+@media(max-width:1280px){.admin-grid{grid-template-columns:minmax(0,1fr)}}

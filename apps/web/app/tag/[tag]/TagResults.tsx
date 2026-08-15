@@ -6,7 +6,9 @@ import { getTag, type PublicEntry } from '@/lib/api';
 
 function Card({ entry }: { entry: PublicEntry }) {
   if (entry.placeholder) return <article className="entry private"><span>{entry.text}</span></article>;
-  return <article className="entry"><div className="entry-meta"><span>{entry.journalDate}</span><span className="tag">{entry.kind === 'article' ? '文章' : '随记'}</span></div>{entry.title && <h2>{entry.slug ? <Link href={`/article/${entry.slug}`}>{entry.title}</Link> : entry.title}</h2>}<p>{entry.summary || entry.markdown}</p></article>;
+  const articleIdentifier = entry.slug || entry.id;
+  const articleHref = entry.kind === 'article' && articleIdentifier ? `/article/${encodeURIComponent(articleIdentifier)}` : '';
+  return <article className="entry"><div className="entry-meta"><span>{entry.journalDate}</span><span className="tag">{entry.kind === 'article' ? '文章' : '随记'}</span></div>{entry.title && <h2>{articleHref ? <Link href={articleHref} aria-label={`文章标题：${entry.title}`}>{entry.title}</Link> : entry.title}</h2>}<p>{entry.summary || entry.markdown}</p>{articleHref ? <Link className="entry-read-more" href={articleHref} aria-label={`阅读全文：${entry.title || '文章'}`}>阅读全文<span aria-hidden="true"> →</span></Link> : null}</article>;
 }
 
 export default function TagResults({ tag, initialEntries, initialCursor }: { tag: string; initialEntries: PublicEntry[]; initialCursor?: string }) {

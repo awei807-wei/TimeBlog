@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getArticle, type PublicEntry } from '@/lib/api';
 import DOMPurify from 'isomorphic-dompurify';
 import { decorateMediaReferences, renderMarkdown } from '@/lib/markdown';
@@ -18,7 +18,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!article || article.placeholder) return { title: '文章不存在 · 个人时间线', robots: { index: false, follow: false } };
   const title = article.title || '无题';
   const description = article.summary || article.markdown?.replace(/\s+/g, ' ').slice(0, 160) || '个人时间线文章';
-  const url = `${siteUrl()}/article/${encodeURIComponent(slug)}`;
+  const canonicalSlug = article.slug?.trim() || slug;
+  const url = `${siteUrl()}/article/${encodeURIComponent(canonicalSlug)}`;
   return {
     title: `${title} · 个人时间线`,
     description,
@@ -32,6 +33,8 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const { slug } = await params;
   const article = await loadArticle(slug);
   if (!article || article.placeholder) notFound();
+  const canonicalSlug = article.slug?.trim() || slug;
+  if (article.slug && article.slug !== slug) redirect(`/article/${encodeURIComponent(article.slug)}`);
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -39,7 +42,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     description: article.summary || undefined,
     datePublished: article.journalDate,
     dateModified: article.updatedAt || article.journalDate,
-    mainEntityOfPage: `${siteUrl()}/article/${encodeURIComponent(slug)}`,
+    mainEntityOfPage: `${siteUrl()}/article/${encodeURIComponent(canonicalSlug)}`,
     author: { '@type': 'Person', name: '个人时间线作者' },
   };
   return (
@@ -54,7 +57,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         {(() => {
           const rendered = article.renderedHtml ? { html: decorateMediaReferences(article.renderedHtml), toc: [] } : renderMarkdown(article.markdown || '');
           const safeHtml = DOMPurify.sanitize(rendered.html, { USE_PROFILES: { html: true }, ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|\/|#):?)/i });
-          return <>{rendered.toc.length > 0 && <nav className="article-toc" aria-label="文章目录"><strong>目录</strong><ol>{rendered.toc.map(item => <li key={item.id} className={`toc-level-${item.level}`}><a href={`#${item.id}`}>{item.title}</a></li>)}</ol></nav>}<div className="markdown"><EmbedMarkup html={safeHtml} /></div>{article.markdown?.includes('media://') && <p className="status media-note">媒体按权限加载，未授权时会显示不可用提示。</p>}</>;
+          return <>{rendered.toc.length > 0 && <nav className="article-toc" aria-label="文章目录"><strong>目录</strong><ol>{rendered.toc.map(item => <li key={item.id} className={`toc-level-${item.level}`}><a href={`#${item.id}`}>{item.title}</a></li>)}</ol></nav>}<div className="markdown article-prose"><EmbedMarkup html={safeHtml} /></div>{article.markdown?.includes('media://') && <p className="status media-note">媒体按权限加载，未授权时会显示不可用提示。</p>}</>;
         })()}
       </article>
     </main>

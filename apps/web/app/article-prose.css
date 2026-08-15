@@ -1,0 +1,297 @@
+/*
+ * Shared Markdown typography contract.
+ *
+ * Keep this scope on rendered Markdown only. Article headings, summaries,
+ * timeline metadata and draft cards deliberately live outside the contract.
+ */
+.article-prose {
+  --prose-body: var(--ink);
+  --prose-muted: var(--muted);
+  --prose-line: var(--line);
+  --prose-surface: var(--surface);
+  --prose-soft: color-mix(in srgb, var(--accent-soft) 42%, var(--prose-surface));
+  --prose-code: color-mix(in srgb, var(--line) 34%, var(--prose-surface));
+  min-width: 0;
+  max-width: 100%;
+  color: var(--prose-body);
+  font-size: 1rem;
+  line-height: 1.78;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-break: loose;
+}
+
+.article-prose > :first-child {
+  margin-top: 0;
+}
+
+.article-prose > :last-child {
+  margin-bottom: 0;
+}
+
+.article-prose h1,
+.article-prose h2,
+.article-prose h3,
+.article-prose h4,
+.article-prose h5,
+.article-prose h6 {
+  color: var(--prose-body);
+  font-weight: 760;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.article-prose h1 {
+  margin: 1.65em 0 0.55em;
+  font-size: clamp(1.9rem, 4vw, 2.5rem);
+}
+
+.article-prose h2 {
+  margin: 1.5em 0 0.5em;
+  font-size: clamp(1.55rem, 3vw, 2rem);
+}
+
+.article-prose h3 {
+  margin: 1.35em 0 0.45em;
+  font-size: clamp(1.3rem, 2.5vw, 1.55rem);
+}
+
+.article-prose h4 {
+  margin: 1.2em 0 0.4em;
+  font-size: 1.15rem;
+}
+
+.article-prose h5 {
+  margin: 1.1em 0 0.35em;
+  font-size: 1.05rem;
+}
+
+.article-prose h6 {
+  margin: 1em 0 0.3em;
+  color: var(--prose-muted);
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.article-prose p {
+  margin: 0 0 1.05em;
+  color: inherit;
+}
+
+.article-prose ul,
+.article-prose ol {
+  margin: 0 0 1.15em;
+  padding-inline-start: 1.55em;
+}
+
+.article-prose li + li {
+  margin-top: 0.3em;
+}
+
+.article-prose li > ul,
+.article-prose li > ol {
+  margin-top: 0.35em;
+  margin-bottom: 0.35em;
+}
+
+.article-prose blockquote {
+  margin: 1.35em 0;
+  padding: 0.25em 1em;
+  border-inline-start: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: var(--prose-soft);
+  color: var(--prose-muted);
+}
+
+.article-prose blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.article-prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+.article-prose :not(pre) > code {
+  padding: 0.12em 0.36em;
+  border: 1px solid var(--prose-line);
+  border-radius: 0.35em;
+  background: var(--prose-code);
+  overflow-wrap: anywhere;
+}
+
+.article-prose pre {
+  max-width: 100%;
+  margin: 1.4em 0;
+  padding: 1em 1.1em;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, var(--prose-line) 65%, #16212a);
+  border-radius: 10px;
+  background: #16212a;
+  color: #e8f0f4;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.article-prose pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 0.9em;
+  white-space: inherit;
+  overflow-wrap: normal;
+}
+
+.article-prose pre code[class*="language-"] {
+  display: block;
+  overflow: auto;
+}
+
+.article-prose pre code.highlighted {
+  color: #e8f0f4;
+}
+
+.article-prose .tok-keyword,
+.article-prose .chroma .k,
+.article-prose .chroma .kd,
+.article-prose .chroma .kn {
+  color: #8dd3c7;
+}
+
+.article-prose .tok-string,
+.article-prose .chroma .s,
+.article-prose .chroma .s1,
+.article-prose .chroma .s2 {
+  color: #f5c782;
+}
+
+.article-prose .tok-comment,
+.article-prose .chroma .c,
+.article-prose .chroma .c1,
+.article-prose .chroma .cm {
+  color: #91a4b5;
+}
+
+.article-prose .chroma {
+  max-width: 100%;
+  overflow: auto;
+  padding: 1em 1.1em;
+  border-radius: 10px;
+  background: #16212a;
+  color: #e8f0f4;
+}
+
+.article-prose .chroma .ln {
+  margin-inline-end: 14px;
+  color: #73808c;
+  user-select: none;
+}
+
+.article-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+  overflow-wrap: anywhere;
+}
+
+.article-prose a:hover {
+  color: color-mix(in srgb, var(--accent) 74%, var(--prose-body));
+}
+
+.article-prose table {
+  width: 100%;
+  margin: 1.4em 0;
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.article-prose .table-wrap {
+  max-width: 100%;
+  margin: 1.4em 0;
+  overflow-x: auto;
+}
+
+.article-prose .table-wrap table {
+  margin: 0;
+  min-width: 34rem;
+}
+
+.article-prose th,
+.article-prose td {
+  padding: 0.65em 0.75em;
+  border: 1px solid var(--prose-line);
+  text-align: start;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.article-prose thead th {
+  background: var(--prose-soft);
+  color: var(--prose-body);
+  font-weight: 700;
+}
+
+.article-prose tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--prose-soft) 32%, var(--prose-surface));
+}
+
+.article-prose img,
+.article-prose video,
+.article-prose audio {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.4em 0;
+}
+
+.article-prose img,
+.article-prose video {
+  border-radius: 10px;
+}
+
+.article-prose audio {
+  width: 100%;
+}
+
+.article-prose hr {
+  margin: 2em 0;
+  border: 0;
+  border-top: 1px solid var(--prose-line);
+}
+
+.article-prose figure {
+  max-width: 100%;
+  margin: 1.4em 0;
+}
+
+.article-prose figcaption {
+  color: var(--prose-muted);
+  font-size: 0.85em;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .article-prose {
+    font-size: 0.98rem;
+    line-height: 1.72;
+  }
+
+  .article-prose h1 {
+    font-size: 1.8rem;
+  }
+
+  .article-prose h2 {
+    font-size: 1.5rem;
+  }
+
+  .article-prose pre {
+    margin-inline: -2px;
+    padding-inline: 0.85em;
+  }
+}

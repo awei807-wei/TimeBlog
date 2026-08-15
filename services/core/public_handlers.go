@@ -247,11 +247,25 @@ func (srv *Server) publicDay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) publicArticle(w http.ResponseWriter, r *http.Request) {
-	slug := strings.TrimPrefix(r.URL.Path, "/api/v1/public/articles/")
-	for _, e := range srv.publicEntries() {
-		if e.Kind == "article" && e.Slug == slug && e.Visibility == "public" {
+	identifier := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/api/v1/public/articles/"))
+	entries := srv.publicEntries()
+	for _, e := range entries {
+		// Slugs are the canonical public identifier.  Keep this first so a
+		// deliberately UUID-shaped slug cannot be shadowed by ID fallback.
+		if e.Kind == "article" && e.Slug == identifier && e.Visibility == "public" {
 			jsonResponse(w, 200, publicView(e))
 			return
+		}
+	}
+	// Imported/legacy articles may predate canonical slugs.  ID fallback is
+	// deliberately restricted to UUIDs so this endpoint does not become an
+	// arbitrary identifier enumeration surface.
+	if validImportUUID(identifier) {
+		for _, e := range entries {
+			if e.Kind == "article" && strings.EqualFold(e.ID, identifier) && e.Visibility == "public" {
+				jsonResponse(w, 200, publicView(e))
+				return
+			}
 		}
 	}
 	problem(w, 404, "文章不存在")
@@ -455,11 +469,15 @@ func (srv *Server) publicFeed(w http.ResponseWriter, r *http.Request) {
 		if e.Visibility != "public" {
 			continue
 		}
-		slug := e.Slug
-		if slug == "" {
-			slug = e.ID
+		articleLink := ""
+		if e.Kind == "article" {
+			identifier := e.Slug
+			if identifier == "" {
+				identifier = e.ID
+			}
+			articleLink = fmt.Sprintf(`<link href="/api/v1/public/articles/%s"/>`, url.PathEscape(identifier))
 		}
-		fmt.Fprintf(&b, `<entry><id>urn:personal-timeline:entry:%s</id><title>%s</title><updated>%s</updated><link href="/api/v1/public/articles/%s"/><summary>%s</summary></entry>`, html.EscapeString(e.ID), html.EscapeString(e.Title), e.UpdatedAt.Format(time.RFC3339), url.PathEscape(slug), html.EscapeString(choose(e.Summary, e.PlainText)))
+		fmt.Fprintf(&b, `<entry><id>urn:personal-timeline:entry:%s</id><title>%s</title><updated>%s</updated>%s<summary>%s</summary></entry>`, html.EscapeString(e.ID), html.EscapeString(e.Title), e.UpdatedAt.Format(time.RFC3339), articleLink, html.EscapeString(choose(e.Summary, e.PlainText)))
 	}
 	b.WriteString("</feed>")
 	w.Write([]byte(b.String()))
