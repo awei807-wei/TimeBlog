@@ -94,17 +94,147 @@ test('version panel returns to the in-page content list', async () => {
 test('content management exposes a safe edit entry and editor uses the update working copy', async () => {
   const fs = await import('node:fs/promises');
   const list = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const editorState = await fs.readFile(new URL('../app/admin/useAdminEditorState.ts', import.meta.url), 'utf8');
+  const entryActions = await fs.readFile(new URL('../app/admin/admin-entry-actions.ts', import.meta.url), 'utf8');
+  const workingCopy = await fs.readFile(new URL('../app/admin/useAdminWorkingCopy.ts', import.meta.url), 'utf8');
+  const metadata = await fs.readFile(new URL('../app/admin/useWorkingCopyMetadata.ts', import.meta.url), 'utf8');
+  const loader = await fs.readFile(new URL('../app/admin/useEditWorkingCopyLoader.ts', import.meta.url), 'utf8');
   assert.match(list, /href=\{`\/admin\?edit=\$\{encodeURIComponent\(entry\.id\)\}`\}/);
   assert.match(list, /aria-label=\{`编辑\$\{entry\.title/);
-  assert.match(editor, /\/admin\/entries\/\$\{encodeURIComponent\(requestedEditID\)\}\/edit/);
-  assert.match(editor, /const nextMarkdown = String\(value\.markdown/);
-  assert.match(editor, /applyMarkdown\(nextMarkdown\)/);
-  assert.match(editor, /const applyMarkdown = useCallback/);
-  assert.match(editor, /applyMarkdown\(nextMarkdown\)/);
-  assert.match(editor, /setEditingBaseRevision\(Number\(working\.baseRevision/);
-  assert.match(editor, /working-copies\/\$\{working\.id\}\/commit/);
-  assert.match(editor, /editingEntryID \? '保存修改' : '保存'/);
+  assert.match(editorState, /const applyMarkdown = useCallback/);
+  assert.match(entryActions, /working-copies\/\$\{working\.id\}\/commit/);
+  assert.match(metadata, /useEditWorkingCopyLoader/);
+  assert.match(metadata, /setEditingBaseRevision\(Number\(working\.baseRevision/);
+  assert.match(metadata, /applyWorkingCopyFields\(working/);
+  assert.match(loader, /\/admin\/entries\/\$\{encodeURIComponent\(entryID\)\}\/edit/);
+  assert.match(loader, /applyWorkingCopy\(working, requestedEditID/);
+  assert.match(view, /editingEntryID \? '保存修改' : '保存'/);
+});
+
+test('public article editing exposes unpublished working copies and a guarded restore path', async () => {
+  const fs = await import('node:fs/promises');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const autosave = await fs.readFile(new URL('../app/admin/useDraftAutosave.ts', import.meta.url), 'utf8');
+  const autosaveSync = await fs.readFile(new URL('../app/admin/useDraftAutosaveSync.ts', import.meta.url), 'utf8');
+  const workingHook = await fs.readFile(new URL('../app/admin/useAdminWorkingCopy.ts', import.meta.url), 'utf8');
+  const actions = await fs.readFile(new URL('../app/admin/useWorkingCopyActions.ts', import.meta.url), 'utf8');
+  const loader = await fs.readFile(new URL('../app/admin/useLoadDraft.ts', import.meta.url), 'utf8');
+  const restore = await fs.readFile(new URL('../app/admin/useRestorePublishedVersion.ts', import.meta.url), 'utf8');
+  const saveAction = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
+  const notice = await fs.readFile(new URL('../app/admin/EditingDraftNotice.tsx', import.meta.url), 'utf8');
+  const workingCopy = await fs.readFile(new URL('../app/admin/editing-working-copy.ts', import.meta.url), 'utf8');
+  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(workingCopy, /hasUnpublishedChanges\?: boolean/);
+  assert.match(workingCopy, /publishedRevision\?: number/);
+  assert.match(workingCopy, /publishedUpdatedAt\?: string/);
+  assert.match(workingCopy, /publishedStatus\?: string/);
+  assert.match(workingCopy, /publishedVisibility\?: string/);
+  assert.match(workingCopy, /publishedSlug\?: string/);
+  assert.match(workingCopy, /edit\?discard=1/);
+  assert.match(workingCopy, /credentials: 'include'/);
+  assert.match(workingCopy, /X-CSRF-Token/);
+  for (const setter of ['setDraftId', 'setTitle', 'setSummary', 'setSlug', 'setCategories', 'setTags', 'setStatus', 'setKind', 'setDate', 'setJournalTime', 'setMeta']) assert.match(workingCopy, new RegExp(`${setter}\\(`));
+  assert.match(notice, /自动保存的是未发布草稿，公开页仍显示上次保存版本。/);
+  assert.match(notice, /查看公开版本/);
+  assert.match(notice, /放弃未发布修改并恢复公开版本/);
+  assert.match(notice, /window\.confirm/);
+  assert.match(view, /articleIdentifier=\{props\.editingEntryID\}/);
+  assert.match(view, /publishedStatus === 'published'/);
+  assert.match(view, /publishedVisibility === 'public'/);
+  assert.match(autosaveSync, /const epoch = useRef/);
+  assert.match(autosaveSync, /const abort = useRef/);
+  assert.match(autosaveSync, /epoch\.current/);
+  assert.match(autosave, /Promise\.allSettled\(\[/);
+  assert.match(restore, /dbDelete\(DRAFT_STORE, previousDraftID\)/);
+  assert.match(actions, /setEditingEntryID\(''\)/);
+  assert.match(actions, /setEditingWorkingID\(''\)/);
+  assert.match(actions, /setEditingBaseRevision\(0\)/);
+  assert.match(loader, /setJournalTime\(readJournalTimeField\(value\)\)/);
+  assert.match(saveAction, /finalizeSavedDraft\(savedDraftID\)/);
+  assert.match(workingHook, /workingCopyReadyRef/);
+  assert.match(css, /\.working-copy-notice\{/);
+  assert.match(css, /\.working-copy-notice\.is-unpublished\{/);
+});
+
+test('edit working copy autosave follows the server generation through load, discard, and local draft switches', async () => {
+  const fs = await import('node:fs/promises');
+  const workingCopy = await fs.readFile(new URL('../app/admin/editing-working-copy.ts', import.meta.url), 'utf8');
+  const metadata = await fs.readFile(new URL('../app/admin/useWorkingCopyMetadata.ts', import.meta.url), 'utf8');
+  const workingHook = await fs.readFile(new URL('../app/admin/useAdminWorkingCopy.ts', import.meta.url), 'utf8');
+  const actions = await fs.readFile(new URL('../app/admin/useWorkingCopyActions.ts', import.meta.url), 'utf8');
+  const loader = await fs.readFile(new URL('../app/admin/useEditWorkingCopyLoader.ts', import.meta.url), 'utf8');
+  const restore = await fs.readFile(new URL('../app/admin/useRestorePublishedVersion.ts', import.meta.url), 'utf8');
+  const localDraft = await fs.readFile(new URL('../app/admin/useLoadDraft.ts', import.meta.url), 'utf8');
+  const autosave = await fs.readFile(new URL('../app/admin/useDraftAutosave.ts', import.meta.url), 'utf8');
+  const persistence = await fs.readFile(new URL('../app/admin/useDraftPersistence.ts', import.meta.url), 'utf8');
+  const flush = await fs.readFile(new URL('../app/admin/useDraftFlush.ts', import.meta.url), 'utf8');
+  const sync = await fs.readFile(new URL('../app/admin/useDraftAutosaveSync.ts', import.meta.url), 'utf8');
+  const outbox = await fs.readFile(new URL('../app/admin/useDraftOutbox.ts', import.meta.url), 'utf8');
+
+  // The real edit response is the source of the generation used by every later save.
+  assert.match(workingCopy, /setDraftId: \(value: string\) => void/);
+  assert.match(workingCopy, /setDraftId\(working\.clientDraftId\)/);
+  assert.match(metadata, /setDraftId: \(id: string\) => void/);
+  assert.match(metadata, /setDraftId,\n\s*setTitle/);
+  assert.match(workingHook, /setDraftId: autosave\.setDraftId/);
+  assert.match(loader, /applyWorkingCopy\(working, requestedEditID/);
+
+  // discard=1 returns a fresh server generation; the same apply path must write it back.
+  assert.match(restore, /const working = await discardWorkingCopy/);
+  assert.match(restore, /applyWorkingCopy\(working, editingEntryID/);
+
+  // Loading an independent IndexedDB draft drops edit metadata and replaces the generation.
+  assert.match(actions, /setDraftId\(''\)/);
+  assert.match(localDraft, /clearEntry\(\);\n\s*setDraftId\(draft\.clientDraftId\)/);
+
+  // Flush, persistence, and network sync all read the current ref at execution time.
+  assert.match(autosave, /const draftID = useRef<string \| null>\(null\)/);
+  assert.match(autosave, /const currentDraftId = useCallback/);
+  assert.match(persistence, /const id = currentDraftId\(\)/);
+  assert.match(flush, /const id = currentDraftId\(\)/);
+  assert.match(flush, /if \(discardingRef\.current\) return/);
+  assert.match(flush, /const expectedEpoch = epoch\.current/);
+  assert.match(flush, /expectedEpoch !== epoch\.current/);
+  assert.match(flush, /syncDraft\([\s\S]*expectedEpoch\)/);
+  assert.match(sync, /clientDraftId: draft\.clientDraftId/);
+  assert.match(sync, /response\.status === 409/);
+  assert.ok(sync.indexOf('response.status === 409') < sync.indexOf('await dbPut(QUEUE_STORE'));
+  assert.match(sync, /await dbPut\(QUEUE_STORE, item\);[\s\S]*expectedEpoch !== epoch\.current[\s\S]*await dbDelete\(QUEUE_STORE, draft\.id\)/);
+  assert.match(outbox, /response\.status === 409/);
+  assert.ok(outbox.indexOf('response.status === 409') < outbox.indexOf('await dbPut(QUEUE_STORE'));
+  assert.match(outbox, /await dbPut\(QUEUE_STORE[\s\S]*expectedEpoch !== runtime\.epoch\.current[\s\S]*await dbDelete\(QUEUE_STORE, item\.id\)/);
+});
+
+test('working copy public link prefers the published slug and falls back to the entry UUID', async () => {
+  const fs = await import('node:fs/promises');
+  const workingCopy = await fs.readFile(new URL('../app/admin/editing-working-copy.ts', import.meta.url), 'utf8');
+  const notice = await fs.readFile(new URL('../app/admin/EditingDraftNotice.tsx', import.meta.url), 'utf8');
+  assert.match(workingCopy, /publishedSlug: string/);
+  assert.match(workingCopy, /publishedSlug: String\(working\.publishedSlug \|\| ''\)/);
+  assert.match(notice, /normalizeArticleIdentifier\(meta\.publishedSlug\) \|\| articleIdentifier/);
+  assert.match(notice, /encodeURIComponent\(publicIdentifier\)/);
+  assert.doesNotMatch(notice, /encodeURIComponent\(articleIdentifier\)/);
+});
+
+test('legacy working copies keep a missing journal time omitted until the server can inherit it', async () => {
+  const fs = await import('node:fs/promises');
+  const ts = await import('typescript');
+  const helperSource = await fs.readFile(new URL('../app/admin/journal-time-payload.ts', import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(helperSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const helper = await import(`data:text/javascript,${encodeURIComponent(compiled)}`);
+  assert.equal(helper.readJournalTimeField({ markdown: 'legacy' }), undefined);
+  assert.equal(helper.readJournalTimeField({ journalTime: null }), null);
+  assert.equal(helper.readJournalTimeField({ journalTime: '09:15' }), '09:15');
+  assert.equal(Object.prototype.hasOwnProperty.call(helper.withJournalTimeField({ markdown: 'legacy' }, undefined), 'journalTime'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(helper.withJournalTimeField({ markdown: 'clear' }, null), 'journalTime'), true);
+
+  const editorState = await fs.readFile(new URL('../app/admin/useAdminEditorState.ts', import.meta.url), 'utf8');
+  const workingCopy = await fs.readFile(new URL('../app/admin/editing-working-copy.ts', import.meta.url), 'utf8');
+  const localDraft = await fs.readFile(new URL('../app/admin/useLoadDraft.ts', import.meta.url), 'utf8');
+  assert.match(editorState, /withJournalTimeField\(/);
+  assert.match(workingCopy, /setJournalTime\(readJournalTimeField\(value\)\)/);
+  assert.match(localDraft, /setJournalTime\(readJournalTimeField\(value\)\)/);
 });
 
 test('home page does not render the removed introductory note copy', async () => {
@@ -130,7 +260,8 @@ test('sidebar has no trigger and maps theme tokens for desktop and mobile', asyn
 
 test('MDXEditor is the sole Markdown source of truth and supports rich/source modes', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const actions = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const attachment = await fs.readFile(new URL('../app/admin/AttachmentPreview.tsx', import.meta.url), 'utf8');
   assert.match(source, /<MdxMarkdownEditor/);
@@ -150,13 +281,13 @@ test('MDXEditor is the sole Markdown source of truth and supports rich/source mo
   assert.match(editor, /editor\.setMarkdown\(prepared\.markdown\)/);
   assert.match(editor, /trim=\{false\}/);
   assert.match(editor, /onError=\{\(\{ error \}\)/);
-  assert.match(source, /editorRef\.current\?\.getMarkdown\(\) \?\? markdown/);
-  assert.match(source, /applyMarkdown\(nextMarkdown\)/);
+  assert.match(actions, /editorRef\.current\?\.getMarkdown/);
+  assert.match(actions, /options\.applyMarkdown\(''\)/);
 });
 
 test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes bounded tag drafts', async () => {
   const fs = await import('node:fs/promises');
-  const page = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const page = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const compat = await fs.readFile(new URL('../app/admin/mdx-compat.ts', import.meta.url), 'utf8');
   const tags = await fs.readFile(new URL('../app/admin/TagInput.tsx', import.meta.url), 'utf8');
@@ -181,9 +312,9 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(tags, /htmlFor=\{inputId\}/);
   assert.match(tags, /editingIndex - 1/);
   assert.match(tags, /event\.key === 'Escape'/);
-  assert.match(page, /<JournalDatePicker value=\{date\} onChange=\{setDate\}/);
+  assert.match(page, /<JournalDatePicker value=\{date\} onChange=\{onDateChange\}/);
   assert.ok(page.split('\n').length < 400);
-  assert.match(page, /<DraftTray drafts=\{drafts\} onLoadDraft=\{loadDraft\}/);
+  assert.match(page, /<DraftTray drafts=\{drafts\} onLoadDraft=\{onLoadDraft\}/);
   assert.match(draftTray, /export const MAX_DRAFTS = 20/);
   assert.match(draftTray, /b\.updatedAt\.localeCompare\(a\.updatedAt\) \|\| b\.id\.localeCompare\(a\.id\)/);
   assert.match(draftTray, /dbDelete\(DRAFT_STORE, draft\.id\)/);
@@ -250,12 +381,49 @@ test('public article entries have explicit detail navigation and notes stay non-
   assert.match(sitemap, /encodeURIComponent\(articleIdentifier\)/);
   const articlePage = await fs.readFile(new URL('../app/article/[slug]/page.tsx', import.meta.url), 'utf8');
   assert.match(articlePage, /import \{ notFound, redirect \} from 'next\/navigation'/);
-  assert.match(articlePage, /redirect\(`\/article\/\$\{encodeURIComponent\(article\.slug\)\}`\)/);
-  assert.match(articlePage, /const canonicalSlug = article\.slug\?\.trim\(\) \|\| slug/);
+  assert.match(articlePage, /normalizeArticleIdentifier/);
+  assert.match(articlePage, /const requestedIdentifier = normalizeArticleIdentifier\(slug\)/);
+  assert.match(articlePage, /const canonicalIdentifier = normalizeArticleIdentifier\(article\.slug \|\| ''\) \|\| requestedIdentifier/);
+  assert.match(articlePage, /redirect\(`\/article\/\$\{encodeURIComponent\(canonicalIdentifier\)\}`\)/);
+  assert.doesNotMatch(articlePage, /article\.slug !== slug/);
   const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
   assert.match(css, /\.entry h2 a\{/);
   assert.match(css, /\.entry-read-more\{/);
   assert.match(css, /@media\(max-width:1280px\)\{\.admin-grid\{grid-template-columns:minmax\(0,1fr\)\}\}/);
+});
+
+test('article identifiers normalize encoded and decoded routes before one API escape', async () => {
+  const fs = await import('node:fs/promises');
+  const ts = await import('typescript');
+  const source = await fs.readFile(new URL('../lib/api.ts', import.meta.url), 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const api = await import(`data:text/javascript,${encodeURIComponent(compiled)}`);
+  const decoded = 'vps-与家庭网络吞吐异常诊断报告';
+  const encoded = encodeURIComponent(decoded);
+  assert.equal(api.normalizeArticleIdentifier(decoded), decoded);
+  assert.equal(api.normalizeArticleIdentifier(encoded), decoded);
+  assert.equal(api.normalizeArticleIdentifier('bad%ZZ'), null);
+  assert.equal(api.normalizeArticleIdentifier(''), null);
+
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return { ok: true, json: async () => ({ visibility: 'public', journalDate: '2026-08-19' }) };
+  };
+  try {
+    await api.getArticle(encoded);
+    await api.getArticle(decoded);
+    await assert.rejects(() => api.getArticle('bad%ZZ'), /Invalid article identifier/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(calls.length, 2);
+  for (const call of calls) {
+    assert.match(call.url, new RegExp(`/public/articles/${encoded.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}$`));
+    assert.doesNotMatch(call.url, /%25E4/);
+    assert.equal(call.init.cache, 'no-store');
+  }
 });
 
 test('legacy MDX compatibility skips code, handles quoted attributes, and restores paired custom tags', async () => {
@@ -279,7 +447,8 @@ test('legacy MDX compatibility skips code, handles quoted attributes, and restor
 
 test('MDXEditor captures media paste/drop and keeps media controls available', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   assert.match(editor, /onPasteCapture/);
   assert.match(editor, /onDropCapture/);
@@ -288,14 +457,17 @@ test('MDXEditor captures media paste/drop and keeps media controls available', a
   assert.match(editor, /onFilesRef\.current\(files\)/);
   assert.match(source, /Paperclip/);
   assert.match(source, /Trash2/);
-  assert.match(source, /admin\/media\/capability/);
+  assert.match(capability, /admin\/media\/capability/);
   assert.match(source, /从当前草稿移除/);
   assert.match(source, /aria-disabled=\{mediaInputDisabled\}/);
 });
 
 test('source and diff modes block media insertion and bridge the current editor view mode', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
+  const pageMedia = await fs.readFile(new URL('../app/admin/useAdminPageMediaState.ts', import.meta.url), 'utf8');
+  const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const wrapper = await fs.readFile(new URL('../app/admin/MdxMarkdownEditor.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   assert.match(wrapper, /onViewModeChange\?\:/);
@@ -312,20 +484,22 @@ test('source and diff modes block media insertion and bridge the current editor 
   assert.match(editor, /onErrorRef\.current\?\.\(MEDIA_MODE_HINT\)/);
   assert.match(editor, /const setEditorRef/);
   assert.match(editor, /onReadyRef\.current\?\.\(methods !== null\)/);
-  assert.match(source, /const \[editorViewMode, setEditorViewMode\]/);
+  assert.match(source, /const \{ online, editorReady, editorViewMode/);
   assert.match(source, /const canInsertMedia = editorViewMode === 'rich-text'/);
-  assert.match(source, /const mediaInputDisabled = uploadDisabled \|\| !canInsertMedia/);
-  assert.match(source, /const \[editorReady, setEditorReady\]/);
-  assert.match(source, /!editorReady/);
-  assert.match(source, /onReady=\{setEditorReady\}/);
-  assert.match(source, /MEDIA_MODE_HINT/);
-  assert.match(source, /disabled=\{mediaInputDisabled\}/);
-  assert.match(source, /onViewModeChange=\{handleEditorViewModeChange\}/);
+  assert.match(pageMedia, /const mediaInputDisabled =/);
+  assert.match(capability, /const \[editorReady, setEditorReady\]/);
+  assert.match(pageMedia, /!media\.editorReady/);
+  assert.match(view, /onReady=\{props\.onEditorReady\}/);
+  assert.match(source, /rich-text/);
+  assert.match(view, /disabled=\{props\.mediaInputDisabled\}/);
+  assert.match(view, /onViewModeChange=\{props\.onViewModeChange\}/);
 });
 
 test('media uploads insert canonical Markdown while MDXEditor resolves image previews', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
+  const saveAction = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const uploads = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
   const resolver = await fs.readFile(new URL('../app/article/MediaResolver.tsx', import.meta.url), 'utf8');
@@ -340,8 +514,8 @@ test('media uploads insert canonical Markdown while MDXEditor resolves image pre
   assert.match(uploads, /replaceMediaOccurrence/);
   assert.match(source, /if \(!editor\)/);
   assert.match(source, /编辑器正在加载，请稍后再试/);
-  assert.match(source, /附件仍在上传，请完成后再保存/);
-  assert.match(source, /mediaStillProcessing/);
+  assert.match(saveAction, /附件仍在上传，请完成后再保存/);
+  assert.match(view, /mediaStillProcessing/);
   assert.match(resolver, /resolved-image-card/);
   assert.match(resolver, /resolved-file-card/);
   assert.match(resolver, /打开 \/ 下载/);
@@ -367,7 +541,8 @@ test('media links keep safe hrefs while standard links retain Lexical sanitizati
 
 test('editor reuses one CSRF token across upload and save, surfaces API details, and cancels active attachments', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/useAdminSession.ts', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const uploadSource = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
   assert.match(source, /const csrfRef = useRef\(''\)/);
   assert.match(source, /const refreshSessionCSRF = useCallback/);
@@ -375,7 +550,7 @@ test('editor reuses one CSRF token across upload and save, surfaces API details,
   assert.doesNotMatch(uploadSource, /fetch\(`\$\{API\}\/auth\/session`/);
   assert.match(uploadSource, /responseError\(ticketResponse, '创建上传任务失败'\)/);
   assert.match(uploadSource, /if \(item\.status === 'uploading' \|\| item\.status === 'queued'\)/);
-  assert.match(source, /cancelUpload\(item\)/);
+  assert.match(view, /onCancelUpload\(item\)/);
 });
 
 test('external image host probe refreshes enabled status after server-side verification', async () => {
@@ -649,13 +824,15 @@ test('timeline pages merge same dates without duplicate entries', () => {
 
 test('mock auth and editor flow keeps challenge, private commit, undo and export contracts', async () => {
   const login = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/login/page.tsx', import.meta.url), 'utf8'));
-  const editor = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/page.tsx', import.meta.url), 'utf8'));
+  const editorState = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/useAdminEditorState.ts', import.meta.url), 'utf8'));
+  const entryActions = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/admin-entry-actions.ts', import.meta.url), 'utf8'));
+  const undoAction = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/useAdminUndoAction.ts', import.meta.url), 'utf8'));
   const desk = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8'));
   assert.match(login, /auth\/login\/\$\{step===1\?'password':'totp'\}/);
   assert.match(login, /setChallenge\(data\.challenge\|\|'\'\)/);
-  assert.match(editor, /serializeEditorStatus\(status\)/);
-  assert.match(editor, /working-copies\/\$\{working\.id\}\/commit/);
-  assert.match(editor, /admin\/undo\/\$\{undoToken\}/);
+  assert.match(editorState, /serializeEditorStatus\(status\)/);
+  assert.match(entryActions, /working-copies\/\$\{working\.id\}\/commit/);
+  assert.match(undoAction, /admin\/undo\/\$\{undoToken\}/);
   assert.match(desk, /admin\/exports/);
   assert.match(desk, /admin\/settings/);
   assert.match(desk, /versions\/\$\{version\}\/restore/);

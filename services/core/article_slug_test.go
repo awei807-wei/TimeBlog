@@ -10,6 +10,9 @@ import (
 
 func commitMemoryArticleForTest(t *testing.T, srv *Server, wc *WorkingCopy, body string) Entry {
 	t.Helper()
+	srv.store.mu.Lock()
+	srv.store.working[wc.ID] = wc
+	srv.store.mu.Unlock()
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/working-copies/"+wc.ID+"/commit", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()

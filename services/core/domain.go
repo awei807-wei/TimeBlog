@@ -36,12 +36,19 @@ type Entry struct {
 }
 
 type WorkingCopy struct {
-	ID            string         `json:"id"`
-	ClientDraftID string         `json:"clientDraftId"`
-	EntryID       string         `json:"entryId,omitempty"`
-	BaseRevision  int64          `json:"baseRevision"`
-	Payload       map[string]any `json:"payload"`
-	UpdatedAt     time.Time      `json:"updatedAt"`
+	ID                    string         `json:"id"`
+	ClientDraftID         string         `json:"clientDraftId"`
+	EntryID               string         `json:"entryId,omitempty"`
+	BaseRevision          int64          `json:"baseRevision"`
+	Payload               map[string]any `json:"payload"`
+	UpdatedAt             time.Time      `json:"updatedAt"`
+	Resumed               bool           `json:"resumed"`
+	HasUnpublishedChanges bool           `json:"hasUnpublishedChanges"`
+	PublishedRevision     int64          `json:"publishedRevision"`
+	PublishedUpdatedAt    *time.Time     `json:"publishedUpdatedAt,omitempty"`
+	PublishedStatus       string         `json:"publishedStatus"`
+	PublishedVisibility   string         `json:"publishedVisibility"`
+	PublishedSlug         string         `json:"publishedSlug"`
 }
 
 type Media struct {

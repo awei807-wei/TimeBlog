@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { getArticle, type PublicEntry } from '@/lib/api';
+import { getArticle, normalizeArticleIdentifier, type PublicEntry } from '@/lib/api';
 import DOMPurify from 'isomorphic-dompurify';
 import { decorateMediaReferences, renderMarkdown } from '@/lib/markdown';
 import EmbedMarkup from '../EmbedMarkup';
@@ -14,12 +14,13 @@ async function loadArticle(slug: string): Promise<PublicEntry | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const article = await loadArticle(slug);
-  if (!article || article.placeholder) return { title: '文章不存在 · 个人时间线', robots: { index: false, follow: false } };
+  const requestedIdentifier = normalizeArticleIdentifier(slug);
+  const article = requestedIdentifier ? await loadArticle(slug) : null;
+  if (!requestedIdentifier || !article || article.placeholder) return { title: '文章不存在 · 个人时间线', robots: { index: false, follow: false } };
   const title = article.title || '无题';
   const description = article.summary || article.markdown?.replace(/\s+/g, ' ').slice(0, 160) || '个人时间线文章';
-  const canonicalSlug = article.slug?.trim() || slug;
-  const url = `${siteUrl()}/article/${encodeURIComponent(canonicalSlug)}`;
+  const canonicalIdentifier = normalizeArticleIdentifier(article.slug || '') || requestedIdentifier;
+  const url = `${siteUrl()}/article/${encodeURIComponent(canonicalIdentifier)}`;
   return {
     title: `${title} · 个人时间线`,
     description,
@@ -31,10 +32,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ArticlePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const requestedIdentifier = normalizeArticleIdentifier(slug);
+  if (!requestedIdentifier) notFound();
   const article = await loadArticle(slug);
   if (!article || article.placeholder) notFound();
-  const canonicalSlug = article.slug?.trim() || slug;
-  if (article.slug && article.slug !== slug) redirect(`/article/${encodeURIComponent(article.slug)}`);
+  const canonicalIdentifier = normalizeArticleIdentifier(article.slug || '') || requestedIdentifier;
+  if (canonicalIdentifier !== requestedIdentifier) redirect(`/article/${encodeURIComponent(canonicalIdentifier)}`);
   const structuredData = {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -42,7 +45,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
     description: article.summary || undefined,
     datePublished: article.journalDate,
     dateModified: article.updatedAt || article.journalDate,
-    mainEntityOfPage: `${siteUrl()}/article/${encodeURIComponent(canonicalSlug)}`,
+    mainEntityOfPage: `${siteUrl()}/article/${encodeURIComponent(canonicalIdentifier)}`,
     author: { '@type': 'Person', name: '个人时间线作者' },
   };
   return (

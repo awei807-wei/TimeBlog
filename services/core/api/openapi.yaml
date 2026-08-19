@@ -176,7 +176,7 @@ paths:
       security: [SessionCookie: []]
       parameters: [{$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopyCreateRequest'}}}}
-      responses: {'200': {description: 幂等创建或更新草稿, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/CSRF'}}
+      responses: {'200': {description: 幂等创建或更新草稿；clientDraftId 以 edit- 开头时仅允许更新仍存在的当前编辑代际，缺失时返回 409, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/CSRF'}, '409': {$ref: '#/components/responses/Conflict'}}
   /admin/working-copies/{id}:
     get:
       tags: [writing]
@@ -230,8 +230,8 @@ paths:
       tags: [writing]
       operationId: editEntry
       security: [SessionCookie: []]
-      parameters: [{$ref: '#/components/parameters/EntryID'}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}]
-      responses: {'201': {description: 创建编辑工作副本, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}}
+      parameters: [{$ref: '#/components/parameters/EntryID'}, {name: discard, in: query, description: 丢弃该 entry 当前 owner 的编辑工作副本并从最新正式内容重建, schema: {type: integer, enum: [1]}}, {$ref: '#/components/parameters/CSRF'}, {$ref: '#/components/parameters/Origin'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'201': {description: 创建或恢复编辑工作副本；discard=1 时先丢弃当前 entry 工作副本再重建, content: {application/json: {schema: {$ref: '#/components/schemas/WorkingCopy'}}}}, '409': {$ref: '#/components/responses/Conflict'}}
   /admin/entries/{id}/restore:
     post:
       tags: [writing]
@@ -708,7 +708,11 @@ components:
         renderedHtml: {type: string}
         plainText: {type: string}
         journalDate: {type: string, format: date}
-        journalTime: {type: string, nullable: true, pattern: '^\\d{2}:\\d{2}$'}
+        journalTime:
+          type: string
+          nullable: true
+          pattern: '^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,6})?)?$'
+          description: 内存响应使用 HH:MM；PostgreSQL time::text 响应使用 HH:MM:SS，并可能包含最多 6 位小数秒
         timePrecision: {type: string, enum: [day, minute]}
         dayPosition: {type: integer}
         revision: {type: integer, format: int64}
@@ -766,7 +770,14 @@ components:
         baseRevision: {type: integer, format: int64}
         payload: {type: object, additionalProperties: true}
         updatedAt: {type: string, format: date-time}
-    WorkingCopyCreateRequest: {type: object, required: [clientDraftId, payload], properties: {clientDraftId: {type: string}, payload: {type: object, additionalProperties: true}}}
+        resumed: {type: boolean, description: 是否恢复了该 entry 已存在的编辑工作副本}
+        hasUnpublishedChanges: {type: boolean, description: 工作副本相对当前正式 entry 是否存在未提交差异}
+        publishedRevision: {type: integer, format: int64, description: 当前正式 entry 的 revision}
+        publishedUpdatedAt: {type: string, format: date-time, nullable: true, description: 当前正式 entry 的 updatedAt}
+        publishedStatus: {type: string, enum: [draft, published, trashed], description: 当前正式 entry 的 status}
+        publishedVisibility: {type: string, enum: [public, private], description: 当前正式 entry 的 visibility}
+        publishedSlug: {type: string, description: 当前正式 entry 的 slug；无 slug 时为空字符串}
+    WorkingCopyCreateRequest: {type: object, required: [clientDraftId, payload], description: clientDraftId 以 edit- 开头时服务端采用 update-only 语义；对应工作副本缺失或已被 discard/commit 替换时返回 409，不会自动创建新代际, properties: {clientDraftId: {type: string}, payload: {type: object, additionalProperties: true}}}
     WorkingCopyPatchRequest: {type: object, required: [payload], properties: {baseRevision: {type: integer, format: int64}, payload: {type: object, additionalProperties: true}}}
     WorkingCopyListResponse: {type: object, required: [workingCopies], properties: {workingCopies: {type: array, items: {$ref: '#/components/schemas/WorkingCopy'}}}}
     CommitRequest: {type: object, required: [markdown, status, visibility, journalDate], properties: {kind: {$ref: '#/components/schemas/EntryKind'}, status: {$ref: '#/components/schemas/EntryStatus'}, visibility: {$ref: '#/components/schemas/Visibility'}, title: {type: string}, slug: {type: string}, summary: {type: string}, markdown: {type: string}, journalDate: {type: string, format: date}, journalTime: {type: string, nullable: true}, categories: {type: array, items: {type: string}, description: 未提供时继承工作副本；传空数组清空已有分类}, tags: {type: array, items: {type: string}, description: 未提供时继承工作副本并合并正文 hashtag；提供数组后仅使用该数组，空数组清空已有标签}, baseRevision: {type: integer, format: int64}}}

@@ -16,6 +16,12 @@
 - 公开文章列表、站点地图和 Atom feed 中的 article 使用 `slug`，历史空 slug 使用 UUID；note 保留在时间线和 feed 中，但不生成文章详情链接。
 - Next 详情页以 UUID 打开且响应包含 canonical slug 时重定向到 slug，metadata 和结构化数据使用 canonical URL。
 
+## 路由参数规范化
+
+- Next 动态路由参数可能已经是解码后的中文，也可能来自已编码的持久化链接。进入 API 前先规范化一次：最多解码一层 URI，拒绝非法 escape 序列，再由客户端统一编码一次。这样中文 slug 不会因重复编码变成 `%25E4...`，也不会把非法路径转发给 API。
+- API 查询优先按 canonical slug 匹配；只有在 slug 未命中且路径值是合法 UUID 时才走 UUID fallback。UUID 是兼容历史链接的入口，不是新的公开 canonical 地址。
+- 文章详情页、metadata、结构化数据和管理端“查看公开版本”链接均使用 canonical slug；UUID 入口在读取到 slug 后只做一次重定向，不形成重定向循环。
+
 ## 结果与约束
 
 该兼容路径只覆盖合法 UUID，避免将任意数据库键暴露为公开查询入口。历史文章仍可被修订后获得 canonical slug；在修订前，UUID URL 是其稳定回退地址。

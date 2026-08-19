@@ -48,6 +48,26 @@ export type AdminCalendarResponse = { year: string; includeDrafts: boolean; days
 // the browser; deployments can still override it for a dedicated API host.
 export const API = process.env.NEXT_PUBLIC_API_URL || (typeof window === 'undefined' ? `${process.env.API_ORIGIN || 'http://localhost:8080'}/api/v1` : '/api/v1');
 
+/**
+ * Normalize an article route identifier before it enters the API URL.
+ *
+ * Next normally gives dynamic route params back decoded, but callers can also
+ * reach this helper with an already escaped value (for example from a
+ * persisted link or a browser navigation).  Decode exactly one URI layer so
+ * getArticle can encode the real identifier exactly once.  Invalid escape
+ * sequences are rejected instead of being forwarded as a different slug.
+ */
+export function normalizeArticleIdentifier(value: string): string | null {
+  const input = value.trim();
+  if (!input) return null;
+  try {
+    const normalized = decodeURIComponent(input).trim();
+    return normalized || null;
+  } catch {
+    return null;
+  }
+}
+
 async function getJSON<T>(path: string, init?: RequestInit & { next?: { revalidate?: number } }): Promise<T> {
   const response = await fetch(`${API}${path}`, {
     ...init,
@@ -70,7 +90,9 @@ export async function getDay(date: string): Promise<{ date: string; untimed: Pub
 }
 
 export async function getArticle(slug: string): Promise<PublicEntry> {
-  return getJSON(`/public/articles/${encodeURIComponent(slug)}`, { cache: 'no-store' });
+  const identifier = normalizeArticleIdentifier(slug);
+  if (!identifier) throw new Error('Invalid article identifier');
+  return getJSON(`/public/articles/${encodeURIComponent(identifier)}`, { cache: 'no-store' });
 }
 
 export async function getCalendar(month: string, signal?: AbortSignal): Promise<CalendarResponse> {
