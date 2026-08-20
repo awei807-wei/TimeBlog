@@ -104,13 +104,23 @@
 .public-read-more { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; white-space: nowrap; }
 .public-read-more svg { width: 14px; height: 14px; color: var(--muted); }
 
-.public-note-entry { display: grid; grid-template-columns: 92px 1fr; padding: 18px 5px; border-bottom: 1px solid var(--line); }
+.public-note-entry { width: 100%; max-width: 100%; min-width: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); padding: 18px 5px; border-bottom: 1px solid var(--line); }
 .public-note-entry:last-child { border-bottom: 0; }
+.public-note-meta,
+.public-note-copy { min-width: 0; max-width: 100%; }
 .public-note-meta time,
-.public-note-meta span { display: block; }
+.public-note-meta span { display: block; overflow-wrap: anywhere; }
 .public-note-meta time { font-size: 11px; }
 .public-note-meta span { margin-top: 7px; color: var(--muted); font-size: 10px; }
-.public-note-copy p { margin: 0; white-space: pre-wrap; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 15px; line-height: 1.9; }
+.public-note-copy p { max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 15px; line-height: 1.9; }
+.public-note-copy p.is-measured.is-collapsed,
+.public-note-copy p.is-measuring-collapsed,
+.public-note-copy p.is-expanded.is-measuring-collapsed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.public-note-copy p.is-expanded { display: block; overflow: visible; }
+.public-note-copy p.is-measuring-full { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.public-note-expand { margin-top: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11px; line-height: 1.4; }
+.public-note-expand svg { width: 14px; height: 14px; }
+.public-note-expand:hover { color: var(--ink); }
 .public-note-copy .public-entry-tags { margin-top: 10px; }
 .public-private-entry { display: flex; align-items: center; gap: 9px; padding: 17px 5px; color: var(--muted); font-size: 12px; }
 .public-private-entry svg { width: 15px; height: 15px; }
@@ -119,8 +129,11 @@
 .public-timeline.is-compact .public-article-entry { padding: 17px 20px; }
 .public-timeline.is-compact .public-article-entry h2 { margin-bottom: 0; font-size: 18px; }
 .public-timeline.is-compact .public-article-entry footer { display: none; }
-.public-timeline.is-compact .public-note-entry { padding-block: 12px; }
-.public-timeline.is-compact .public-note-copy p { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.public-note-entry.is-compact { padding-block: 12px; }
+.public-note-entry.is-compact .public-note-copy p { font-size: 13px; }
+.public-note-entry.is-compact .public-note-copy p.is-measured.is-collapsed,
+.public-note-entry.is-compact .public-note-copy p.is-measuring-collapsed,
+.public-note-entry.is-compact .public-note-copy p.is-expanded.is-measuring-collapsed { -webkit-line-clamp: 1; }
 
 .public-empty,
 .public-error { padding: 50px 0; color: var(--muted); text-align: center; font-size: 12px; }

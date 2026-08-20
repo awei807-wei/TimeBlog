@@ -454,6 +454,36 @@ test('public article entries have explicit detail navigation and notes stay non-
   assert.match(globalCss, /@media\(max-width:1280px\)\{\.admin-grid\{grid-template-columns:minmax\(0,1fr\)\}\}/);
 });
 
+test('public timeline notes stay within the article column and expose an overflow-only expand control', async () => {
+  const fs = await import('node:fs/promises');
+  const card = await fs.readFile(new URL('../app/public/PublicEntryCard.tsx', import.meta.url), 'utf8');
+  const entry = await fs.readFile(new URL('../app/public/public-entry.ts', import.meta.url), 'utf8');
+  const css = await fs.readFile(new URL('../app/public-pages.css', import.meta.url), 'utf8');
+  assert.match(card, /function NoteCopy/);
+  assert.match(card, /entryFullText\(entry\)/);
+  assert.match(entry, /entry\.markdown \|\| entry\.text \|\| entry\.summary/);
+  assert.match(entry, /entryFullText[\s\S]*plainEntryText\([^,]+, true\)/);
+  assert.match(card, /ResizeObserver/);
+  assert.match(card, /setMeasured\(true\)/);
+  assert.doesNotMatch(card, /if \(expanded\) return/);
+  assert.match(card, /is-measuring-full/);
+  assert.match(card, /is-measuring-collapsed/);
+  assert.match(card, /if \(!overflowing && expanded\) setExpanded\(false\)/);
+  assert.match(card, /aria-expanded=\{expanded\}/);
+  assert.match(card, /aria-controls=\{copyId\}/);
+  assert.match(card, /ChevronDown/);
+  assert.match(card, /ChevronUp/);
+  assert.match(css, /\.public-note-entry \{[^}]*width: 100%;[^}]*max-width: 100%;[^}]*min-width: 0;[^}]*grid-template-columns: 92px minmax\(0, 1fr\)/);
+  assert.match(css, /\.public-note-copy \{[^}]*min-width: 0;[^}]*max-width: 100%/);
+  assert.match(css, /\.public-note-copy p\.is-expanded\.is-measuring-collapsed \{[^}]*-webkit-line-clamp: 3;[^}]*overflow: hidden/);
+  assert.match(css, /\.public-note-copy p \{[^}]*overflow-wrap: anywhere;[^}]*word-break: break-word/);
+  assert.match(css, /\.public-note-entry\.is-compact \.public-note-copy p \{[^}]*font-size: 13px/);
+  assert.match(css, /\.public-note-entry\.is-compact \{[^}]*padding-block: 12px/);
+  assert.doesNotMatch(css, /\.public-timeline\.is-compact \.public-note-entry/);
+  assert.match(css, /\.public-note-entry\.is-compact \.public-note-copy p\.is-expanded\.is-measuring-collapsed \{[^}]*-webkit-line-clamp: 1/);
+  assert.match(css, /\.public-note-expand \{[^}]*color: var\(--accent\)/);
+});
+
 test('public UI kit is mapped to real routes, data and formal article pages', async () => {
   const fs = await import('node:fs/promises');
   const layout = await fs.readFile(new URL('../app/layout.tsx', import.meta.url), 'utf8');
