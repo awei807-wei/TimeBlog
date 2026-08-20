@@ -85,8 +85,8 @@ export async function getTimeline(limit = 20, cursor = ''): Promise<{ days: Time
   }
 }
 
-export async function getDay(date: string): Promise<{ date: string; untimed: PublicEntry[]; timed: PublicEntry[] }> {
-  return getJSON(`/public/days/${encodeURIComponent(date)}`, { cache: 'no-store' });
+export async function getDay(date: string, signal?: AbortSignal): Promise<{ date: string; untimed: PublicEntry[]; timed: PublicEntry[] }> {
+  return getJSON(`/public/days/${encodeURIComponent(date)}`, { cache: 'no-store', signal });
 }
 
 export async function getArticle(slug: string): Promise<PublicEntry> {
@@ -113,7 +113,7 @@ export async function getCategory(slug: string, cursor = ''): Promise<{ entries:
 }
 
 export async function searchPublic(query: string, cursor = ''): Promise<SearchResponse> {
-  return getJSON(`/public/search?q=${encodeURIComponent(query)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+  return getJSON(`/public/search?q=${encodeURIComponent(query)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { cache: 'no-store' });
 }
 
 export async function getAdminEntries(status = ''): Promise<{ entries: AdminEntry[]; nextCursor?: string }> {

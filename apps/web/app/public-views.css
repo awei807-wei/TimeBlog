@@ -1,0 +1,132 @@
+.public-calendar-layout {
+  display: grid;
+  grid-template-columns: 1.45fr .8fr;
+  gap: 16px;
+  padding: 25px 0;
+}
+
+.public-calendar-card,
+.public-day-preview {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+}
+
+.public-calendar-card { padding: 21px; }
+.public-calendar-card > header { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; }
+.public-calendar-card > header button { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--muted); }
+.public-calendar-card > header button:hover { border-color: var(--accent); color: var(--accent); }
+.public-calendar-card > header button svg { width: 17px; height: 17px; }
+.public-calendar-card > header div { text-align: center; }
+.public-calendar-card > header b,
+.public-calendar-card > header span { display: block; }
+.public-calendar-card > header b { font-size: 16px; }
+.public-calendar-card > header span { margin-top: 4px; color: var(--muted); font-size: 9px; }
+
+.public-week-row,
+.public-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.public-week-row { margin-top: 20px; border-bottom: 1px solid var(--line); }
+.public-week-row span { padding: 9px 4px; color: var(--muted); text-align: center; font-size: 9px; }
+.public-calendar-grid button {
+  position: relative;
+  aspect-ratio: 1.15;
+  display: flex;
+  align-items: flex-start;
+  padding: 8px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font-size: 10px;
+}
+.public-calendar-grid button:nth-child(7n) { border-right: 0; }
+.public-calendar-grid button.is-ghost { color: color-mix(in srgb, var(--muted) 48%, transparent); }
+.public-calendar-grid button.has-entry { background: var(--accent-soft); }
+.public-calendar-grid button:hover { background: color-mix(in srgb, var(--accent-soft) 72%, transparent); }
+.public-calendar-grid button.is-selected { box-shadow: inset 0 0 0 2px var(--accent); }
+.public-calendar-grid button i { position: absolute; right: 6px; bottom: 6px; min-width: 18px; height: 18px; display: grid; place-items: center; padding-inline: 4px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 8px; font-style: normal; }
+.public-calendar-card > footer { display: flex; align-items: center; gap: 12px; padding-top: 15px; color: var(--muted); font-size: 9px; }
+.public-calendar-card > footer span { display: inline-flex; align-items: center; gap: 5px; }
+.public-calendar-card > footer i { width: 10px; height: 10px; border: 1px solid var(--line); background: transparent; }
+.public-calendar-card > footer span:nth-child(2) i { border-color: var(--accent-soft); background: var(--accent-soft); }
+.public-calendar-card > footer b { margin-left: auto; font-weight: 500; }
+
+.public-day-preview { align-self: start; padding: 23px; }
+.public-day-preview > span { color: var(--accent); font-size: 10px; letter-spacing: .08em; }
+.public-day-preview h2 { margin: 18px 0; font-size: 20px; }
+.public-calendar-status { min-height: 84px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+.public-preview-list { display: grid; }
+.public-preview-list > a,
+.public-preview-list > div { position: relative; display: grid; gap: 6px; padding: 15px 26px 15px 0; border-top: 1px solid var(--line); }
+.public-preview-list small { color: var(--muted); font-size: 9px; }
+.public-preview-list strong { overflow: hidden; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 12px; font-weight: 500; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.public-preview-list svg { position: absolute; top: 50%; right: 0; width: 14px; height: 14px; color: var(--muted); transform: translateY(-50%); }
+.public-day-all { min-height: 40px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 7px; background: color-mix(in srgb, var(--paper) 70%, var(--surface)); font-size: 10px; }
+.public-day-all svg { width: 13px; height: 13px; }
+
+.public-category-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 24px; }
+.public-category-card { position: relative; min-height: 205px; padding: 23px; overflow: hidden; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.public-category-card::after { content: ''; position: absolute; top: -45px; right: -30px; width: 130px; height: 130px; border-radius: 50%; background: var(--category-wash, var(--accent-soft)); opacity: .72; }
+.public-category-card:hover { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); transform: translateY(-2px); }
+.public-category-card > span { color: var(--muted); font-size: 9px; }
+.public-category-card > b { position: absolute; z-index: 1; top: 20px; right: 20px; padding: 4px 7px; border-radius: 10px; background: color-mix(in srgb, var(--paper) 80%, transparent); color: var(--muted); font-size: 9px; font-weight: 500; }
+.public-category-card h2 { margin: 30px 0 9px; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 23px; font-weight: 600; }
+.public-category-card p { max-width: 330px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.7; }
+.public-category-card footer { position: absolute; right: 23px; bottom: 19px; left: 23px; display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.public-category-card footer svg { width: 14px; height: 14px; }
+.public-category-card.tone-1 { --category-wash: #f2eee7; }
+.public-category-card.tone-2 { --category-wash: #e9f0ec; }
+.public-category-card.tone-3 { --category-wash: #f0ebf2; }
+
+.public-big-search { height: 70px; margin-top: 24px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 8px; padding: 0 12px 0 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.public-big-search > svg { width: 22px; height: 22px; color: var(--accent); }
+.public-big-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 16px; }
+.public-big-search button { min-width: 68px; min-height: 42px; border: 0; border-radius: 8px; background: var(--ink); color: var(--paper); font-size: 12px; font-weight: 700; }
+.public-search-hint { padding: 20px 0; color: var(--muted); font-size: 10px; }
+.public-search-results > header { display: grid; grid-template-columns: 120px 48px 1fr; align-items: end; padding: 25px 0 13px; border-bottom: 1px solid var(--line); }
+.public-search-results > header span,
+.public-search-results > header p { color: var(--muted); font-size: 10px; }
+.public-search-results > header b { font-size: 21px; }
+.public-search-results > header p { margin: 0; }
+
+.public-article-shell { width: min(780px, calc(100% - 32px)); padding: 28px 0 46px; }
+.public-reader-back { min-height: 44px; display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+.public-reader-back svg { width: 15px; height: 15px; }
+.public-reader { margin-top: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: 0 18px 55px rgb(38 43 46 / 8%); }
+.public-reader > header { padding: 54px 8% 42px; border-bottom: 1px solid var(--line); }
+.public-reader-kicker { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+.public-reader-kicker span { color: var(--accent); font-weight: 700; letter-spacing: .12em; }
+.public-reader h1 { margin: 22px 0 14px; font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: clamp(32px, 5vw, 47px); font-weight: 600; line-height: 1.2; letter-spacing: -.03em; }
+.public-reader > header > p { max-width: 620px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.public-reader-taxonomy { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; color: var(--accent); font-size: 10px; }
+.public-reader-taxonomy > span { color: var(--muted); }
+.public-reader-body { max-width: 650px; margin: 0 auto; padding: 44px 20px; }
+.public-reader-body .markdown { margin-top: 26px; }
+.public-reader > footer { display: flex; justify-content: space-between; gap: 18px; padding: 23px 8%; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+
+@media (max-width: 700px) {
+  .public-calendar-layout { grid-template-columns: 1fr; }
+  .public-calendar-card { padding: 13px; }
+  .public-calendar-grid button { aspect-ratio: 1; padding: 6px; }
+  .public-category-grid { grid-template-columns: 1fr; }
+  .public-category-card { min-height: 190px; }
+  .public-big-search { grid-template-columns: 30px 1fr auto; padding-left: 13px; }
+  .public-search-results > header { grid-template-columns: 1fr 36px; }
+  .public-search-results > header p { grid-column: 1 / -1; margin-top: 6px; }
+  .public-reader > header { padding: 43px 23px 32px; }
+  .public-reader h1 { font-size: 31px; }
+  .public-reader-body { padding: 34px 23px; }
+  .public-reader > footer { padding: 20px 23px; }
+}
+
+@media (max-width: 430px) {
+  .public-big-search button { min-width: 58px; }
+  .public-calendar-grid button i { right: 3px; bottom: 3px; min-width: 15px; height: 15px; }
+  .public-reader > footer { flex-direction: column; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-category-card { transition: none; }
+  .public-category-card:hover { transform: none; }
+}

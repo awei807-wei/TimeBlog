@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { CalendarDays, FileText, Home, LogIn, LogOut, PenLine, Search, Tags } from 'lucide-react';
 import { SessionProvider, useSession } from './SessionContext';
+import PublicShell from './public/PublicShell';
 import {
   Sidebar,
   SidebarContent,
@@ -42,9 +43,15 @@ function AppNavigation() {
   const pathname = usePathname();
   const { state, busy, feedback, logout } = useSession();
   const authenticated = state === 'authenticated';
-  return <Sidebar collapsible="none" variant="floating" className="app-sidebar"><SidebarHeader className="sidebar-brand-row"><Link href="/" className="sidebar-brand">个人时间线<span aria-hidden="true">·</span></Link><span className="sidebar-kicker">A living archive</span></SidebarHeader><SidebarContent><NavigationGroup title="浏览" items={browseItems} pathname={pathname}/>{authenticated && <NavigationGroup title="管理" items={manageItems} pathname={pathname}/>}<SidebarGroup className="sidebar-account"><SidebarGroupLabel>账户</SidebarGroupLabel><SidebarGroupContent><SidebarMenu><SidebarMenuItem>{state === 'loading' ? <span className="sidebar-session-placeholder">登录状态</span> : authenticated ? <SidebarMenuButton asChild><button type="button" onClick={() => void logout()} disabled={busy}><LogOut aria-hidden="true"/><span>{busy ? '登出中…' : '登出'}</span></button></SidebarMenuButton> : <SidebarMenuButton asChild><Link href="/login"><LogIn aria-hidden="true"/><span>登录</span></Link></SidebarMenuButton>}</SidebarMenuItem></SidebarMenu></SidebarGroupContent><p className="sidebar-status" aria-live="polite">{feedback}</p></SidebarGroup></SidebarContent><SidebarFooter /></Sidebar>;
+  return <Sidebar collapsible="none" variant="floating" className="app-sidebar"><SidebarHeader className="sidebar-brand-row"><Link href="/" className="sidebar-brand">菜鸟手记<span aria-hidden="true">·</span></Link><span className="sidebar-kicker">CONTENT DESK</span></SidebarHeader><SidebarContent><NavigationGroup title="浏览" items={browseItems} pathname={pathname}/>{authenticated && <NavigationGroup title="管理" items={manageItems} pathname={pathname}/>}<SidebarGroup className="sidebar-account"><SidebarGroupLabel>账户</SidebarGroupLabel><SidebarGroupContent><SidebarMenu><SidebarMenuItem>{state === 'loading' ? <span className="sidebar-session-placeholder">登录状态</span> : authenticated ? <SidebarMenuButton asChild><button type="button" onClick={() => void logout()} disabled={busy}><LogOut aria-hidden="true"/><span>{busy ? '登出中…' : '登出'}</span></button></SidebarMenuButton> : <SidebarMenuButton asChild><Link href="/login"><LogIn aria-hidden="true"/><span>登录</span></Link></SidebarMenuButton>}</SidebarMenuItem></SidebarMenu></SidebarGroupContent><p className="sidebar-status" aria-live="polite">{feedback}</p></SidebarGroup></SidebarContent><SidebarFooter /></Sidebar>;
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  return <SessionProvider><SidebarProvider defaultOpen><AppNavigation/><main className="app-main"><div className="app-content">{children}</div></main></SidebarProvider></SessionProvider>;
+  return <SessionProvider><ShellRoute>{children}</ShellRoute></SessionProvider>;
+}
+
+function ShellRoute({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (!pathname.startsWith('/admin')) return <PublicShell>{children}</PublicShell>;
+  return <SidebarProvider defaultOpen><AppNavigation/><div className="app-main"><div className="app-content">{children}</div></div></SidebarProvider>;
 }

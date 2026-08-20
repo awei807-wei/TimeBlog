@@ -363,6 +363,14 @@ test('article-prose is the shared Markdown typography contract without card poll
 
 test('public article entries have explicit detail navigation and notes stay non-linking', async () => {
   const fs = await import('node:fs/promises');
+  const card = await fs.readFile(new URL('../app/public/PublicEntryCard.tsx', import.meta.url), 'utf8');
+  const route = await fs.readFile(new URL('../app/public/public-entry.ts', import.meta.url), 'utf8');
+  assert.match(route, /entry\.slug \|\| entry\.id/);
+  assert.match(route, /entry\.kind === 'article'/);
+  assert.match(card, /entry\.kind !== 'article'/);
+  assert.match(card, /articleHref\(entry\)/);
+  assert.match(card, /继续阅读/);
+  assert.doesNotMatch(card.slice(card.indexOf("entry.kind !== 'article'"), card.indexOf('return <article className={`public-entry public-article-entry')), /href=\{href\}/);
   const files = [
     '../app/HomeTimeline.tsx',
     '../app/day/[date]/page.tsx',
@@ -372,9 +380,7 @@ test('public article entries have explicit detail navigation and notes stay non-
   ];
   for (const file of files) {
     const source = await fs.readFile(new URL(file, import.meta.url), 'utf8');
-    assert.match(source, /entry\.kind === 'article' && articleIdentifier/);
-    assert.match(source, /entry\.slug \|\| entry\.id/);
-    assert.match(source, /阅读全文/);
+    assert.match(source, /PublicEntryCard/);
   }
   const sitemap = await fs.readFile(new URL('../app/sitemap.ts', import.meta.url), 'utf8');
   assert.match(sitemap, /const articleIdentifier = entry\.slug \|\| entry\.id/);
@@ -386,10 +392,51 @@ test('public article entries have explicit detail navigation and notes stay non-
   assert.match(articlePage, /const canonicalIdentifier = normalizeArticleIdentifier\(article\.slug \|\| ''\) \|\| requestedIdentifier/);
   assert.match(articlePage, /redirect\(`\/article\/\$\{encodeURIComponent\(canonicalIdentifier\)\}`\)/);
   assert.doesNotMatch(articlePage, /article\.slug !== slug/);
-  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
-  assert.match(css, /\.entry h2 a\{/);
-  assert.match(css, /\.entry-read-more\{/);
-  assert.match(css, /@media\(max-width:1280px\)\{\.admin-grid\{grid-template-columns:minmax\(0,1fr\)\}\}/);
+  const publicCss = await fs.readFile(new URL('../app/public-pages.css', import.meta.url), 'utf8');
+  const globalCss = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  assert.match(publicCss, /\.public-article-entry h2 a:hover/);
+  assert.match(publicCss, /\.public-read-more/);
+  assert.match(globalCss, /@media\(max-width:1280px\)\{\.admin-grid\{grid-template-columns:minmax\(0,1fr\)\}\}/);
+});
+
+test('public UI kit is mapped to real routes, data and formal article pages', async () => {
+  const fs = await import('node:fs/promises');
+  const layout = await fs.readFile(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+  const shellRoute = await fs.readFile(new URL('../app/AppShell.tsx', import.meta.url), 'utf8');
+  const shell = await fs.readFile(new URL('../app/public/PublicShell.tsx', import.meta.url), 'utf8');
+  const home = await fs.readFile(new URL('../app/page.tsx', import.meta.url), 'utf8');
+  const calendar = await fs.readFile(new URL('../app/calendar/CalendarView.tsx', import.meta.url), 'utf8');
+  const categories = await fs.readFile(new URL('../app/categories/page.tsx', import.meta.url), 'utf8');
+  const search = await fs.readFile(new URL('../app/search/page.tsx', import.meta.url), 'utf8');
+  const article = await fs.readFile(new URL('../app/article/[slug]/page.tsx', import.meta.url), 'utf8');
+  const shellCss = await fs.readFile(new URL('../app/public-shell.css', import.meta.url), 'utf8');
+  const viewsCss = await fs.readFile(new URL('../app/public-views.css', import.meta.url), 'utf8');
+
+  assert.match(layout, /title: \{ default: '菜鸟手记'/);
+  assert.match(layout, /import ['"]\.\/public-shell\.css['"]/);
+  assert.match(layout, /import ['"]\.\/public-pages\.css['"]/);
+  assert.match(layout, /import ['"]\.\/public-views\.css['"]/);
+  assert.match(layout, /favicon\.svg/);
+  assert.match(layout, /social-card\.png/);
+  assert.match(shellRoute, /pathname\.startsWith\('\/admin'\)/);
+  assert.match(shellRoute, /<PublicShell>/);
+  for (const route of ['/', '/calendar', '/categories', '/search']) assert.match(shell, new RegExp(`href: '${route.replace('/', '\\/')}'`));
+  assert.match(shell, /timeblog-theme/);
+  assert.match(shell, /href=\{authenticated \? '\/admin' : '\/login'\}/);
+  assert.match(home, /getTimeline\(\)/);
+  assert.match(calendar, /getCalendar\(month, controller\.signal\)/);
+  assert.match(calendar, /getDay\(selectedDate, controller\.signal\)/);
+  assert.match(categories, /getCategories\(\)/);
+  assert.match(search, /searchPublic\(query\)/);
+  assert.doesNotMatch(home + calendar + categories + search, /const entries\s*=\s*\[/);
+  assert.match(article, /className="public-reader"/);
+  assert.match(article, /href="\/"/);
+  assert.doesNotMatch(article, /reader-backdrop|ReaderModal/);
+  assert.match(shellCss, /position: sticky/);
+  assert.match(shellCss, /position: fixed/);
+  assert.match(viewsCss, /grid-template-columns: 1\.45fr \.8fr/);
+  await fs.access(new URL('../public/favicon.svg', import.meta.url));
+  await fs.access(new URL('../public/social-card.png', import.meta.url));
 });
 
 test('article identifiers normalize encoded and decoded routes before one API escape', async () => {
@@ -585,7 +632,9 @@ test('calendar loads the initial month and aborts stale month requests', async (
   assert.match(source, /getCalendar\(month, controller\.signal\)/);
   assert.match(source, /new AbortController\(\)/);
   assert.match(source, /requestID !== requestRef\.current/);
-  assert.match(source, /setMonth\(current => shiftMonth/);
+  assert.match(source, /function changeMonth/);
+  assert.match(source, /setMonth\(next\)/);
+  assert.match(source, /setSelectedDate\(defaultSelectedDate\(next\)\)/);
 });
 
 test('private editor status maps to published private API fields', () => {
@@ -676,7 +725,7 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   assert.match(worker, /startsWith\('\/private-media\/'\)/);
   assert.match(worker, /CACHE_INVALIDATE/);
   assert.match(worker, /CACHE_INVALIDATED/);
-  assert.match(worker, /timeline-shell-v4/);
+  assert.match(worker, /timeline-shell-v5/);
 });
 
 test('public API fetches bypass Next data cache and mutations notify the worker', async () => {

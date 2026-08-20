@@ -61,7 +61,7 @@ export default function RecoveryForm() {
   }
 
   if (result) return <section className="login recovery-page" aria-labelledby="recovery-result-title">
-    <Link href="/" className="brand">个人时间线</Link>
+    <Link href="/" className="brand">菜鸟手记</Link>
     <h1 id="recovery-result-title">恢复已完成</h1>
     <p className="note">以下凭据只显示一次，不会保存到浏览器。请立即复制到离线密码管理器，并在重新登录后完成 TOTP 设置。</p>
     <div className="recovery-result" role="status">
@@ -74,7 +74,7 @@ export default function RecoveryForm() {
   </section>;
 
   return <section className="login recovery-page" aria-labelledby="recovery-title">
-    <Link href="/" className="brand">个人时间线</Link>
+    <Link href="/" className="brand">菜鸟手记</Link>
     <h1 id="recovery-title">恢复作者账户</h1>
     <p className="note">使用部署时保存的恢复密钥设置新密码。恢复成功后，当前会话会全部失效，请重新登录并完成 TOTP 验证。</p>
     <form onSubmit={submit} noValidate>

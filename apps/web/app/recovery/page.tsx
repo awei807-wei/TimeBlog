@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import RecoveryForm from './RecoveryForm';
 
 export const metadata: Metadata = {
-  title: '账户恢复 · 个人时间线',
+  title: '账户恢复',
   robots: { index: false, follow: false, nocache: true },
 };
 

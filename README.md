@@ -1,4 +1,4 @@
-# 个人时间线博客
+# 菜鸟手记
 
 依据 `Personal_Timeline_Blog_Final_Blueprint_v1.0.docx` 搭建的 monorepo 垂直切片。
 

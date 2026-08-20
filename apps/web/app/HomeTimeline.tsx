@@ -1,21 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getTimeline, type PublicEntry, type TimelineDay } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { Rows3, StretchHorizontal, X } from 'lucide-react';
+import { getTimeline, type TimelineDay } from '@/lib/api';
 import { mergeTimelineDays } from '@/lib/timeline';
 import { PUBLIC_CACHE_INVALIDATED_EVENT } from '@/lib/cache-invalidation';
+import PublicEntryCard from './public/PublicEntryCard';
 
-function EntryCard({ entry }: { entry: PublicEntry }) {
-  if (entry.placeholder) return <article className="entry private"><span aria-hidden="true">◌</span><span>{entry.journalTime ? `${entry.journalTime} · ` : ''}{entry.text}</span></article>;
-  const body = entry.summary || entry.markdown || '';
-  const articleIdentifier = entry.slug || entry.id;
-  const articleHref = entry.kind === 'article' && articleIdentifier ? `/article/${encodeURIComponent(articleIdentifier)}` : '';
-  return <article className="entry"><div className="entry-meta"><span>{entry.journalTime || '当日随记'}</span><span className="tag">{entry.kind === 'article' ? '文章' : '随记'}</span>{entry.tags?.slice(0, 2).map(tag => <span className="tag" key={tag}>#{tag}</span>)}</div>{entry.title ? <h2>{articleHref ? <Link href={articleHref} aria-label={`文章标题：${entry.title}`}>{entry.title}</Link> : entry.title}</h2> : null}<p>{body}</p>{articleHref ? <Link className="entry-read-more" href={articleHref} aria-label={`阅读全文：${entry.title || '文章'}`}>阅读全文<span aria-hidden="true"> →</span></Link> : null}</article>;
-}
+const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', weekday: 'short', timeZone: 'Asia/Shanghai' });
 
-function Day({ day }: { day: TimelineDay }) {
-  return <div className="day"><div className="day-date"><Link href={`/day/${day.date}`}>{day.date}</Link></div><div className="day-items">{[...day.untimed, ...day.timed].map((entry, index) => <EntryCard entry={entry} key={entry.id || `${day.date}-${index}`} />)}</div></div>;
+function DateRail({ date }: { date: string }) {
+  const parsed = new Date(`${date}T00:00:00+08:00`);
+  const parts = dateFormatter.formatToParts(parsed);
+  const month = parts.find(part => part.type === 'month')?.value || '';
+  const weekday = parts.find(part => part.type === 'weekday')?.value || '';
+  return <aside className="public-date-rail"><b>{date.slice(-2)}</b><span>{month}<br/>{weekday}</span><small>{date.slice(0, 4)}</small></aside>;
 }
 
 export default function HomeTimeline({ initialDays, initialCursor }: { initialDays: TimelineDay[]; initialCursor?: string }) {
@@ -23,6 +23,8 @@ export default function HomeTimeline({ initialDays, initialCursor }: { initialDa
   const [cursor, setCursor] = useState(initialCursor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [compact, setCompact] = useState(false);
 
   useEffect(() => {
     const refresh = () => {
@@ -31,10 +33,16 @@ export default function HomeTimeline({ initialDays, initialCursor }: { initialDa
         setCursor(result.nextCursor);
       }).catch(() => setError('时间线刷新失败，请重新加载页面。'));
     };
-    const onEvent = () => refresh();
-    window.addEventListener(PUBLIC_CACHE_INVALIDATED_EVENT, onEvent);
-    return () => window.removeEventListener(PUBLIC_CACHE_INVALIDATED_EVENT, onEvent);
+    window.addEventListener(PUBLIC_CACHE_INVALIDATED_EVENT, refresh);
+    return () => window.removeEventListener(PUBLIC_CACHE_INVALIDATED_EVENT, refresh);
   }, []);
+
+  const filteredDays = useMemo(() => selectedTag ? days.map(day => ({
+    ...day,
+    untimed: day.untimed.filter(entry => entry.tags?.includes(selectedTag) || entry.categories?.includes(selectedTag)),
+    timed: day.timed.filter(entry => entry.tags?.includes(selectedTag) || entry.categories?.includes(selectedTag)),
+  })).filter(day => day.untimed.length || day.timed.length) : days, [days, selectedTag]);
+  const loadedCount = useMemo(() => days.reduce((total, day) => total + day.untimed.length + day.timed.length, 0), [days]);
 
   async function loadMore() {
     if (!cursor || loading) return;
@@ -51,5 +59,21 @@ export default function HomeTimeline({ initialDays, initialCursor }: { initialDa
     }
   }
 
-  return <section className="timeline" aria-label="最近动态">{days.length ? days.map(day => <Day day={day} key={day.date} />) : <div className="empty">还没有公开记录。</div>}{error && <div className="error-panel" role="alert">{error}</div>}{cursor && <button type="button" className="secondary load-more" onClick={() => void loadMore()} disabled={loading}>{loading ? '加载中…' : '加载更多'}</button>}</section>;
+  return <>
+    <section className="public-timeline-toolbar">
+      <div><b>{selectedTag ? `筛选 / ${selectedTag}` : '最近记录'}</b><span>已加载 {loadedCount} 条 · 按发生时间倒序</span></div>
+      {selectedTag && <button type="button" className="public-clear-filter" onClick={() => setSelectedTag(null)}>清除筛选 <X aria-hidden="true"/></button>}
+      <button type="button" className="public-view-switch" onClick={() => setCompact(value => !value)} aria-pressed={compact}>{compact ? <StretchHorizontal aria-hidden="true"/> : <Rows3 aria-hidden="true"/>}{compact ? '舒展显示' : '紧凑显示'}</button>
+    </section>
+    <section className={`public-timeline${compact ? ' is-compact' : ''}`} aria-label="最近动态">
+      {filteredDays.map(day => <section className="public-day-group" key={day.date}>
+        <DateRail date={day.date}/><div className="public-day-line" aria-hidden="true"><i /></div>
+        <div className="public-day-entries">{[...day.untimed, ...day.timed].map((entry, index) => <PublicEntryCard entry={entry} compact={compact} onTagClick={setSelectedTag} key={entry.id || `${day.date}-${index}`}/>)}</div>
+      </section>)}
+      {!filteredDays.length && <div className="public-empty">{selectedTag ? '这个标签下暂时没有已加载的公开记录。' : '还没有公开记录。'}</div>}
+      {error && <div className="public-error" role="alert">{error}</div>}
+      {cursor && !selectedTag && <button type="button" className="public-secondary-button public-load-more" onClick={() => void loadMore()} disabled={loading}>{loading ? '加载中…' : '加载更多'}</button>}
+      {selectedTag && <Link className="public-secondary-button public-load-more" href={`/tag/${encodeURIComponent(selectedTag)}`}>查看此标签的全部记录</Link>}
+    </section>
+  </>;
 }
