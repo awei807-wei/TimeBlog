@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const compose = await readFile(new URL('./compose.yaml', import.meta.url), 'utf8');
+const composeCi = await readFile(new URL('./compose.ci.yaml', import.meta.url), 'utf8');
 const proxy = await readFile(new URL('./compose.proxy.yaml', import.meta.url), 'utf8');
 const ci = await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 const service = (name) => {
@@ -28,6 +29,18 @@ test('core compose keeps proxy configuration out of the default stack', () => {
 test('CI supplies the proxy placeholder and opts into database integration tests', () => {
   assert.match(ci, /^  SITE_HOST: localhost$/m);
   assert.match(ci, /^  TIMEBLOG_RUN_DATABASE_INTEGRATION: ['"]?1['"]?$/m);
+});
+
+test('CI exposes Postgres only through the loopback compose overlay', () => {
+  assert.doesNotMatch(service('postgres'), /^    ports:/m);
+  assert.doesNotMatch(compose, /127\.0\.0\.1:5432:5432/);
+  assert.match(composeCi, /^services:\n  postgres:\n    ports:\n      - ["']127\.0\.0\.1:5432:5432["']$/m);
+  for (const action of ["config", "up -d --wait postgres", "down -v"]) {
+    assert.ok(
+      ci.includes("docker compose -f deploy/compose.yaml -f deploy/compose.ci.yaml " + action),
+      "CI must load both compose files for " + action,
+    );
+  }
 });
 
 test('CI Docker builds use only flags supported by the Docker CLI', () => {
