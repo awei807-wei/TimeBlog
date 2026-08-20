@@ -1,0 +1,299 @@
+
+.writing-inspector,
+.writing-drafts {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.writing-inspector > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 16px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.writing-inspector > summary::-webkit-details-marker {
+  display: none;
+}
+
+.writing-inspector > summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.writing-inspector > summary svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+
+.writing-inspector > summary small {
+  padding: 4px 7px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.writing-inspector[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.writing-inspector-fields {
+  display: grid;
+  gap: 15px;
+  padding: 16px;
+}
+
+.writing-selector-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.writing-selector-row label,
+.writing-inspector .taxonomy-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.writing-selector-row select {
+  width: 100%;
+  height: 39px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.writing-selector-row select:focus {
+  border-color: #9bb2c2;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.writing-inspector .journal-date-group {
+  height: 39px;
+  border-radius: 8px;
+}
+
+.writing-inspector .journal-date-input {
+  font-size: 12px;
+}
+
+.writing-inspector .journal-date-trigger {
+  width: 38px;
+  min-width: 38px;
+}
+
+.writing-inspector .tag-input {
+  min-height: 42px;
+  border-radius: 8px;
+}
+
+.writing-inspector .tag-input-list {
+  gap: 5px;
+  min-height: 40px;
+  padding: 5px 7px;
+}
+
+.writing-inspector .taxonomy-tag {
+  min-height: 27px;
+  padding-left: 7px;
+}
+
+.writing-inspector .tag-input-editor,
+.writing-inspector .taxonomy-tag-edit {
+  min-height: 30px;
+  height: 30px;
+  font-size: 11px;
+}
+
+.writing-inspector-note {
+  margin: 0;
+  padding: 0 16px 16px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.writing-sidebar {
+  display: grid;
+  gap: 10px;
+}
+
+.writing-drafts > header {
+  padding: 15px 16px 12px;
+}
+
+.writing-drafts > header > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.writing-drafts h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.writing-drafts header span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.writing-drafts .draft-list {
+  display: grid;
+  gap: 0;
+  max-height: min(48vh, 490px);
+  margin: 0;
+  overflow-y: auto;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+.writing-drafts .draft-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.writing-drafts .draft-list button {
+  width: 100%;
+  display: grid;
+  gap: 5px;
+  padding: 12px 15px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.writing-drafts .draft-list button:hover {
+  background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface));
+}
+
+.draft-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.draft-card-meta b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.draft-card-meta time {
+  font-variant-numeric: tabular-nums;
+}
+
+.writing-drafts .draft-list strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.writing-drafts .draft-list small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.draft-expand {
+  width: 100%;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 12px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.draft-expand:hover {
+  color: var(--ink);
+}
+
+.draft-expand svg {
+  width: 14px;
+  height: 14px;
+}
+
+.draft-empty {
+  margin: 0;
+  padding: 3px 16px 17px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.writing-manage-link {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.writing-manage-link:hover {
+  border-color: #c4cdd1;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.writing-manage-link svg {
+  width: 15px;
+  height: 15px;
+}
+
+.writing-composer .working-copy-notice {
+  margin-bottom: 22px;
+}
+
+.dark .writing-page-header {
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+}
+
+.dark .writing-save-button {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.dark .writing-composer .mdx-editor .mdxeditor-toolbar {
+  background: color-mix(in srgb, var(--surface) 94%, var(--paper));
+}

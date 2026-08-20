@@ -1,0 +1,166 @@
+
+@media (max-width: 1180px) {
+  .writing-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .writing-rail {
+    position: static;
+    grid-template-columns: minmax(260px, .78fr) minmax(0, 1.22fr);
+    max-height: none;
+    overflow: visible;
+  }
+
+  .writing-sidebar {
+    grid-template-columns: 1fr;
+  }
+
+  .writing-drafts .draft-list {
+    max-height: 430px;
+  }
+}
+
+@media (max-width: 760px) {
+  .writing-shell {
+    padding: 0 14px 52px;
+  }
+
+  .app-content > .writing-shell {
+    padding-top: 0;
+  }
+
+  .writing-page-header {
+    position: relative;
+    top: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    padding: 22px 0 15px;
+    background: transparent;
+    backdrop-filter: none;
+  }
+
+  .writing-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .writing-page-title p {
+    display: none;
+  }
+
+  .writing-status {
+    display: none;
+  }
+
+  .writing-save-button,
+  .writing-undo-button {
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+
+  .writing-composer {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .writing-editor-heading small {
+    max-width: 230px;
+  }
+
+  .writing-composer .mdx-editor-shell {
+    min-height: 62vh;
+  }
+
+  .writing-composer .mdxeditor-diff-source-wrapper,
+  .writing-composer .mdxeditor-source-editor,
+  .writing-composer .mdxeditor-diff-editor {
+    height: 54vh;
+    min-height: 0;
+  }
+
+  .writing-composer .mdx-editor-content {
+    min-height: 54vh;
+    padding: 24px 18px 70px;
+    font-size: 16px;
+  }
+
+  .writing-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .writing-inspector {
+    order: 1;
+  }
+
+  .writing-sidebar {
+    order: 2;
+  }
+
+  .writing-drafts .draft-list {
+    max-height: 420px;
+  }
+}
+
+@media (max-width: 520px) {
+  .writing-page-header {
+    gap: 12px;
+  }
+
+  .writing-page-title h1 {
+    font-size: 24px;
+  }
+
+  .writing-header-actions {
+    align-items: stretch;
+  }
+
+  .writing-save-actions {
+    margin-left: auto;
+  }
+
+  .writing-undo-button {
+    display: none;
+  }
+
+  .writing-save-button {
+    min-width: 72px;
+  }
+
+  .writing-editor-heading {
+    align-items: flex-start;
+  }
+
+  .writing-editor-heading small {
+    display: none;
+  }
+
+  .writing-composer .mdx-editor .mdxeditor-toolbar {
+    overflow-x: auto;
+  }
+
+  .writing-composer .mdxeditor-diff-source-wrapper,
+  .writing-composer .mdxeditor-source-editor,
+  .writing-composer .mdxeditor-diff-editor {
+    height: 50vh;
+    min-height: 0;
+  }
+
+  .writing-composer .mdx-view-mode-toggle {
+    margin-left: 4px;
+  }
+
+  .writing-composer .mdx-editor .mdx-view-mode-toggle button {
+    padding-inline: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .writing-save-button,
+  .writing-undo-button,
+  .writing-drafts .draft-list button {
+    transition: none;
+  }
+}

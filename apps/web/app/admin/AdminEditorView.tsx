@@ -2,7 +2,7 @@
 
 import type { DragEvent, RefObject } from 'react';
 import type { MDXEditorMethods } from '@mdxeditor/editor';
-import { AlertCircle, Check, LoaderCircle, Paperclip, Trash2, X } from 'lucide-react';
+import { AlertCircle, Check, Cloud, CloudOff, FileText, LoaderCircle, Paperclip, Settings2, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import type { UploadItem } from '@/lib/media-utils';
 import AttachmentPreview from './AttachmentPreview';
@@ -74,9 +74,12 @@ export type AdminEditorViewProps = {
 
 function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, mediaAvailabilityMessage, onToggleUploadPanel }: AdminEditorViewProps) {
   return (
-    <>
+    <div className="writing-editor-heading">
+      <div>
+        <span className="writing-section-label">正文</span>
+        <small className={mediaInputDisabled ? 'is-unavailable' : ''}>{mediaAvailabilityMessage}</small>
+      </div>
       <div className="editor-toolbar editor-toolbar-actions" aria-label="编辑工具">
-        <span className="editor-toolbar-label">Markdown 编辑器</span>
         <button
           type="button"
           className={`tool upload-control${uploadPanelOpen ? ' active' : ''}${mediaInputDisabled ? ' upload-disabled' : ''}`}
@@ -88,24 +91,21 @@ function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, mediaAvailabilityM
           onClick={onToggleUploadPanel}
         >
           <Paperclip aria-hidden="true" />
-          添加媒体
+          附件
         </button>
       </div>
-      <div className={`media-capability${mediaInputDisabled ? ' is-unavailable' : ''}`} role="status">
-        {mediaAvailabilityMessage}
-      </div>
-    </>
+    </div>
   );
 }
 
 function ArticleMetadataFields({ kind, title, summary, slug, onTitleChange, onSummaryChange, onSlugChange }: AdminEditorViewProps) {
   if (kind !== 'article') return null;
   return (
-    <>
+    <div className="article-fields">
       <input className="title-input" value={title} onChange={event => onTitleChange(event.target.value)} placeholder="文章标题" aria-label="文章标题" />
       <input className="summary-input" value={summary} onChange={event => onSummaryChange(event.target.value)} placeholder="摘要（可选）" aria-label="文章摘要" />
-      <input className="summary-input" value={slug} onChange={event => onSlugChange(event.target.value)} placeholder="地址 slug（可选，编辑时保持原值）" aria-label="文章地址" />
-    </>
+      <input className="summary-input slug-input" value={slug} onChange={event => onSlugChange(event.target.value)} placeholder="文章地址 slug（可选）" aria-label="文章地址" />
+    </div>
   );
 }
 
@@ -158,62 +158,79 @@ function UploadQueue({ uploads, onCancelUpload, onRetryUpload, onRemoveUpload }:
 
 function EntrySelectors({ date, kind, status, categories, tags, saving, loadingEdit, onDateChange, onKindChange, onStatusChange, onCategoriesChange, onTagsChange }: AdminEditorViewProps) {
   return (
-    <>
+    <div className="writing-inspector-fields">
       <JournalDatePicker value={date} onChange={onDateChange} disabled={saving || loadingEdit} />
-      <label>类型 <select value={kind} onChange={event => onKindChange(event.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label>
-      <label>状态 <select value={status} onChange={event => onStatusChange(event.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label>
+      <div className="writing-selector-row">
+        <label>类型 <select value={kind} onChange={event => onKindChange(event.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label>
+        <label>状态 <select value={status} onChange={event => onStatusChange(event.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label>
+      </div>
       <TagInput label="分类" values={categories} onChange={onCategoriesChange} placeholder="输入后回车" ariaLabel="分类" />
       <TagInput label="标签" values={tags} onChange={onTagsChange} placeholder="输入后回车" ariaLabel="标签" prefix="#" />
-    </>
+    </div>
   );
 }
 
 function SaveActions({ markdown, saving, loadingEdit, mediaStillProcessing, editingEntryID, undoToken, onSave, onUndo }: Pick<AdminEditorViewProps, 'markdown' | 'saving' | 'loadingEdit' | 'mediaStillProcessing' | 'editingEntryID' | 'undoToken' | 'onSave' | 'onUndo'>) {
   return (
-    <>
-      <button className="primary" disabled={saving || loadingEdit || mediaStillProcessing || !markdown.trim()} onClick={onSave}>
+    <div className="writing-save-actions">
+      {undoToken && <button type="button" className="writing-undo-button" onClick={onUndo}>撤销保存</button>}
+      <button type="button" className="writing-save-button" disabled={saving || loadingEdit || mediaStillProcessing || !markdown.trim()} onClick={onSave}>
         {saving ? '保存中…' : editingEntryID ? '保存修改' : '保存'}
       </button>
-      {undoToken && <button className="secondary" onClick={onUndo}>撤销保存</button>}
-    </>
+    </div>
   );
-}
-
-function ComposerFooter(props: AdminEditorViewProps) {
-  return <div className="composer-footer"><EntrySelectors {...props} /><SaveActions {...props} /></div>;
 }
 
 function AdminSidebar({ drafts, onLoadDraft }: Pick<AdminEditorViewProps, 'drafts' | 'onLoadDraft'>) {
   return (
-    <aside className="sidebar">
+    <aside className="writing-sidebar" aria-label="写作辅助">
       <DraftTray drafts={drafts} onLoadDraft={onLoadDraft} />
-      <div className="side-card"><h3>写作原则</h3><p>唯一保存按钮。先写，再决定是草稿、公开还是私人。私人内容不会出现在公开搜索和正文接口。</p></div>
-      <div className="side-card"><h3>更多工具</h3><p><Link href="/admin/entries">版本、回收站与导出入口</Link>已接入版本、回收站和导出工具。</p></div>
+      <Link className="writing-manage-link" href="/admin/entries"><FileText aria-hidden="true" />管理全部内容</Link>
     </aside>
   );
 }
 
 export default function AdminEditorView(props: AdminEditorViewProps) {
   const showNotice = Boolean(props.editingEntryID && props.kind === 'article' && props.workingCopyMeta.publishedStatus === 'published' && props.workingCopyMeta.publishedVisibility === 'public');
+  const pageTitle = props.editingEntryID ? '编辑内容' : props.kind === 'article' ? '新建文章' : '写一条随记';
   return (
-    <main id="main-content" className="shell">
-      <div className="admin-grid">
-        <section>
-          <div className="eyebrow">WRITE NOW · {props.online ? 'ONLINE' : 'OFFLINE'}</div>
-          <h1>{props.editingEntryID ? '编辑内容' : '此刻想写些什么？'}</h1>
-          <div className="composer">
-            <EditorToolbar {...props} />
+    <main id="main-content" className="writing-shell">
+      <header className="writing-page-header">
+        <div className="writing-page-title">
+          <span className={`writing-connection ${props.online ? 'is-online' : 'is-offline'}`}>
+            {props.online ? <Cloud aria-hidden="true" /> : <CloudOff aria-hidden="true" />}
+            {props.online ? '在线' : '离线'}
+          </span>
+          <h1>{pageTitle}</h1>
+          <p>内容会自动保存在本机草稿中，准备好后再决定是否公开。</p>
+        </div>
+        <div className="writing-header-actions">
+          <div className="writing-status" aria-live="polite">{props.message || (props.loadingEdit ? '正在载入内容…' : '所有更改会自动暂存')}</div>
+          <SaveActions {...props} />
+        </div>
+      </header>
+
+      <div className="writing-layout">
+        <section className="writing-main" aria-label="内容编辑区">
+          <div className="writing-composer">
             <EditingDraftNotice visible={showNotice} articleIdentifier={props.editingEntryID} meta={props.workingCopyMeta} discarding={props.discardingUnpublishedChanges} onDiscard={props.onDiscardWorkingCopy} />
             <ArticleMetadataFields {...props} />
+            <EditorToolbar {...props} />
             <MdxMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} onChange={props.onMarkdownChange} onFiles={props.onFiles} onImageUpload={props.onImageUpload} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} onViewModeChange={props.onViewModeChange} disabled={props.saving || props.loadingEdit} />
             <UploadPanel open={props.uploadPanelOpen} dragActive={props.dragActive} disabled={props.mediaInputDisabled} disabledMessage={props.mediaAvailabilityMessage} onDragEnter={props.onDragEnter} onDragOver={props.onDragOver} onDragLeave={props.onDragLeave} onDrop={props.onDrop} onFiles={files => props.onFiles(Array.from(files))} />
             <AttachmentPreview markdown={props.markdown} uploads={props.uploads} />
-            <div className="status" aria-live="polite">{props.message}</div>
             <UploadQueue uploads={props.uploads} onCancelUpload={props.onCancelUpload} onRetryUpload={props.onRetryUpload} onRemoveUpload={props.onRemoveUpload} />
-            <ComposerFooter {...props} />
           </div>
         </section>
-        <AdminSidebar drafts={props.drafts} onLoadDraft={props.onLoadDraft} />
+
+        <div className="writing-rail">
+          <details className="writing-inspector" open>
+            <summary><span><Settings2 aria-hidden="true" />发布设置</span><small>{props.status === 'public' ? '公开' : props.status === 'private' ? '私人' : '草稿'}</small></summary>
+            <EntrySelectors {...props} />
+            <p className="writing-inspector-note">私人内容不会出现在公开时间线、搜索和正文接口中。</p>
+          </details>
+          <AdminSidebar drafts={props.drafts} onLoadDraft={props.onLoadDraft} />
+        </div>
       </div>
     </main>
   );

@@ -1,1 +1,1 @@
-{"name":"菜鸟手记","short_name":"菜鸟手记","start_url":"/","display":"standalone","background_color":"#f8f8f6","theme_color":"#526d82","lang":"zh-CN"}
+{"name":"菜鸟手记","short_name":"菜鸟手记","description":"生活、技术，还有一些当时不想忘记的事。","start_url":"/","display":"standalone","background_color":"#f8f8f6","theme_color":"#526d82","lang":"zh-CN","icons":[{"src":"/icon-192.png","sizes":"192x192","type":"image/png"},{"src":"/icon-512.png","sizes":"512x512","type":"image/png"}]}

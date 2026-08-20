@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSyncExternalStore } from 'react';
 import { usePathname } from 'next/navigation';
 import { LogIn, LogOut, Moon, PenLine, Sun } from 'lucide-react';
@@ -55,7 +56,10 @@ function AccountActions() {
 export default function PublicShell({ children }: { children: React.ReactNode }) {
   return <div className="public-shell" id="top">
     <header className="public-masthead">
-      <Link href="/" className="public-wordmark" aria-label="菜鸟手记首页"><span>菜鸟手记</span><small>生活与技术的零碎记录</small></Link>
+      <Link href="/" className="public-wordmark" aria-label="菜鸟手记首页">
+        <Image className="public-brand-mark" src="/brand/mascot.webp" alt="" width={40} height={40} priority />
+        <span className="public-wordmark-copy"><b>菜鸟手记</b><small>生活与技术的零碎记录</small></span>
+      </Link>
       <PublicNavigation />
       <AccountActions />
     </header>

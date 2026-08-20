@@ -45,4 +45,6 @@
 - 公共页面只展示 API 返回的公开数据；私人内容仍由后端决定是否返回占位。
 - “写点什么”在已登录时进入 `/admin`，未登录时进入 `/login`，不在公共页面复制一套写作器。
 - 深浅主题使用 `timeblog-theme` 本地偏好；未设置时跟随系统主题。
-- 静态分享图与站点图标位于 `apps/web/public/social-card.png` 和 `apps/web/public/favicon.svg`。
+- 静态分享图位于 `apps/web/public/social-card.png`。
+- 品牌原图由根目录 `logo.png` 派生为浏览器图标：`favicon.ico`、`favicon-16x16.png`、`favicon-32x32.png`、`favicon-48x48.png` 和 `apple-touch-icon.png`；PWA 图标为 `icon-192.png` 与 `icon-512.png`。
+- 透明圆形头像式吉祥物位于 `apps/web/public/brand/mascot.png` 与 `mascot.webp`。它保留原图的脸部与叶冠，使用明确的柔和圆形边界避免原始画布右侧/底部出血被误读为意外裁切。公共壳导航使用小尺寸吉祥物，首页 hero 使用低透明度装饰图；图片均保持等比，不拉伸原图。

@@ -1,0 +1,168 @@
+
+.writing-section-label {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.writing-editor-heading small {
+  max-width: 560px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.writing-editor-heading small.is-unavailable {
+  color: #9b5a50;
+}
+
+.writing-editor-heading .editor-toolbar {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.writing-editor-heading .tool {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.writing-editor-heading .tool:hover,
+.writing-editor-heading .tool.active {
+  border-color: #c5cdd1;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.writing-editor-heading .tool svg {
+  width: 15px;
+  height: 15px;
+}
+
+.writing-composer .mdx-editor-shell {
+  min-height: clamp(460px, 63vh, 820px);
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.writing-composer .mdx-editor {
+  min-height: inherit;
+}
+
+.writing-composer .mdx-editor .mdxeditor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 48px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 96%, var(--paper));
+}
+
+.writing-composer .mdx-editor .mdxeditor-toolbar button,
+.writing-composer .mdx-editor .mdxeditor-toolbar [role="button"] {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 6px;
+}
+
+.writing-composer .mdx-editor-content {
+  min-height: clamp(400px, 56vh, 740px);
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 34px 42px 90px;
+  color: var(--ink);
+  font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", serif;
+  font-size: 17px;
+  line-height: 1.95;
+}
+
+.writing-composer .mdx-editor-content:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -4px;
+}
+
+/* Source and diff views are CodeMirror surfaces rather than contenteditable
+   nodes. Give them their own bounded scroll area so long Markdown remains
+   reachable without clipping the editor shell or creating page overflow. */
+.writing-composer .mdxeditor-diff-source-wrapper {
+  min-height: clamp(400px, 56vh, 740px);
+  min-width: 0;
+}
+
+.writing-composer .mdxeditor-source-editor,
+.writing-composer .mdxeditor-diff-editor {
+  height: clamp(400px, 56vh, 740px);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.writing-composer .mdxeditor-source-editor:focus-within,
+.writing-composer .mdxeditor-diff-editor:focus-within {
+  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: -3px;
+}
+
+.writing-composer .mdxeditor-source-editor .cm-editor,
+.writing-composer .mdxeditor-diff-editor .cm-editor {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.writing-composer .mdxeditor-source-editor .cm-scroller,
+.writing-composer .mdxeditor-diff-editor .cm-scroller {
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.writing-composer .mdx-view-mode-toggle {
+  border-radius: 7px;
+}
+
+.writing-composer .mdx-editor .mdx-view-mode-toggle button {
+  min-height: 34px;
+  padding-inline: 9px;
+  font-size: 10px;
+}
+
+.writing-composer .upload-panel,
+.writing-composer .attachment-preview,
+.writing-composer .upload-list {
+  margin-top: 14px;
+}
+
+.writing-composer .upload-dropzone {
+  border-color: #c8d3d8;
+  background: var(--paper);
+}
+
+.writing-composer .upload-list li {
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.writing-rail {
+  position: sticky;
+  top: 136px;
+  display: grid;
+  gap: 12px;
+  align-self: start;
+  max-height: none;
+  overflow: visible;
+  padding-bottom: 2px;
+}

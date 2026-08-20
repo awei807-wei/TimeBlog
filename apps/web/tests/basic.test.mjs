@@ -10,6 +10,44 @@ import { embedSource, isSupportedEmbedProvider } from '../lib/embed-utils.js';
 import { runEndpointProbe } from '../lib/integration-probe.js';
 test('local draft storage key is stable',()=>assert.equal('timeline-local-drafts','timeline-local-drafts'));
 
+test('brand assets keep the logo-derived icon and mascot contract', async () => {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const root = path.resolve(new URL('..', import.meta.url).pathname);
+  const publicDir = path.join(root, 'public');
+  const pngSize = async name => {
+    const bytes = await fs.readFile(path.join(publicDir, name));
+    assert.equal(bytes.readUInt32BE(0), 0x89504e47);
+    return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
+  };
+  assert.deepEqual(await pngSize('favicon-16x16.png'), [16, 16]);
+  assert.deepEqual(await pngSize('favicon-32x32.png'), [32, 32]);
+  assert.deepEqual(await pngSize('favicon-48x48.png'), [48, 48]);
+  assert.deepEqual(await pngSize('apple-touch-icon.png'), [180, 180]);
+  assert.deepEqual(await pngSize('icon-192.png'), [192, 192]);
+  assert.deepEqual(await pngSize('icon-512.png'), [512, 512]);
+  assert.deepEqual(await pngSize('brand/mascot.png'), [768, 768]);
+  for (const name of ['favicon.ico', 'favicon.svg', 'brand/mascot.webp']) {
+    const stat = await fs.stat(path.join(publicDir, name));
+    assert.ok(stat.size > 0, `${name} should not be empty`);
+  }
+  const sharp = (await import('sharp')).default;
+  for (const name of ['brand/mascot.png', 'brand/mascot.webp']) {
+    const { data, info } = await sharp(path.join(publicDir, name)).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const alphaAt = (x, y) => data[(y * info.width + x) * info.channels + 3];
+    assert.ok([0, 1, 2, 3, 4].every(edge => alphaAt(edge, edge) === 0), `${name} should have transparent corners`);
+    assert.ok([0, 1, 2, 3, 4].every(edge => alphaAt(info.width - 1 - edge, edge) === 0), `${name} should have a safe top-right margin`);
+    assert.ok([0, 1, 2, 3, 4].every(edge => alphaAt(edge, info.height - 1 - edge) === 0), `${name} should have a safe bottom-left margin`);
+  }
+  const manifest = JSON.parse(await fs.readFile(path.join(publicDir, 'manifest.webmanifest'), 'utf8'));
+  assert.deepEqual(manifest.icons.map(icon => icon.src), ['/icon-192.png', '/icon-512.png']);
+  const layout = await fs.readFile(path.join(root, 'app/layout.tsx'), 'utf8');
+  const shell = await fs.readFile(path.join(root, 'app/public/PublicShell.tsx'), 'utf8');
+  assert.match(layout, /favicon\.ico/);
+  assert.match(layout, /apple-touch-icon\.png/);
+  assert.match(shell, /\/brand\/mascot\.webp/);
+});
+
 test('auth navigation checks server session and revokes it through logout', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/AuthNav.tsx', import.meta.url), 'utf8');
@@ -335,6 +373,23 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(css, /\.taxonomy-tag:focus-visible\{/);
   assert.match(css, /\.mdx-editor-content\[class\*="placeholder"\]/);
   assert.match(css, /\.mdx-editor \.mdxeditor-toolbar\{[^}]*scrollbar-width:none/);
+});
+
+test('writing workbench keeps focus visible and bounds responsive editor scrolling', async () => {
+  const fs = await import('node:fs/promises');
+  const cssFiles = ['admin-editor-layout.css', 'admin-editor-editor.css', 'admin-editor-inspector.css', 'admin-editor-responsive.css'];
+  const cssParts = await Promise.all(cssFiles.map(name => fs.readFile(new URL(`../app/${name}`, import.meta.url), 'utf8')));
+  const css = cssParts.join('\n');
+  for (const [index, part] of cssParts.entries()) {
+    assert.ok(part.split('\n').length < 400, `${cssFiles[index]} must stay below the CSS split threshold`);
+  }
+  assert.match(css, /\.writing-composer \.title-input:focus-visible,[\s\S]*outline: 3px solid/);
+  assert.match(css, /\.writing-composer \.mdx-editor-content:focus-visible[\s\S]*outline: 3px solid/);
+  assert.match(css, /\.writing-composer \.mdxeditor-source-editor \.cm-scroller,[\s\S]*overflow: auto/);
+  assert.match(css, /\.writing-composer \.mdxeditor-diff-editor[\s\S]*height: clamp/);
+  assert.match(css, /\.writing-rail[\s\S]*align-self: start[\s\S]*overflow: visible/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
+  assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.writing-save-actions[\s\S]*margin-left: auto/);
 });
 
 test('article-prose is the shared Markdown typography contract without card pollution', async () => {
