@@ -1,8 +1,5 @@
 # 菜鸟手记
 
-依据 `Personal_Timeline_Blog_Final_Blueprint_v1.0.docx` 搭建的 monorepo 垂直切片。
-
-架构总览见 [`docs/architecture/overview.md`](docs/architecture/overview.md)，关键取舍见 [`docs/adr/`](docs/adr/)。施工图中的原始技术名词与当前实现存在有意边界：上传采用 API 内置 Tus-compatible 合同而非独立 `tusd` 进程；Web 复用 Next.js 原生 CSS/组件而非强制引入 shadcn/ui；导出 Mermaid 当前生成明确的源码预览 fallback SVG，真实 Mermaid SVG 渲染列为 P1，不能将 fallback 当作真实图形。
 
 ## 本地运行
 
@@ -30,6 +27,3 @@ NAS 设置只保存 `SOURCE_HOST`、`SOURCE_PATH`、`DEST_PATH` 和 `RETENTION_D
 
 可用 `go run ./services/core --generate-recovery-key` 生成一次性高熵码（仅打印到当前终端，不写日志）；恢复完成后保存响应中的新码并清理旧 bootstrap 配置。
 
-当前已落地：公开时间线与日期页、双因素登录和会话安全、工作草稿与冲突检测、公开/私人占位、Asia/Shanghai 日期、断点媒体上传和范围请求、PostgreSQL 持久化、公开/完整 ZIP 导入导出（SHA-256 清单校验、媒体双副本校验、冲突策略、分类/标签/关系/版本/工作副本元数据）、导出后台任务、部署与备份恢复脚本。生产部署使用 `deploy/compose.yaml`，PostgreSQL 迁移位于 `services/core/db/migrations`。
-
-仍需独立验收的事项：完整 PWA 离线同步体验、Playwright 浏览器端 E2E、真实 NAS 恢复演练，以及针对生产数据规模的压测与容量评估。它们不影响当前 API 和部署切片的本地编译、单元测试与静态检查结论。
