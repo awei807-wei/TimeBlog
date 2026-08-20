@@ -464,11 +464,25 @@ test('public timeline notes stay within the article column and expose an overflo
   assert.match(entry, /entry\.markdown \|\| entry\.text \|\| entry\.summary/);
   assert.match(entry, /entryFullText[\s\S]*plainEntryText\([^,]+, true\)/);
   assert.match(card, /ResizeObserver/);
+  assert.match(card, /let cancelled = false/);
+  assert.match(card, /document\.fonts\.ready\.then/);
+  assert.match(card, /if \(!cancelled\) measure\(\)/);
   assert.match(card, /setMeasured\(true\)/);
   assert.doesNotMatch(card, /if \(expanded\) return/);
   assert.match(card, /is-measuring-full/);
   assert.match(card, /is-measuring-collapsed/);
+  assert.match(card, /public-note-measurement/);
+  assert.match(card, /resolvedLineHeight/);
+  assert.match(card, /measurement\.getBoundingClientRect\(\)\.height/);
+  assert.match(card, /measurement\.style\.maxHeight = `\$\{resolvedLineHeight \* clampLines\}px`/);
+  assert.match(card, /measurement\.remove\(\)/);
+  assert.doesNotMatch(card, /node\.scrollHeight/);
   assert.match(card, /if \(!overflowing && expanded\) setExpanded\(false\)/);
+  assert.match(card, /copyIsExpandable = canExpand && !expanded/);
+  assert.match(card, /role=\{copyIsExpandable \? 'button' : undefined\}/);
+  assert.match(card, /tabIndex=\{copyIsExpandable \? 0 : undefined\}/);
+  assert.match(card, /onClick=\{copyIsExpandable \? expandFromCopy : undefined\}/);
+  assert.match(card, /event\.key !== 'Enter' && event\.key !== ' '/);
   assert.match(card, /aria-expanded=\{expanded\}/);
   assert.match(card, /aria-controls=\{copyId\}/);
   assert.match(card, /ChevronDown/);
@@ -481,6 +495,8 @@ test('public timeline notes stay within the article column and expose an overflo
   assert.match(css, /\.public-note-entry\.is-compact \{[^}]*padding-block: 12px/);
   assert.doesNotMatch(css, /\.public-timeline\.is-compact \.public-note-entry/);
   assert.match(css, /\.public-note-entry\.is-compact \.public-note-copy p\.is-expanded\.is-measuring-collapsed \{[^}]*-webkit-line-clamp: 1/);
+  assert.match(css, /\.public-note-copy p\.is-expandable \{[^}]*cursor: pointer/);
+  assert.match(css, /\.public-note-copy p\.is-expandable:focus-visible \{[^}]*outline: 2px solid var\(--accent\)/);
   assert.match(css, /\.public-note-expand \{[^}]*color: var\(--accent\)/);
 });
 

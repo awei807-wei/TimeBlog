@@ -118,6 +118,8 @@
 .public-note-copy p.is-expanded.is-measuring-collapsed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .public-note-copy p.is-expanded { display: block; overflow: visible; }
 .public-note-copy p.is-measuring-full { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.public-note-copy p.is-expandable { cursor: pointer; }
+.public-note-copy p.is-expandable:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
 .public-note-expand { margin-top: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11px; line-height: 1.4; }
 .public-note-expand svg { width: 14px; height: 14px; }
 .public-note-expand:hover { color: var(--ink); }

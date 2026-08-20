@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowUpRight, ChevronDown, ChevronUp, LockKeyhole } from 'lucide-react';
 import type { PublicEntry } from '@/lib/api';
 import { articleHref, entryExcerpt, entryFullText, primaryCategory } from './public-entry';
@@ -30,18 +30,58 @@ function NoteCopy({ entry, compact }: { entry: PublicEntry; compact: boolean }) 
 
   useEffect(() => {
     const node = copyRef.current;
-    if (!node) return;
+    const parent = node?.parentElement;
+    if (!node || !parent) return;
 
-    let active = true;
+    let cancelled = false;
     const measure = () => {
-      node.classList.add('is-measuring-full');
-      const fullHeight = node.getBoundingClientRect().height;
-      node.classList.remove('is-measuring-full');
-      node.classList.add('is-measuring-collapsed');
-      const collapsedHeight = node.getBoundingClientRect().height;
-      node.classList.remove('is-measuring-collapsed');
-      const overflowing = fullHeight > collapsedHeight + 1;
-      if (!active) return;
+      if (cancelled) return;
+      const width = node.getBoundingClientRect().width;
+      if (!width) return;
+
+      const computed = window.getComputedStyle(node);
+      const lineHeight = Number.parseFloat(computed.lineHeight);
+      const fontSize = Number.parseFloat(computed.fontSize);
+      const resolvedLineHeight = Number.isFinite(lineHeight)
+        ? lineHeight
+        : (Number.isFinite(fontSize) ? fontSize * 1.5 : 24);
+      const clampLines = compact ? 1 : 3;
+      const measurement = node.cloneNode(false) as HTMLParagraphElement;
+      measurement.removeAttribute('id');
+      measurement.className = 'public-note-measurement is-measuring-full';
+      measurement.textContent = noteText;
+      Object.assign(measurement.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: `${width}px`,
+        height: 'auto',
+        maxHeight: 'none',
+        display: 'block',
+        overflow: 'visible',
+        visibility: 'hidden',
+        pointerEvents: 'none',
+        webkitLineClamp: 'unset',
+        webkitBoxOrient: 'initial',
+      });
+
+      parent.appendChild(measurement);
+      let fullHeight = 0;
+      let collapsedHeight = 0;
+      try {
+        // Measure a natural-height clone first. This intentionally avoids using
+        // scrollHeight from a line-clamped element, which differs across browsers.
+        fullHeight = measurement.getBoundingClientRect().height;
+        measurement.classList.replace('is-measuring-full', 'is-measuring-collapsed');
+        measurement.style.maxHeight = `${resolvedLineHeight * clampLines}px`;
+        measurement.style.overflow = 'hidden';
+        collapsedHeight = measurement.getBoundingClientRect().height;
+      } finally {
+        measurement.remove();
+      }
+
+      const overflowing = fullHeight > collapsedHeight + 0.5;
+      if (cancelled) return;
       setMeasured(true);
       setCanExpand(overflowing);
       if (!overflowing && expanded) setExpanded(false);
@@ -51,15 +91,40 @@ function NoteCopy({ entry, compact }: { entry: PublicEntry; compact: boolean }) 
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(node);
     window.addEventListener('resize', measure);
+    if (typeof document !== 'undefined' && document.fonts) {
+      document.fonts.ready.then(() => {
+        if (!cancelled) measure();
+      });
+    }
     return () => {
-      active = false;
+      cancelled = true;
       observer?.disconnect();
       window.removeEventListener('resize', measure);
     };
   }, [compact, expanded, noteText]);
 
+  const copyIsExpandable = canExpand && !expanded;
+  const expandFromCopy = () => {
+    if (copyIsExpandable) setExpanded(true);
+  };
+  const handleCopyKeyDown = (event: KeyboardEvent<HTMLParagraphElement>) => {
+    if (!copyIsExpandable || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    expandFromCopy();
+  };
+
   return <>
-    <p ref={copyRef} id={copyId} className={`public-note-text${measured ? ' is-measured' : ''}${expanded ? ' is-expanded' : ' is-collapsed'}`}>{noteText}</p>
+    <p
+      ref={copyRef}
+      id={copyId}
+      className={`public-note-text${measured ? ' is-measured' : ''}${expanded ? ' is-expanded' : ' is-collapsed'}${copyIsExpandable ? ' is-expandable' : ''}`}
+      role={copyIsExpandable ? 'button' : undefined}
+      tabIndex={copyIsExpandable ? 0 : undefined}
+      aria-label={copyIsExpandable ? '展开随手记' : undefined}
+      aria-expanded={copyIsExpandable ? expanded : undefined}
+      onClick={copyIsExpandable ? expandFromCopy : undefined}
+      onKeyDown={copyIsExpandable ? handleCopyKeyDown : undefined}
+    >{noteText}</p>
     {canExpand && <button
       type="button"
       className="public-note-expand"
