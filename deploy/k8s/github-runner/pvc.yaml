@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: timeblog-github-runner-config
+  labels:
+    app.kubernetes.io/name: timeblog-github-runner
+    app.kubernetes.io/part-of: timeblog
+spec:
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

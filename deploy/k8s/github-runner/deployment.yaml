@@ -1,0 +1,170 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: timeblog-github-runner
+  labels:
+    app.kubernetes.io/name: timeblog-github-runner
+    app.kubernetes.io/part-of: timeblog
+spec:
+  replicas: 1
+  revisionHistoryLimit: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: timeblog-github-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: timeblog-github-runner
+        app.kubernetes.io/part-of: timeblog
+    spec:
+      serviceAccountName: timeblog-github-runner
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: DoesNotExist
+                  - key: node-role.kubernetes.io/master
+                    operator: DoesNotExist
+      volumes:
+        - name: runner-config
+          persistentVolumeClaim:
+            claimName: timeblog-github-runner-config
+        - name: runner-work
+          emptyDir:
+            sizeLimit: 4Gi
+        - name: dind-data
+          emptyDir:
+            sizeLimit: 20Gi
+        - name: dind-certs
+          emptyDir: {}
+        - name: runner-entrypoint
+          configMap:
+            name: timeblog-github-runner-entrypoint
+            defaultMode: 0755
+      initContainers:
+        - name: prepare-dind-certs
+          image: docker:29.6.1-dind
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-ec"]
+          args: ["mkdir -p /certs/client"]
+          volumeMounts:
+            - name: dind-certs
+              mountPath: /certs
+          securityContext:
+            privileged: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+      containers:
+        - name: runner
+          image: ghcr.io/actions/actions-runner:2.336.0
+          imagePullPolicy: IfNotPresent
+          workingDir: /runner
+          command: ["/bin/bash", "/opt/timeblog/entrypoint.sh"]
+          env:
+            - name: RUNNER_ROOT
+              value: /runner
+            - name: RUNNER_HOME
+              value: /home/runner
+            - name: RUNNER_WORKDIR
+              value: /runner/_work
+            - name: RUNNER_REPOSITORY_URL
+              value: https://github.com/awei807-wei/TimeBlog
+            - name: RUNNER_LABELS
+              value: timeblog-build-amd64
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: timeblog-github-runner-registration
+                  key: token
+                  optional: true
+            - name: DOCKER_HOST
+              value: tcp://127.0.0.1:2376
+            - name: DOCKER_TLS_VERIFY
+              value: "1"
+            - name: DOCKER_CERT_PATH
+              value: /certs/client
+          volumeMounts:
+            - name: runner-config
+              mountPath: /runner
+            - name: runner-work
+              mountPath: /runner/_work
+            - name: runner-entrypoint
+              mountPath: /opt/timeblog
+            - name: dind-certs
+              mountPath: /certs/client
+              subPath: client
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+              ephemeral-storage: 1Gi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+              ephemeral-storage: 4Gi
+          securityContext:
+            privileged: false
+            runAsUser: 1001
+            runAsGroup: 1001
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+        - name: dind
+          image: docker:29.6.1-dind
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: /certs
+          ports:
+            - name: docker-tls
+              containerPort: 2376
+          readinessProbe:
+            exec:
+              command: ["sh", "-ec", "docker info >/dev/null 2>&1"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            exec:
+              command: ["sh", "-ec", "docker info >/dev/null 2>&1"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "1"
+              memory: 1Gi
+              ephemeral-storage: 8Gi
+            limits:
+              cpu: "4"
+              memory: 2560Mi
+              ephemeral-storage: 20Gi
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+          volumeMounts:
+            - name: dind-data
+              mountPath: /var/lib/docker
+            - name: dind-certs
+              mountPath: /certs

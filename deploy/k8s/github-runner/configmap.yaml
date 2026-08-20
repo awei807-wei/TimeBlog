@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timeblog-github-runner-entrypoint
+  labels:
+    app.kubernetes.io/name: timeblog-github-runner
+    app.kubernetes.io/part-of: timeblog
+data:
+  entrypoint.sh: |
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+    runner_root="${RUNNER_ROOT:-/runner}"
+    runner_home="${RUNNER_HOME:-/home/runner}"
+    work_dir="${RUNNER_WORKDIR:-$runner_root/_work}"
+
+    # The official image keeps the runner binaries in /home/runner. Copy them
+    # to the PVC once so that runner metadata and credentials survive restarts.
+    mkdir -p "$runner_root" "$work_dir"
+    if [[ ! -x "$runner_root/run.sh" ]]; then
+      cp -a "$runner_home"/. "$runner_root"/
+    fi
+
+    if [[ ! -f "$runner_root/.runner" ]]; then
+      : "${RUNNER_REPOSITORY_URL:?RUNNER_REPOSITORY_URL is required for first registration}"
+      if [[ -z "${RUNNER_TOKEN:-}" ]]; then
+        echo 'RUNNER_TOKEN is required because the PVC has no runner registration' >&2
+        exit 1
+      fi
+
+      runner_name="${RUNNER_NAME:-timeblog-build-amd64-${POD_NAME:-runner}}"
+      "$runner_root/config.sh" \
+        --unattended \
+        --replace \
+        --url "$RUNNER_REPOSITORY_URL" \
+        --token "$RUNNER_TOKEN" \
+        --name "$runner_name" \
+        --labels "${RUNNER_LABELS:-timeblog-build-amd64}" \
+        --work "$work_dir"
+    fi
+
+    # The registration token is only needed by config.sh. Remove it before
+    # starting the long-lived runner process.
+    unset RUNNER_TOKEN
+
+    for ((attempt = 1; attempt <= 120; attempt++)); do
+      if docker info >/dev/null 2>&1; then
+        break
+      fi
+      if [[ "$attempt" -eq 120 ]]; then
+        echo 'Docker-in-Docker did not become ready within 120 seconds' >&2
+        exit 1
+      fi
+      sleep 1
+    done
+
+    exec "$runner_root/run.sh"

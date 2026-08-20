@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: timeblog-ci
+  labels:
+    app.kubernetes.io/name: timeblog-github-runner
+    app.kubernetes.io/part-of: timeblog
