@@ -30,6 +30,11 @@ test('CI supplies the proxy placeholder and opts into database integration tests
   assert.match(ci, /^  TIMEBLOG_RUN_DATABASE_INTEGRATION: ['"]?1['"]?$/m);
 });
 
+test('CI Docker builds use only flags supported by the Docker CLI', () => {
+  assert.doesNotMatch(ci, /^\s+run: docker build .*--buildvcs=false/m);
+  assert.match(ci, /^        run: docker build -f services\/core\/Dockerfile services\/core$/m);
+});
+
 test('api and worker share an overridable core image while retaining a build fallback', () => {
   for (const name of ['api', 'worker']) {
     assert.match(service(name), /^    image: \$\{CORE_IMAGE:-timeblog-core:local\}$/m);

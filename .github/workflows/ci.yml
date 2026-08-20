@@ -49,7 +49,7 @@ jobs:
           python3 -c "from pathlib import Path; import re; s=Path('api/openapi.yaml').read_text(); ids=re.findall(r'^\\s+operationId:\\s+([^\\s#]+)',s,re.M); assert ids and len(ids)==len(set(ids))"
         working-directory: services/core
       - name: Build API image
-        run: docker build --buildvcs=false -f services/core/Dockerfile services/core
+        run: docker build -f services/core/Dockerfile services/core
       - name: Build web image
         run: docker build -f apps/web/Dockerfile .
       - name: Compose config
