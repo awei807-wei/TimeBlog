@@ -1,0 +1,17 @@
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    profiles: [proxy]
+    environment:
+      SITE_HOST: ${SITE_HOST:?set}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: {web: {condition: service_healthy}, api: {condition: service_healthy}}
+
+volumes:
+  caddy-data:
+  caddy-config:

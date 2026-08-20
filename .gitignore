@@ -37,6 +37,8 @@ tmp/
 *.db
 *.log
 logs/
+deploy/releases/
+deploy/.release.*.env
 
 # Backups and generated archives
 backups/

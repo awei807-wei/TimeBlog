@@ -13,7 +13,7 @@ npm --workspace apps/web run dev
 
 在任意目录执行 `./deploy/backup.sh`（或从 `deploy/` 执行 `./backup.sh`）会以动态 Compose 卷名导出 PostgreSQL custom dump、媒体卷和导出卷，并生成带 SHA-256 校验和的 manifest。恢复是破坏性操作，必须显式提供 `BACKUP_STAMP=... ./deploy/restore.sh --confirm`；脚本会先验证 manifest/校验和，再停止 API/worker，使用事务 `pg_restore` 恢复数据库和两个文件卷，失败时自动恢复原服务状态。备份目录应放在受控 NAS/离线存储，定期执行恢复演练。
 
-生产反向代理可按需启用 `caddy` profile：设置 `SITE_HOST=example.com` 后运行 `docker compose --profile proxy -f deploy/compose.yaml up -d`。Caddy 负责 TLS/HSTS 和路由，API 的 `APP_ORIGIN` 与前端 `SITE_URL` 必须使用同一个 HTTPS 站点；本地开发不启用该 profile。
+生产反向代理可按需加载独立的 Caddy Compose 文件：设置 `SITE_HOST=example.com` 后运行 `docker compose -f deploy/compose.yaml -f deploy/compose.proxy.yaml --profile proxy up -d`。Caddy 负责 TLS/HSTS 和路由，API 的 `APP_ORIGIN` 与前端 `SITE_URL` 必须使用同一个 HTTPS 站点；核心 Compose 和本地开发不会解析 `SITE_HOST`。
 
 API 健康检查：`GET /health/live`、`GET /health/ready`。
 
@@ -26,4 +26,3 @@ API 健康检查：`GET /health/live`、`GET /health/ready`。
 NAS 设置只保存 `SOURCE_HOST`、`SOURCE_PATH`、`DEST_PATH` 和 `RETENTION_DAYS`，不保存 SSH 私钥或 `known_hosts`。保存后由运维者执行 `/app/api --export-nas-config` 将固定字段导出为 NAS 上权限 `0600` 的环境文件，再由 `deploy/nas-pull-backup.sh` 通过 `NAS_CONFIG_FILE` 消费；因此页面会明确显示“待导出应用”。
 
 可用 `go run ./services/core --generate-recovery-key` 生成一次性高熵码（仅打印到当前终端，不写日志）；恢复完成后保存响应中的新码并清理旧 bootstrap 配置。
-

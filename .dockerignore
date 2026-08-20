@@ -1,5 +1,25 @@
 .git
-node_modules
-apps/web/.next
+**/node_modules
+**/.next
+**/.git
+**/.cache
+**/.tmp
+**/tmp
+**/dist
+**/build
+**/coverage
+**/*.tsbuildinfo
+
+# Local agent state, archives, generated documents and build reports.
+.helloagents
+.github
+*.zip
+*.tar
+*.tar.gz
+*.tgz
 *.docx
-tmp
+
+# The web image only needs the root workspace manifests and apps/web.
+services
+deploy
+docs

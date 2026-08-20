@@ -55,7 +55,7 @@ Go 使用 Goldmark 生成 Markdown HTML，并用 bluemonday 清洗 HTML；媒体
 
 ## 6. 部署、备份与恢复
 
-- `deploy/compose.yaml` 固定 PostgreSQL 16.4、API、Worker、Web 镜像构建上下文；Caddy 以可选 profile 运行。
+- `deploy/compose.yaml` 固定 PostgreSQL 16.4、API、Worker、Web 镜像构建上下文，并为 API/Worker 提供可覆盖的 `CORE_IMAGE`、Web 提供可覆盖的 `WEB_IMAGE`；Caddy 位于独立的 `deploy/compose.proxy.yaml`，只有显式加载该文件并启用 `proxy` profile 时才解析 `SITE_HOST`。
 - Compose 为 API 与 Worker 显式绑定各自的二进制入口（`/app/api`、`/app/worker`），避免共享镜像默认入口误启动错误进程；Web 通过 `HOSTNAME=0.0.0.0` 监听容器全部接口，健康检查使用容器内 `127.0.0.1:3000`。
 - `deploy/backup.sh` 生成 `timeline.dump-<stamp>`、`media.tar.gz-<stamp>`、`exports.tar.gz-<stamp>`、`SHA256SUMS-<stamp>` 和 `manifest.json-<stamp>`。
 - NAS 在自身运行 `deploy/nas-pull-backup.sh`，源主机只读 SSH/rsync；源端校验、本地再次校验、manifest 校验和原子快照改名均在拉取流程中完成，不执行远端删除或改名。

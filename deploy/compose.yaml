@@ -9,6 +9,7 @@ services:
     volumes: [postgres-data:/var/lib/postgresql/data]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U timeline -d timeline"], interval: 5s, timeout: 5s, retries: 10}
   api:
+    image: ${CORE_IMAGE:-timeblog-core:local}
     build:
       context: ../services/core
     entrypoint: ["/app/api"]
@@ -32,6 +33,7 @@ services:
     volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
     depends_on: {postgres: {condition: service_healthy}}
   worker:
+    image: ${CORE_IMAGE:-timeblog-core:local}
     build:
       context: ../services/core
     entrypoint: ["/app/worker"]
@@ -46,6 +48,7 @@ services:
     volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
     depends_on: {postgres: {condition: service_healthy}}
   web:
+    image: ${WEB_IMAGE:-timeblog-web:local}
     build:
       context: ..
       dockerfile: apps/web/Dockerfile
@@ -65,21 +68,7 @@ services:
     profiles: [tools]
     entrypoint: ["/bin/sh"]
     volumes: [media:/srv/timeline/media, exports:/srv/timeline/exports]
-  caddy:
-    image: caddy:2.8-alpine
-    restart: unless-stopped
-    profiles: [proxy]
-    environment:
-      SITE_HOST: ${SITE_HOST:?set}
-    ports: ["80:80", "443:443"]
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on: {web: {condition: service_healthy}, api: {condition: service_healthy}}
 volumes:
   postgres-data:
   media:
   exports:
-  caddy-data:
-  caddy-config:
