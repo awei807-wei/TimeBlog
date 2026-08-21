@@ -1,20 +1,40 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
 
 export type AuthState = 'loading' | 'authenticated' | 'anonymous' | 'error';
 
-type SessionContextValue = {
+export type SessionSnapshot = {
+  authenticated: boolean;
+  csrfToken: string;
+};
+
+export type SessionContextValue = {
   state: AuthState;
   csrfToken: string;
   busy: boolean;
   feedback: string;
+  refreshSession: () => Promise<SessionSnapshot>;
   logout: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
+
+export async function requestSessionStatus(fetcher: typeof fetch = fetch): Promise<SessionSnapshot> {
+  const response = await fetcher(`${API}/auth/session/status`, {
+    cache: 'no-store',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
+  if (response.status === 401) return { authenticated: false, csrfToken: '' };
+  if (!response.ok) throw new Error(`session ${response.status}`);
+
+  const session = await response.json() as { authenticated?: boolean; csrfToken?: string };
+  if (session.authenticated !== true) return { authenticated: false, csrfToken: '' };
+  return { authenticated: true, csrfToken: session.csrfToken || '' };
+}
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -22,35 +42,41 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [csrfToken, setCsrfToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const mountedRef = useRef(false);
+  const refreshSequenceRef = useRef(0);
+
+  const refreshSession = useCallback(async (): Promise<SessionSnapshot> => {
+    const sequence = ++refreshSequenceRef.current;
+    try {
+      const session = await requestSessionStatus();
+      if (mountedRef.current && sequence === refreshSequenceRef.current) {
+        setCsrfToken(session.csrfToken);
+        setState(session.authenticated ? 'authenticated' : 'anonymous');
+        setFeedback('');
+      }
+      return session;
+    } catch (error) {
+      if (mountedRef.current && sequence === refreshSequenceRef.current) {
+        setCsrfToken('');
+        setState('error');
+        setFeedback('登录状态暂时无法确认');
+      }
+      throw error;
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${API}/auth/session/status`, { credentials: 'include', headers: { Accept: 'application/json' } })
-      .then(async response => {
-        if (response.status === 401) return { authenticated: false };
-        if (!response.ok) throw new Error(`session ${response.status}`);
-        return response.json() as Promise<{ authenticated?: boolean; csrfToken?: string }>;
-      })
-      .then(session => {
-        if (cancelled) return;
-        if (session.authenticated) {
-          setCsrfToken(session.csrfToken || '');
-          setState('authenticated');
-        } else {
-          setState('anonymous');
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setState('error');
-          setFeedback('登录状态暂时无法确认');
-        }
-      });
-    return () => { cancelled = true; };
-  }, []);
+    mountedRef.current = true;
+    void refreshSession().catch(() => undefined);
+    return () => {
+      mountedRef.current = false;
+      refreshSequenceRef.current += 1;
+    };
+  }, [refreshSession]);
 
   const logout = useCallback(async () => {
     if (busy) return;
+    refreshSequenceRef.current += 1;
     setBusy(true);
     setFeedback('正在退出登录');
     try {
@@ -78,7 +104,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [busy, csrfToken, router]);
 
-  const value = useMemo(() => ({ state, csrfToken, busy, feedback, logout }), [state, csrfToken, busy, feedback, logout]);
+  const value = useMemo(
+    () => ({ state, csrfToken, busy, feedback, refreshSession, logout }),
+    [state, csrfToken, busy, feedback, refreshSession, logout],
+  );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

@@ -1025,7 +1025,10 @@ test('mock auth and editor flow keeps challenge, private commit, undo and export
   const undoAction = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/useAdminUndoAction.ts', import.meta.url), 'utf8'));
   const desk = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8'));
   assert.match(login, /auth\/login\/\$\{step === 1 \? 'password' : 'totp'\}/);
-  assert.match(login, /setChallenge\(data\.challenge \|\| ''\)/);
+  assert.match(login, /resolveSuccessfulLogin\(step, response, refreshSession\)/);
+  assert.match(login, /setChallenge\(result\.challenge\)/);
+  assert.match(login, /router\.replace\('\/admin'\)/);
+  assert.match(login, /router\.refresh\(\)/);
   assert.match(login, /async function submit\(event: FormEvent<HTMLFormElement>\)/);
   assert.match(login, /<form onSubmit=\{submit\}/);
   assert.match(login, /<button className="primary" type="submit"/);
