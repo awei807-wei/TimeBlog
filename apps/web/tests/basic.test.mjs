@@ -8,6 +8,7 @@ import { mergeTimelineDays } from '../lib/timeline.js';
 import { decodeMermaidBase64 } from '../lib/mermaid-utils.js';
 import { embedSource, isSupportedEmbedProvider } from '../lib/embed-utils.js';
 import { runEndpointProbe } from '../lib/integration-probe.js';
+import { entryHasPreviewMedia } from '../lib/public-entry-preview.js';
 test('local draft storage key is stable',()=>assert.equal('timeline-local-drafts','timeline-local-drafts'));
 
 test('brand assets keep the logo-derived icon and mascot contract', async () => {
@@ -454,7 +455,15 @@ test('public article entries have explicit detail navigation and notes stay non-
   assert.match(globalCss, /@media\(max-width:1280px\)\{\.admin-grid\{grid-template-columns:minmax\(0,1fr\)\}\}/);
 });
 
-test('public timeline notes stay within the article column and expose an overflow-only expand control', async () => {
+test('public entry previews recognize canonical, legacy and rendered media', () => {
+  assert.equal(entryHasPreviewMedia({ markdown: '短随记' }), false);
+  assert.equal(entryHasPreviewMedia({ markdown: '短随记\n\n![河边晚霞](media://image-1)' }), true);
+  assert.equal(entryHasPreviewMedia({ markdown: '短随记\n\nmedia://legacy-image' }), true);
+  assert.equal(entryHasPreviewMedia({ renderedHtml: '<p>短随记</p><img src="/photo.jpg" alt="河边晚霞">' }), true);
+  assert.equal(entryHasPreviewMedia({ renderedHtml: '<p>短随记</p><span data-media-id="image-2">媒体</span>' }), true);
+});
+
+test('public timeline notes stay within the article column and expand text or full media previews', async () => {
   const fs = await import('node:fs/promises');
   const card = await fs.readFile(new URL('../app/public/PublicEntryCard.tsx', import.meta.url), 'utf8');
   const entry = await fs.readFile(new URL('../app/public/public-entry.ts', import.meta.url), 'utf8');
@@ -477,7 +486,15 @@ test('public timeline notes stay within the article column and expose an overflo
   assert.match(card, /measurement\.style\.maxHeight = `\$\{resolvedLineHeight \* clampLines\}px`/);
   assert.match(card, /measurement\.remove\(\)/);
   assert.doesNotMatch(card, /node\.scrollHeight/);
-  assert.match(card, /if \(!overflowing && expanded\) setExpanded\(false\)/);
+  assert.match(card, /const hasPreviewMedia = entryHasPreviewMedia\(entry\)/);
+  assert.match(card, /const canExpand = expanded \|\| textOverflows \|\| hasPreviewMedia/);
+  assert.match(card, /if \(!overflowing && !hasPreviewMedia && expanded\) setExpanded\(false\)/);
+  assert.match(card, /function NoteFullPreview/);
+  assert.match(card, /entry\.renderedHtml/);
+  assert.match(card, /renderMarkdown\(entry\.markdown/);
+  assert.match(card, /DOMPurify\.sanitize/);
+  assert.match(card, /<EmbedMarkup html=\{safeHtml\}\/>/);
+  assert.match(card, /expanded \? <NoteFullPreview entry=\{entry\}\/>/);
   assert.match(card, /copyIsExpandable = canExpand && !expanded/);
   assert.match(card, /role=\{copyIsExpandable \? 'button' : undefined\}/);
   assert.match(card, /tabIndex=\{copyIsExpandable \? 0 : undefined\}/);
@@ -497,6 +514,8 @@ test('public timeline notes stay within the article column and expose an overflo
   assert.match(css, /\.public-note-entry\.is-compact \.public-note-copy p\.is-expanded\.is-measuring-collapsed \{[^}]*-webkit-line-clamp: 1/);
   assert.match(css, /\.public-note-copy p\.is-expandable \{[^}]*cursor: pointer/);
   assert.match(css, /\.public-note-copy p\.is-expandable:focus-visible \{[^}]*outline: 2px solid var\(--accent\)/);
+  assert.match(css, /\.public-note-full\.article-prose \{[^}]*font-size: 15px/);
+  assert.match(css, /\.public-note-full \.resolved-image-card \.resolved-image \{[^}]*margin: 0/);
   assert.match(css, /\.public-note-expand \{[^}]*color: var\(--accent\)/);
 });
 

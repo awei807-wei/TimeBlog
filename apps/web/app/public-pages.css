@@ -108,6 +108,8 @@
 .public-note-entry:last-child { border-bottom: 0; }
 .public-note-meta,
 .public-note-copy { min-width: 0; max-width: 100%; }
+.public-note-body,
+.public-note-full { min-width: 0; max-width: 100%; }
 .public-note-meta time,
 .public-note-meta span { display: block; overflow-wrap: anywhere; }
 .public-note-meta time { font-size: 11px; }
@@ -120,6 +122,10 @@
 .public-note-copy p.is-measuring-full { display: block; -webkit-line-clamp: unset; overflow: visible; }
 .public-note-copy p.is-expandable { cursor: pointer; }
 .public-note-copy p.is-expandable:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+.public-note-full.article-prose { font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: 15px; line-height: 1.9; }
+.public-note-copy .public-note-full p { margin: 0 0 1.05em; white-space: normal; }
+.public-note-copy .public-note-full p:last-child { margin-bottom: 0; }
+.public-note-full .resolved-image-card .resolved-image { margin: 0; }
 .public-note-expand { margin-top: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11px; line-height: 1.4; }
 .public-note-expand svg { width: 14px; height: 14px; }
 .public-note-expand:hover { color: var(--ink); }

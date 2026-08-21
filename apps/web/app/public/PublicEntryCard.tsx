@@ -1,9 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { ArrowUpRight, ChevronDown, ChevronUp, LockKeyhole } from 'lucide-react';
+import EmbedMarkup from '@/app/article/EmbedMarkup';
 import type { PublicEntry } from '@/lib/api';
+import { decorateMediaReferences, renderMarkdown } from '@/lib/markdown';
+import { entryHasPreviewMedia } from '@/lib/public-entry-preview';
 import { articleHref, entryExcerpt, entryFullText, primaryCategory } from './public-entry';
 
 type Props = {
@@ -20,13 +24,28 @@ function TagList({ entry, onTagClick }: Pick<Props, 'entry' | 'onTagClick'>) {
     : <Link href={`/tag/${encodeURIComponent(tag)}`} key={tag}>#{tag}</Link>)}</div>;
 }
 
+function NoteFullPreview({ entry }: { entry: PublicEntry }) {
+  const safeHtml = useMemo(() => {
+    const rendered = entry.renderedHtml
+      ? decorateMediaReferences(entry.renderedHtml)
+      : renderMarkdown(entry.markdown || entry.text || entry.summary || '这条记录没有公开正文。').html;
+    return DOMPurify.sanitize(rendered, {
+      USE_PROFILES: { html: true },
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|\/|#):?)/i,
+    });
+  }, [entry.markdown, entry.renderedHtml, entry.summary, entry.text]);
+
+  return <div className="public-note-full markdown article-prose"><EmbedMarkup html={safeHtml}/></div>;
+}
+
 function NoteCopy({ entry, compact }: { entry: PublicEntry; compact: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [measured, setMeasured] = useState(false);
-  const [canExpand, setCanExpand] = useState(false);
+  const [textOverflows, setTextOverflows] = useState(false);
   const copyRef = useRef<HTMLParagraphElement>(null);
   const copyId = `public-note-${useId()}`;
   const noteText = entryFullText(entry) || '这条记录没有公开正文。';
+  const hasPreviewMedia = entryHasPreviewMedia(entry);
 
   useEffect(() => {
     const node = copyRef.current;
@@ -83,8 +102,8 @@ function NoteCopy({ entry, compact }: { entry: PublicEntry; compact: boolean }) 
       const overflowing = fullHeight > collapsedHeight + 0.5;
       if (cancelled) return;
       setMeasured(true);
-      setCanExpand(overflowing);
-      if (!overflowing && expanded) setExpanded(false);
+      setTextOverflows(overflowing);
+      if (!overflowing && !hasPreviewMedia && expanded) setExpanded(false);
     };
 
     measure();
@@ -101,8 +120,11 @@ function NoteCopy({ entry, compact }: { entry: PublicEntry; compact: boolean }) 
       observer?.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [compact, expanded, noteText]);
+  }, [compact, expanded, hasPreviewMedia, noteText]);
 
+  // Keep the collapse control available if this entry changes while open
+  // (for example after a same-ID timeline refresh removes its media).
+  const canExpand = expanded || textOverflows || hasPreviewMedia;
   const copyIsExpandable = canExpand && !expanded;
   const expandFromCopy = () => {
     if (copyIsExpandable) setExpanded(true);
@@ -114,17 +136,18 @@ function NoteCopy({ entry, compact }: { entry: PublicEntry; compact: boolean }) 
   };
 
   return <>
-    <p
-      ref={copyRef}
-      id={copyId}
-      className={`public-note-text${measured ? ' is-measured' : ''}${expanded ? ' is-expanded' : ' is-collapsed'}${copyIsExpandable ? ' is-expandable' : ''}`}
-      role={copyIsExpandable ? 'button' : undefined}
-      tabIndex={copyIsExpandable ? 0 : undefined}
-      aria-label={copyIsExpandable ? '展开随手记' : undefined}
-      aria-expanded={copyIsExpandable ? expanded : undefined}
-      onClick={copyIsExpandable ? expandFromCopy : undefined}
-      onKeyDown={copyIsExpandable ? handleCopyKeyDown : undefined}
-    >{noteText}</p>
+    <div id={copyId} className="public-note-body">
+      {expanded ? <NoteFullPreview entry={entry}/> : <p
+        ref={copyRef}
+        className={`public-note-text${measured ? ' is-measured' : ''} is-collapsed${copyIsExpandable ? ' is-expandable' : ''}`}
+        role={copyIsExpandable ? 'button' : undefined}
+        tabIndex={copyIsExpandable ? 0 : undefined}
+        aria-label={copyIsExpandable ? '展开随手记' : undefined}
+        aria-expanded={copyIsExpandable ? false : undefined}
+        onClick={copyIsExpandable ? expandFromCopy : undefined}
+        onKeyDown={copyIsExpandable ? handleCopyKeyDown : undefined}
+      >{noteText}</p>}
+    </div>
     {canExpand && <button
       type="button"
       className="public-note-expand"
