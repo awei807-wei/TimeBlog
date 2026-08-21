@@ -43,9 +43,11 @@ test('CI exposes Postgres only through the loopback compose overlay', () => {
   }
 });
 
-test('CI Docker builds use only flags supported by the Docker CLI', () => {
+test('CI container contract builds use quoted matrix paths and supported Docker flags', () => {
   assert.doesNotMatch(ci, /^\s+run: docker build .*--buildvcs=false/m);
-  assert.match(ci, /^        run: docker build -f services\/core\/Dockerfile services\/core$/m);
+  assert.match(ci, /^          BUILD_CONTEXT: \$\{\{ matrix\.context \}\}$/m);
+  assert.match(ci, /^          DOCKERFILE: \$\{\{ matrix\.dockerfile \}\}$/m);
+  assert.match(ci, /^        run: docker build -f "\$DOCKERFILE" "\$BUILD_CONTEXT"$/m);
 });
 
 test('api and worker share an overridable core image while retaining a build fallback', () => {

@@ -8,11 +8,11 @@
 main push
    │
    ▼
-CI workflow（测试、构建检查、Compose 集成）
+CI workflow（GitHub-hosted 快速测试、静态检查、Compose/PostgreSQL 集成）
    │ success
    ▼
 release workflow（workflow_run）
-   ├── 可选：Kubernetes 内 `timeblog-build-amd64` self-hosted runner 构建
+   ├── Kubernetes 内 `timeblog-build-amd64` self-hosted runner 单次构建
    ├── ghcr.io/awei807-wei/timeblog-core
    │     └── /app/api + /app/worker
    └── ghcr.io/awei807-wei/timeblog-web
@@ -29,6 +29,10 @@ release workflow（workflow_run）
 
 Pull Request 不会推送 GHCR 镜像，也不会接触生产凭据。
 
+为避免同一个 `main` commit 在两套 Runner 上重复执行生产构建，主分支 push 的 CI 会跳过 Next.js production build 和 core/web Docker image build；CI 仍执行 Go 测试与 vet、前端 lint/typecheck/test、Compose 静态检查和 PostgreSQL 集成测试。CI 成功后，Release 在 Kubernetes Runner 上对精确的当前 `main` commit 构建一次正式镜像，构建失败时不会进入部署。
+
+Pull Request、tag 和非 `main` 分支 push 不会触发 Release，因此仍在 GitHub-hosted runner 执行 Next.js production build，并通过两个并行 matrix job 分别验证 core/web Dockerfile。这样既保留合并前的容器契约检查，也不会让不受信任代码进入持久化、特权 DIND 的 Kubernetes Runner。job 级条件被跳过时 GitHub 将其视为成功，不会阻止成功的 main CI 触发 Release。
+
 核心 Compose 不包含 Caddy，也不解析 `SITE_HOST`。只有显式加载 `deploy/compose.proxy.yaml` 启用反向代理时，才需要在对应环境提供真实的 `SITE_HOST`；本发布流程只更新 API、Worker 和 Web。
 
 发布前会将 `workflow_run.head_sha` 与最新的 `origin/main` HEAD 做确定性比较；重跑的历史 CI 或已过期提交会安全跳过构建、推送和部署，不会回退线上版本。
@@ -44,7 +48,7 @@ Pull Request 不会推送 GHCR 镜像，也不会接触生产凭据。
 - NetworkPolicy 拒绝所有入站连接，并将出站限制为 DNS 与 TCP 443；runner 只需要访问 GitHub Actions、GHCR、Docker Hub、`gcr.io` 与 Actions cache 的 HTTPS 服务。标准 NetworkPolicy 不能按域名过滤，若集群需要域名级白名单，应在 Calico 或外部防火墙继续收紧。
 - runner 与 DIND 的内存上限合计约 `3.3Gi`，DIND 数据卷上限为 `20Gi`。
 
-该 Runner 是持久化、单租户的过渡方案。DIND 需要 `privileged`，其信任边界等同于承载它的 worker 节点，因此只能执行本仓库受信任 `main` 的发布构建，严禁将 Pull Request、外部仓库或用户可控工作流路由到该标签。建议启用 `main` 分支保护；若节点还承载其他业务，应迁移到专用构建节点或后续改为短生命周期 Runner。
+该 Runner 是持久化、单租户的过渡方案。DIND 需要 `privileged`，其信任边界等同于承载它的 worker 节点，因此只能执行本仓库受信任 `main` 的单次发布构建，严禁将 Pull Request、外部仓库、非 `main` 分支或用户可控工作流路由到该标签。建议启用 `main` 分支保护；若节点还承载其他业务，应迁移到专用构建节点或后续改为短生命周期 Runner。
 
 `local-path` PVC 会与首次调度节点绑定，不提供跨节点高可用或备份。节点或 PVC 丢失时应删除 GitHub 中的离线 Runner 记录，重新生成一次性注册 token 并注册；不要把 PVC 当作长期凭据备份。
 
@@ -54,7 +58,7 @@ Pull Request 不会推送 GHCR 镜像，也不会接触生产凭据。
 runs-on: ${{ vars.TIMEBLOG_BUILD_RUNNER || 'ubuntu-latest' }}
 ```
 
-未设置 `TIMEBLOG_BUILD_RUNNER` 时仍使用 GitHub-hosted runner；设置为 `timeblog-build-amd64` 后才切换到 Kubernetes runner。变量设置后如果 runner 不在线，job 会排队，不会自动回退；回滚时删除该变量即可。CI/PR job 和 production deploy job 不切换到该 runner。
+未设置 `TIMEBLOG_BUILD_RUNNER` 时仍使用 GitHub-hosted runner；设置为 `timeblog-build-amd64` 后才切换到 Kubernetes runner。变量设置后如果 runner 不在线，job 会排队，不会自动回退；回滚时删除该变量即可。所有 CI/PR job 和 production deploy job 都保持 GitHub-hosted，只有可信 `main` 的 Release 镜像构建使用该 runner。
 
 首次注册步骤（注册 token 只写入权限为 `0600` 的临时文件和短期 Secret；首次注册时会短暂作为 `config.sh --token` 的进程参数使用，但不会写入 Git 或 Actions 日志）：
 
@@ -287,6 +291,8 @@ concurrency:
 
 - `timeblog-core` 使用独立 BuildKit GHA cache scope。
 - `timeblog-web` 使用独立 BuildKit GHA cache scope。
+- `main` 的正式镜像只在 Release 构建一次；CI 不再先生成一套不会发布的重复镜像。
+- Pull Request 与非 `main` 分支的容器契约构建使用 GitHub-hosted 临时 Docker cache，且不会推送镜像。
 - Kubernetes runner 的 Pod 和本地 Docker 数据可随时重建，不能依赖本地层缓存；GHA cache 需要允许 runner 访问 GitHub Actions cache 服务。
 - VPS 不执行 Docker build，因此不会再次累积 BuildKit 构建缓存。
 

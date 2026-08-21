@@ -98,9 +98,27 @@ test('release publish selects the runner through a repository variable while dep
   assert.match(publish, /cache-from: type=gha,scope=timeblog-web/);
 });
 
-test('CI and Pull Request jobs remain on GitHub-hosted runners', () => {
-  assert.match(ci, /runs-on: ubuntu-latest/);
+test('CI keeps untrusted work hosted and avoids duplicate main release builds', () => {
+  const mainReleaseGuard = /if: \$\{\{ github\.event_name != 'push' \|\| github\.ref != 'refs\/heads\/main' \}\}/;
+  const shouldValidateArtifacts = (eventName, ref) => eventName !== 'push' || ref !== 'refs/heads/main';
+  const api = ci.slice(ci.indexOf('  api:'), ci.indexOf('  web:'));
+  const web = ci.slice(ci.indexOf('  web:'), ci.indexOf('  container_contracts:'));
+  const containers = ci.slice(ci.indexOf('  container_contracts:'));
+
+  assert.equal(shouldValidateArtifacts('push', 'refs/heads/main'), false);
+  assert.equal(shouldValidateArtifacts('push', 'refs/heads/feature'), true);
+  assert.equal(shouldValidateArtifacts('pull_request', 'refs/pull/1/merge'), true);
+  assert.equal((ci.match(/^    runs-on: ubuntu-latest$/gm) ?? []).length, 3);
   assert.doesNotMatch(ci, /TIMEBLOG_BUILD_RUNNER/);
+  assert.doesNotMatch(api, /docker build/);
+  assert.match(api, /node --test deploy\/compose\.test\.mjs deploy\/github-runner\.test\.mjs deploy\/nas-config-contract\.test\.mjs deploy\/production-ssh-preflight\.test\.mjs deploy\/release\.test\.mjs/);
+  assert.match(web, /name: Validate the production web build outside main release/);
+  assert.match(web, mainReleaseGuard);
+  assert.match(containers, /^  container_contracts:$/m);
+  assert.match(containers, mainReleaseGuard);
+  assert.match(containers, /image: core[\s\S]*?context: services\/core[\s\S]*?dockerfile: services\/core\/Dockerfile/);
+  assert.match(containers, /image: web[\s\S]*?context: \.[\s\S]*?dockerfile: apps\/web\/Dockerfile/);
+  assert.match(containers, /run: docker build -f "\$DOCKERFILE" "\$BUILD_CONTEXT"/);
 });
 
 test('registration Secret is intentionally external to the repository', async () => {
