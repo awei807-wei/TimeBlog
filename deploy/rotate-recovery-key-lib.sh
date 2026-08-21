@@ -46,7 +46,11 @@ on_exit() {
   exit "$status"
 }
 
-validate_protected_directory() {
+mode_has_no_delegated_write() {
+  [[ "$1" =~ ^[0-7][0145][0145]$ ]]
+}
+
+validate_root_directory() {
   local path="$1"
   local label="$2"
 
@@ -55,14 +59,52 @@ validate_protected_directory() {
   [[ "$(stat -c '%u:%g' "$path")" == '0:0' ]] || fail "$label 必须归 root:root 所有"
 }
 
+validate_deploy_directory() {
+  local path="$1"
+  local label="$2"
+  local expected_mode="${3:-}"
+  local mode
+
+  [[ -d "$path" && ! -L "$path" ]] || fail "$label 不存在或不是安全的普通目录"
+  [[ "$(stat -c '%u:%g' "$path")" == "$DEPLOY_OWNER" ]] \
+    || fail "$label 必须归受信部署所有者 $DEPLOY_OWNER 所有"
+  mode="$(stat -c '%a' "$path")"
+  if [[ -n "$expected_mode" ]]; then
+    [[ "$mode" == "$expected_mode" ]] || fail "$label 权限必须为 0$expected_mode"
+  else
+    mode_has_no_delegated_write "$mode" \
+      || fail "$label 不能包含特殊权限，也不能由 group/other 写入"
+  fi
+}
+
+validate_deploy_file() {
+  local path="$1"
+  local label="$2"
+  local expected_mode="${3:-}"
+  local mode
+
+  [[ -f "$path" && ! -L "$path" && -r "$path" ]] || fail "$label 不存在、不可读或不是安全的普通文件"
+  [[ "$(stat -c '%u:%g' "$path")" == "$DEPLOY_OWNER" ]] \
+    || fail "$label 必须归受信部署所有者 $DEPLOY_OWNER 所有"
+  mode="$(stat -c '%a' "$path")"
+  if [[ -n "$expected_mode" ]]; then
+    [[ "$mode" == "$expected_mode" ]] || fail "$label 权限必须为 0$expected_mode"
+  else
+    mode_has_no_delegated_write "$mode" \
+      || fail "$label 不能包含特殊权限，也不能由 group/other 写入"
+  fi
+}
+
 validate_lock_target() {
   local path="$1"
   local label="$2"
+  local expected_owner="$3"
 
   if [[ -e "$path" || -L "$path" ]]; then
     [[ -f "$path" && ! -L "$path" ]] || fail "$label 必须是普通文件且不能是符号链接"
     [[ "$(stat -c '%a' "$path")" == 600 ]] || fail "$label 权限必须为 0600"
-    [[ "$(stat -c '%u:%g' "$path")" == '0:0' ]] || fail "$label 必须归 root:root 所有"
+    [[ "$(stat -c '%u:%g' "$path")" == "$expected_owner" ]] \
+      || fail "$label 必须归预期所有者 $expected_owner 所有"
   fi
 }
 
@@ -70,26 +112,36 @@ validate_lock_fd() {
   local fd="$1"
   local path="$2"
   local label="$3"
+  local expected_owner="$4"
   local fd_identity
   local path_identity
 
-  validate_lock_target "$path" "$label"
+  validate_lock_target "$path" "$label" "$expected_owner"
   fd_identity="$(stat -Lc '%d:%i' "/proc/$$/fd/$fd")"
   path_identity="$(stat -c '%d:%i' "$path")"
   [[ "$fd_identity" == "$path_identity" ]] || fail "$label 在打开时被替换"
+  [[ "$(stat -Lc '%u:%g' "/proc/$$/fd/$fd")" == "$expected_owner" ]] \
+    || fail "$label 打开后的文件必须归预期所有者 $expected_owner 所有"
+  [[ "$(stat -Lc '%a' "/proc/$$/fd/$fd")" == 600 ]] || fail "$label 打开后权限必须为 0600"
 }
 
-validate_protected_env() {
-  local path="$1"
-  local label="$2"
-  local mode
-  local owner
-
-  [[ -f "$path" && ! -L "$path" && -r "$path" ]] || fail "$label 不存在、不可读或不是普通文件"
-  mode="$(stat -c '%a' "$path")"
-  owner="$(stat -c '%u:%g' "$path")"
-  [[ "$mode" == 600 ]] || fail "$label 权限必须为 0600"
-  [[ "$owner" == '0:0' ]] || fail "$label 必须归 root:root 所有"
+validate_release_state_unchanged() {
+  [[ -d "$RELEASE_STATE_DIR" && ! -L "$RELEASE_STATE_DIR" ]] \
+    || fail '发布状态目录在获锁后被替换'
+  [[ "$(stat -c '%d:%i' "$RELEASE_STATE_DIR")" == "$EXPECTED_RELEASE_STATE_ID" ]] \
+    || fail '发布状态目录在获锁后被替换'
+  [[ "$(stat -c '%u:%g:%a' "$RELEASE_STATE_DIR")" == "$EXPECTED_RELEASE_STATE_OWNER_MODE" ]] \
+    || fail '发布状态目录在轮换期间的所有者或权限已变更'
+  [[ -f "$RELEASE_LOCK_FILE" && ! -L "$RELEASE_LOCK_FILE" ]] \
+    || fail '发布锁文件在获锁后被替换'
+  [[ "$(stat -c '%d:%i' "$RELEASE_LOCK_FILE")" == "$EXPECTED_RELEASE_LOCK_ID" ]] \
+    || fail '发布锁文件在获锁后被替换'
+  [[ "$(stat -Lc '%d:%i' "/proc/$$/fd/8")" == "$EXPECTED_RELEASE_LOCK_ID" ]] \
+    || fail '持有的发布锁文件已变更'
+  [[ "$(stat -c '%u:%g:%a' "$RELEASE_LOCK_FILE")" == "$EXPECTED_RELEASE_LOCK_OWNER_MODE" ]] \
+    || fail '发布锁文件在轮换期间的所有者或权限已变更'
+  [[ "$(stat -Lc '%u:%g:%a' "/proc/$$/fd/8")" == "$EXPECTED_RELEASE_LOCK_OWNER_MODE" ]] \
+    || fail '持有的发布锁所有者或权限已变更'
 }
 
 read_current_value() {

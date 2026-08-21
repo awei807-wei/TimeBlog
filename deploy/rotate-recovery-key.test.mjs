@@ -13,8 +13,8 @@ import {
 } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 
 const deployDir = dirname(fileURLToPath(import.meta.url));
 const rotationScript = join(deployDir, 'rotate-recovery-key.sh');
@@ -204,22 +204,50 @@ exit 0
 
 const fakeStat = String.raw`#!/usr/bin/env bash
 set -Eeuo pipefail
-if [[ ( "\${1:-}" == '-c' || "\${1:-}" == '-Lc' ) && "\${2:-}" == '%u:%g' ]]; then
-  if [[ "\${FAKE_WRONG_LIBRARY_OWNER:-0}" == 1 ]]; then
-    printf '1000:1000\n'
-    exit 0
-  fi
+printf '%q ' "$@" >> "\${FAKE_STAT_LOG:?}"
+printf '\n' >> "\${FAKE_STAT_LOG:?}"
+if [[ ( "\${1:-}" == '-c' || "\${1:-}" == '-Lc' ) \
+  && ( "\${2:-}" == '%u' || "\${2:-}" == '%u:%g' || "\${2:-}" == '%u:%g:%a' ) ]]; then
   target="\${!#}"
+  owner='0:0'
   if [[ "$target" == */container-output/recovery-key.txt && ! -e "\${FAKE_OUTPUT_CHOWNED_STATE:?}" ]]; then
     if [[ "\${FAKE_WRONG_OUTPUT_OWNER:-0}" == 1 ]]; then
-      printf '1000:1000\n'
+      owner='2000:2000'
     else
-      printf '65532:65532\n'
+      owner='65532:65532'
     fi
-  else
-    printf '0:0\n'
+  elif [[ "$target" == "\${FAKE_PROJECT_DIR:?}" || "$target" == "\${FAKE_PROJECT_DIR:?}/"* \
+    || "$target" == /proc/*/fd/7 || "$target" == /proc/*/fd/8 ]]; then
+    owner="\${FAKE_DEPLOY_OWNER:?}"
   fi
+  if [[ "\${FAKE_WRONG_LIBRARY_OWNER:-0}" == 1 \
+    && ( "$target" == */deploy/rotate-recovery-key-lib.sh || "$target" == /proc/*/fd/7 ) ]]; then
+    owner='2000:2000'
+  fi
+  if [[ -n "\${FAKE_OWNER_MISMATCH_TARGET:-}" && "$target" == "\${FAKE_OWNER_MISMATCH_TARGET}" ]]; then
+    owner='2000:2000'
+  fi
+  case "\${2:-}" in
+    '%u') printf '%s\n' "\${owner%%:*}" ;;
+    '%u:%g') printf '%s\n' "$owner" ;;
+    '%u:%g:%a')
+      mode="$(/usr/bin/stat -Lc '%a' "$target")"
+      if [[ "\${FAKE_MUTATE_RELEASE_STATE_AFTER_ROTATION:-0}" == 1 \
+        && -e "\${FAKE_ROTATED_STATE:?}" && "$target" == "\${FAKE_PROJECT_DIR:?}/deploy/releases" ]]; then
+        mode='770'
+      fi
+      printf '%s:%s\n' "$owner" "$mode"
+      ;;
+    *) exit 72 ;;
+  esac
   exit 0
+fi
+if [[ ( "\${1:-}" == '-c' || "\${1:-}" == '-Lc' ) && "\${2:-}" == '%a' ]]; then
+  target="\${!#}"
+  if [[ -n "\${FAKE_MODE_MISMATCH_TARGET:-}" && "$target" == "\${FAKE_MODE_MISMATCH_TARGET}" ]]; then
+    printf '666\n'
+    exit 0
+  fi
 fi
 exec /usr/bin/stat "$@"
 `.replaceAll('\\$', '$');
@@ -233,8 +261,9 @@ async function createHarness({
   failPostQuery = false,
   ambiguousRotation = false,
   wrongOutputOwner = false,
+  deployOwner = '1000:1000',
 } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'timeblog-recovery-rotation-test-'));
+  const root = await mkdtemp(join(deployDir, '.rotation-test-'));
   const projectDir = join(root, 'project');
   const deployRoot = join(projectDir, 'deploy');
   const releaseDir = join(deployRoot, 'releases');
@@ -246,8 +275,10 @@ async function createHarness({
   const dockerLog = join(root, 'docker.log');
   const curlLog = join(root, 'curl.log');
   const chownLog = join(root, 'chown.log');
+  const statLog = join(root, 'stat.log');
   const rotatedState = join(root, 'rotated');
   const outputChownedState = join(root, 'output-chowned');
+  const releaseLock = join(releaseDir, '.lock');
 
   await mkdir(releaseDir, { recursive: true });
   await chmod(releaseDir, 0o700);
@@ -267,9 +298,11 @@ async function createHarness({
     'RELEASE_CREATED_AT=2026-08-21T00:00:00Z',
     '',
   ].join('\n'), { mode: 0o600 });
+  await writeFile(releaseLock, '', { mode: 0o600 });
   await writeFile(dockerLog, '');
   await writeFile(curlLog, '');
   await writeFile(chownLog, '');
+  await writeFile(statLog, '');
 
   for (const [name, source] of [
     ['docker', fakeDocker],
@@ -283,7 +316,7 @@ async function createHarness({
     await chmod(target, 0o755);
   }
 
-  return {
+  const harness = {
     root,
     projectDir,
     deployRoot,
@@ -292,7 +325,9 @@ async function createHarness({
     dockerLog,
     curlLog,
     chownLog,
+    statLog,
     rotatedState,
+    releaseLock,
     runtimeEnv,
     env: {
       ...process.env,
@@ -305,11 +340,14 @@ async function createHarness({
       FAKE_DOCKER_LOG: dockerLog,
       FAKE_CURL_LOG: curlLog,
       FAKE_CHOWN_LOG: chownLog,
+      FAKE_STAT_LOG: statLog,
       FAKE_ROTATED_STATE: rotatedState,
       FAKE_OUTPUT_CHOWNED_STATE: outputChownedState,
       FAKE_CORE_IMAGE: coreImage,
       FAKE_WEB_IMAGE: webImage,
       FAKE_SECRET: fakeSecret,
+      FAKE_PROJECT_DIR: projectDir,
+      FAKE_DEPLOY_OWNER: deployOwner,
       ...(failBackup ? { FAKE_FAIL_BACKUP: '1' } : {}),
       ...(failBackupValidation ? { FAKE_FAIL_BACKUP_VALIDATION: '1' } : {}),
       ...(failRotation ? { FAKE_FAIL_ROTATION: '1' } : {}),
@@ -320,6 +358,8 @@ async function createHarness({
       ...(wrongOutputOwner ? { FAKE_WRONG_OUTPUT_OWNER: '1' } : {}),
     },
   };
+  await installRotationScripts(harness);
+  return harness;
 }
 
 function runHarness(harness, args = ['--confirm']) {
@@ -328,6 +368,47 @@ function runHarness(harness, args = ['--confirm']) {
     env: harness.env,
     encoding: 'utf8',
     timeout: 15000,
+  });
+}
+
+function runReleaseOwnerProbe(harness) {
+  const source = String.raw`set -Eeuo pipefail
+project_dir="$1"
+release_dir="$2"
+runtime_env="$3"
+current_env="$4"
+lock_file="$5"
+owner_uid="$(id -u)"
+[[ "$(stat -c '%a' "$release_dir")" == 700 ]]
+for path in "$project_dir" "$project_dir/deploy"; do
+  [[ "$(stat -c '%u' "$path")" == "$owner_uid" ]]
+  [[ "$(stat -c '%a' "$path")" =~ ^[0-7][0145][0145]$ ]]
+done
+for path in "$runtime_env" "$current_env" "$lock_file"; do
+  [[ -f "$path" && ! -L "$path" ]]
+  [[ "$(stat -c '%u' "$path")" == "$owner_uid" ]]
+  [[ "$(stat -c '%a' "$path")" == 600 ]]
+done
+exec 9>>"$lock_file"
+flock -n 9
+probe="$release_dir/.owner-probe.$$"
+: > "$probe"
+chmod 0600 "$probe"
+[[ "$(stat -c '%u' "$probe")" == "$owner_uid" ]]
+rm -f -- "$probe"
+`;
+  return spawnSync('bash', [
+    '-c',
+    source,
+    'release-owner-probe',
+    harness.projectDir,
+    harness.releaseDir,
+    harness.runtimeEnv,
+    join(harness.releaseDir, 'current.env'),
+    harness.releaseLock,
+  ], {
+    encoding: 'utf8',
+    timeout: 5000,
   });
 }
 
@@ -363,6 +444,129 @@ test('rotation refuses to run without the explicit confirmation flag', async (t)
   assert.doesNotMatch(result.stdout + result.stderr, /runtime-(?:database|admin)-secret/);
 });
 
+test('deployment owner can publish before and after a root-run rotation without lock ownership drift', async (t) => {
+  const harness = await createHarness({ deployOwner: '1000:1000' });
+  registerCleanup(t, harness);
+  const lockBefore = await stat(harness.releaseLock);
+
+  const publishBefore = runReleaseOwnerProbe(harness);
+  assert.equal(publishBefore.status, 0, publishBefore.stderr);
+  const result = runHarness(harness);
+  assert.equal(result.status, 0, result.stderr);
+  const publishAfter = runReleaseOwnerProbe(harness);
+  assert.equal(publishAfter.status, 0, publishAfter.stderr);
+
+  const lockAfter = await stat(harness.releaseLock);
+  assert.equal(lockAfter.uid, lockBefore.uid);
+  assert.equal(lockAfter.gid, lockBefore.gid);
+  assert.equal(lockAfter.mode & 0o777, 0o600);
+  assert.equal(lockAfter.ino, lockBefore.ino);
+});
+
+test('root-owned deployment model remains supported', async (t) => {
+  const harness = await createHarness({ deployOwner: '0:0' });
+  registerCleanup(t, harness);
+
+  const result = runHarness(harness);
+
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test('deployment owners outside the fixed root and production allowlist are rejected', async (t) => {
+  const harness = await createHarness({ deployOwner: '2000:2000' });
+  registerCleanup(t, harness);
+
+  const result = runHarness(harness);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /固定受信部署所有者/);
+  assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
+});
+
+test('a missing shared release lock is rejected and never created by root', async (t) => {
+  const harness = await createHarness();
+  registerCleanup(t, harness);
+  await rm(harness.releaseLock);
+
+  const result = runHarness(harness);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /发布锁文件必须由受信部署所有者预先创建/);
+  await assert.rejects(stat(harness.releaseLock), { code: 'ENOENT' });
+  assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
+});
+
+test('release lock contention stops before the helper library is inspected or sourced', async (t) => {
+  const harness = await createHarness();
+  registerCleanup(t, harness);
+  const holder = spawn('flock', [
+    '-n',
+    harness.releaseLock,
+    'bash',
+    '-c',
+    'printf "ready\\n"; IFS= read -r _',
+  ], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const ready = await Promise.race([
+    once(holder.stdout, 'data'),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('lock holder did not become ready')), 3000)),
+  ]);
+  assert.match(String(ready[0]), /ready/);
+
+  let result;
+  try {
+    result = runHarness(harness);
+  } finally {
+    holder.stdin.end('\n');
+    if (holder.exitCode === null) {
+      await once(holder, 'exit');
+    }
+  }
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /当前有发布任务正在运行/);
+  assert.doesNotMatch(await readFile(harness.statLog, 'utf8'), /rotate-recovery-key-lib/);
+  assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
+});
+
+test('compose file ownership must match the fixed deployment owner', async (t) => {
+  const harness = await createHarness();
+  registerCleanup(t, harness);
+  harness.env.FAKE_OWNER_MISMATCH_TARGET = join(harness.deployRoot, 'compose.yaml');
+
+  const result = runHarness(harness);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /deploy\/compose\.yaml 必须归受信部署所有者/);
+  assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
+});
+
+test('writable deployment path ancestors are rejected before helper loading', async (t) => {
+  const harness = await createHarness();
+  registerCleanup(t, harness);
+  await chmod(harness.root, 0o770);
+
+  const result = runHarness(harness);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /祖先路径.*group\/other 写入/);
+  assert.doesNotMatch(await readFile(harness.statLog, 'utf8'), /rotate-recovery-key-lib/);
+  assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
+});
+
+test('release state owner or mode drift is detected after rotation commit', async (t) => {
+  const harness = await createHarness();
+  registerCleanup(t, harness);
+  harness.env.FAKE_MUTATE_RELEASE_STATE_AFTER_ROTATION = '1';
+
+  const result = runHarness(harness);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /发布状态目录.*所有者或权限已变更/);
+  assert.match(result.stderr, /数据库轮换已提交/);
+  const runDir = await onlyRunDirectory(harness);
+  assert.equal(await readFile(join(runDir, 'recovery-key.txt'), 'utf8'), `${fakeSecret}\n`);
+});
+
 test('rotation refuses to source a symlink helper library', async (t) => {
   const harness = await createHarness();
   registerCleanup(t, harness);
@@ -380,7 +584,7 @@ test('rotation refuses to source a symlink helper library', async (t) => {
   assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
 });
 
-test('rotation refuses to source a helper library not owned by root', async (t) => {
+test('rotation refuses to source a helper library outside the trusted deployment owner', async (t) => {
   const harness = await createHarness();
   registerCleanup(t, harness);
   await installRotationScripts(harness);
@@ -389,7 +593,7 @@ test('rotation refuses to source a helper library not owned by root', async (t) 
   const result = runHarness(harness);
 
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /辅助库必须归 root:root/);
+  assert.match(result.stderr, /辅助库.*必须归受信部署所有者 1000:1000/);
   assert.equal(await readFile(harness.dockerLog, 'utf8'), '');
 });
 

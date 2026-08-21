@@ -15,19 +15,22 @@
 
 脚本执行以下固定流程：
 
-1. 要求显式 `--confirm` 和 root 身份，并在加载前验证 `rotate-recovery-key-lib.sh` 是不可被非 root 篡改的 `root:root` 普通文件；稳定打开该文件后经受保护的文件描述符加载，拒绝符号链接与检查期间被替换的文件。脚本同时占用恢复锁与现有发布锁；恢复目录、发布状态目录和锁文件必须是 root 所有的固定权限普通文件或目录，符号链接和异常类型会被拒绝。
-2. 取得发布锁后拒绝 `deploy/releases/source-activation.failed` 标记，避免在源码激活不完整的混合发布状态下继续；随后安全读取 `deploy/.env` 与 `deploy/releases/current.env`，不会 source 或回显环境变量。
-3. 验证 `current.env` 使用受信 GHCR 不可变 digest，并确认 PostgreSQL、API、Worker、Web 容器和 HTTP 端点健康。
-4. 在 `/var/lib/timeblog/account-recovery/` 下创建 root 所有、权限 `0700` 的独立运行目录，先保存权限 `0600` 的 PostgreSQL custom dump；轮换前使用只读的 `pg_restore --list` 验证其可解析，并生成 SHA-256 校验和。
-5. 为容器 UID `65532` 创建隔离输出目录，通过当前 core digest 执行一次恢复密钥轮换；容器的 stdout 不进入终端，stderr 写入权限 `0600` 的诊断日志。
-6. 无论容器命令退出码是否为零，都会先拒绝符号链接、空文件、非 `0600` 或不属于 UID `65532` 的输出，再把安全候选文件收归 `root:root`；随后结合有效恢复密钥数量和 `recovery_key_rotated` 审计增量，把结果判定为已提交、未提交或状态未知。
-7. 只有已提交且数据库复核通过时才把候选文件命名为 `recovery-key.txt`；服务健康复查失败不会删除该文件，也不会自动重试或恢复数据库。
+1. 要求显式 `--confirm` 和 root 身份。发布状态目录只允许固定的 `root:root` (`0:0`) 模型，或当前生产发布账户 `shiyi:shiyi` (`1000:1000`) 模型；其他所有者会被拒绝。脚本以只读方式打开已存在的 `deploy/releases/.lock` 并先取得共享发布锁；锁缺失时直接失败，不会由 root 创建或改变所有权。
+2. 在共享发布锁保护下，脚本验证项目目录、`deploy/`、`compose.yaml`、`.env`、`current.env`、轮换主脚本、辅助库和发布锁具有同一受信所有者，且任何 group/other 都不可写；路径祖先只能归 root 或该固定受信 UID 所有，不可写且不得为符号链接。辅助库通过已验证 inode 的文件描述符加载，防止检查与加载之间被发布替换。
+3. 拒绝 `deploy/releases/source-activation.failed` 标记，避免在源码激活不完整的混合发布状态下继续；随后安全读取 `deploy/.env` 与 `deploy/releases/current.env`，不会 source 或回显环境变量，并在轮换结束前再次确认发布目录与锁的 inode、所有者和权限未变。
+4. 验证 `current.env` 使用受信 GHCR 不可变 digest，并确认 PostgreSQL、API、Worker、Web 容器和 HTTP 端点健康。
+5. 在 `/var/lib/timeblog/account-recovery/` 下创建 `root:root`、权限 `0700` 的独立运行目录，先保存权限 `0600` 的 PostgreSQL custom dump；轮换前使用只读的 `pg_restore --list` 验证其可解析，并生成 SHA-256 校验和。
+6. 为容器 UID `65532` 创建隔离输出目录，通过当前 core digest 执行一次恢复密钥轮换；容器的 stdout 不进入终端，stderr 写入权限 `0600` 的诊断日志。
+7. 无论容器命令退出码是否为零，都会先拒绝符号链接、空文件、非 `0600` 或不属于 UID `65532` 的输出，再把安全候选文件收归 `root:root`；随后结合有效恢复密钥数量和 `recovery_key_rotated` 审计增量，把结果判定为已提交、未提交或状态未知。
+8. 只有已提交且数据库复核通过时才把候选文件命名为 `recovery-key.txt`；服务健康复查失败不会删除该文件，也不会自动重试或恢复数据库。
 
 脚本只使用 `pg_restore --list` 读取备份目录，不会执行数据库恢复写入、Compose `down`、数据删除或自动回滚。失败时会保留受保护的备份、日志以及可能已经生成的密钥文件，并明确输出已提交、未提交或状态未知；在已提交或状态未知时不要重复执行。
 
 ## 执行步骤
 
-前置条件：生产环境已经部署包含 `--rotate-recovery-key` 命令的不可变 core 镜像；`deploy/rotate-recovery-key.sh` 与 `deploy/rotate-recovery-key-lib.sh` 均由 root 管理，辅助库必须是 `root:root` 且不可被 group/other 写入；`deploy/.env` 与 `deploy/releases/current.env` 均为 `root:root`、权限 `0600`，当前服务健康，并有足够空间保存数据库备份。
+前置条件：生产环境已经部署包含 `--rotate-recovery-key` 命令的不可变 core 镜像。当前生产模型下，项目目录、`deploy/`、`compose.yaml`、`.env`、`releases/`、`current.env`、`.lock`、轮换主脚本和辅助库均必须归 `shiyi:shiyi` (`1000:1000`) 所有；项目与代码路径不可被 group/other 写入，`releases/` 必须为 `0700`，`.env`、`current.env` 和预先存在的 `.lock` 必须为 `0600`。不要为了让预检通过而对这些路径执行 `chown root:root`，否则后续以 `shiyi` 运行的发布会被拒绝。当前服务还必须健康，并有足够空间保存数据库备份。
+
+`shiyi` 已拥有 Docker daemon 访问权，安全上等价于可取得 root，因此脚本才允许 root 加载该固定 UID 所有的辅助库。这不是“任意项目所有者都可信”的通用放宽；若生产 UID/GID 或任何路径所有权与上述模型不符，应先停止轮换并核查发布账户，不要手工放宽权限。
 
 ```bash
 ssh vps1
