@@ -103,6 +103,15 @@
 .public-reader-taxonomy > span { color: var(--muted); }
 .public-reader-body { max-width: 650px; margin: 0 auto; padding: 44px 20px; }
 .public-reader-body .markdown { margin-top: 26px; }
+.public-reader-prose {
+  --reader-grid-line: color-mix(in srgb, var(--line) 76%, transparent);
+  background-color: transparent;
+  background-image:
+    linear-gradient(to right, var(--reader-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--reader-grid-line) 1px, transparent 1px);
+  background-size: 10px 10px;
+  background-position: 0 0;
+}
 .public-reader > footer { display: flex; justify-content: space-between; gap: 18px; padding: 23px 8%; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 
 @media (max-width: 700px) {

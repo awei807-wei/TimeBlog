@@ -406,7 +406,7 @@ test('article-prose is the shared Markdown typography contract without card poll
   assert.match(layout, /import ['"]\.\/article-prose\.css['"]/);
   assert.match(layout, /import ['"]\.\/mdx-editor-chrome\.css['"]/);
   assert.match(editor, /contentEditableClassName="mdx-editor-content article-prose"/);
-  assert.match(article, /className="markdown article-prose"/);
+  assert.match(article, /className="markdown article-prose public-reader-prose"/);
   assert.match(prose, /\.article-prose \.tok-keyword/);
   assert.match(prose, /\.article-prose \.chroma/);
   assert.doesNotMatch(prose, /\.mdx-view-mode-toggle|\.mdx-editor-mode-title|\.mdx-editor-content\.article-prose\[class\*="placeholder"\]/);
@@ -415,6 +415,26 @@ test('article-prose is the shared Markdown typography contract without card poll
   assert.match(chrome, /\.mdx-editor-content\.article-prose\[class\*="placeholder"\]/);
   const timeline = await fs.readFile(new URL('../app/HomeTimeline.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(timeline, /article-prose/);
+});
+
+test('public article reader grid is transparent, 10px and scoped to body prose', async () => {
+  const fs = await import('node:fs/promises');
+  const article = await fs.readFile(new URL('../app/article/[slug]/page.tsx', import.meta.url), 'utf8');
+  const css = await fs.readFile(new URL('../app/public-views.css', import.meta.url), 'utf8');
+  const entryCard = await fs.readFile(new URL('../app/public/PublicEntryCard.tsx', import.meta.url), 'utf8');
+  const readerGridRule = css.match(/\.public-reader-prose\s*\{([\s\S]*?)\}/)?.[1] || '';
+
+  assert.match(article, /className="markdown article-prose public-reader-prose"/);
+  assert.match(readerGridRule, /--reader-grid-line:\s*color-mix\(in srgb, var\(--line\) 76%, transparent\)/);
+  assert.match(readerGridRule, /background-color:\s*transparent/);
+  assert.match(readerGridRule, /linear-gradient\(to right, var\(--reader-grid-line\) 1px, transparent 1px\)/);
+  assert.match(readerGridRule, /linear-gradient\(to bottom, var\(--reader-grid-line\) 1px, transparent 1px\)/);
+  assert.match(readerGridRule, /background-size:\s*10px 10px/);
+  assert.doesNotMatch(article, /className="public-reader-body public-reader-prose"/);
+  assert.doesNotMatch(entryCard, /public-reader-prose/);
+  assert.doesNotMatch(css, /\.public-reader\s*\{[^}]*background-image/);
+  assert.doesNotMatch(css, /\.public-reader > header\s*\{[^}]*background-image/);
+  assert.doesNotMatch(css, /\.public-reader > footer\s*\{[^}]*background-image/);
 });
 
 test('public article entries have explicit detail navigation and notes stay non-linking', async () => {

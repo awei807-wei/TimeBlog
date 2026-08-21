@@ -63,7 +63,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
         <section className="public-reader-body">{(() => {
           const rendered = article.renderedHtml ? { html: decorateMediaReferences(article.renderedHtml), toc: [] } : renderMarkdown(article.markdown || '');
           const safeHtml = DOMPurify.sanitize(rendered.html, { USE_PROFILES: { html: true }, ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|\/|#):?)/i });
-          return <>{rendered.toc.length > 0 && <nav className="article-toc" aria-label="文章目录"><strong>目录</strong><ol>{rendered.toc.map(item => <li key={item.id} className={`toc-level-${item.level}`}><a href={`#${item.id}`}>{item.title}</a></li>)}</ol></nav>}<div className="markdown article-prose"><EmbedMarkup html={safeHtml} /></div>{article.markdown?.includes('media://') && <p className="status media-note">媒体按权限加载，未授权时会显示不可用提示。</p>}</>;
+          return <>{rendered.toc.length > 0 && <nav className="article-toc" aria-label="文章目录"><strong>目录</strong><ol>{rendered.toc.map(item => <li key={item.id} className={`toc-level-${item.level}`}><a href={`#${item.id}`}>{item.title}</a></li>)}</ol></nav>}<div className="markdown article-prose public-reader-prose"><EmbedMarkup html={safeHtml} /></div>{article.markdown?.includes('media://') && <p className="status media-note">媒体按权限加载，未授权时会显示不可用提示。</p>}</>;
         })()}</section>
         <footer><Link href={`/day/${article.journalDate}`}>{article.journalDate} 的其他记录</Link><Link href="/">继续浏览时间线</Link></footer>
       </article>
