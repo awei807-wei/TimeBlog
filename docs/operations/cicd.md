@@ -116,7 +116,7 @@ ghcr.io/awei807-wei/timeblog-core@sha256:<64位十六进制摘要>
 ghcr.io/awei807-wei/timeblog-web@sha256:<64位十六进制摘要>
 ```
 
-上传到 VPS 的 `.release.incoming.env` 只包含：
+上传到 VPS 隔离 staging 目录的 `release.env` 只包含：
 
 ```env
 CORE_IMAGE=...
@@ -231,18 +231,20 @@ Token 只授予 `read:packages`，不要把写入或删除权限交给部署账�
 5. 再次推送到 `main`，等待 CI 成功。
 6. 审批 `production` 部署。
 
-发布脚本会通过 `git archive` 将精确 commit 的已跟踪源码流式写入 `/home/shiyi/TimeBlog`。它不执行 `git pull`、`git reset` 或 `git clean`，也不会覆盖 VPS 的 `deploy/.env`。
+发布工作流先把精确 commit 的完整 `git archive`、digest-only `release.env` 和同一 commit 的 `release.sh` 上传到本次运行唯一、权限 `0700` 的 `deploy/releases/incoming-<sha>-<run>-<attempt>` staging 目录。三个文件均设为 `0600`，在远程入口逐项校验所有者、文件类型和 SHA-256；staging 中的脚本取得锁后还会再次校验，避免校验与使用之间出现窗口。任一文件缺失、被替换成符号链接、位于不同 staging 目录或校验和不符，都会在 live 源码变化前终止。
+
+随后 staging 中的发布脚本获取与账户恢复轮换共用的 `deploy/releases/.lock`。锁路径与打开后的文件描述符会做 inode 一致性校验，源码解包、镜像切换、健康检查、状态落盘和失败回滚全程使用同一个锁文件描述符，不会在解包后重新取锁。因此源码换版、镜像发布和恢复密钥轮换不会交错。发布不执行 `git pull`、`git reset` 或 `git clean`，也不会覆盖 VPS 的 `deploy/.env`。
 
 ## 6. 远程发布流程
 
 `deploy/release.sh` 的顺序如下：
 
-1. 创建发布目录并通过 `flock` 加锁。
-2. 检查 `deploy/.env`、Compose 文件、Docker daemon、`curl`、`flock`。
-3. 检查磁盘剩余空间，默认至少保留 5 GiB。
-4. 校验 Compose 配置，不输出包含 Secret 的完整配置。
-5. 启动或等待 PostgreSQL 健康。
-6. 拉取 API、Worker、Web 所需镜像。
+1. GitHub Actions 在远程入口校验 staging 目录和三个文件，并核对三份 SHA-256。
+2. 发布脚本检查发布目录与锁文件，使用 `flock` 获取共享发布锁；锁竞争失败时 live 源码保持不变。
+3. 在持锁状态下重新校验 staging、`deploy/.env`、已有发布状态、磁盘空间和 Docker daemon；所有受保护输入都拒绝符号链接。
+4. 创建 `source-activation.failed`，同步标记文件及 `deploy/releases/` 目录项，然后在同一锁文件描述符的临界区内解包完整源码。
+5. 校验新 Compose 配置，不输出包含 Secret 的完整配置。
+6. 启动或等待 PostgreSQL 健康，并拉取 API、Worker、Web 所需镜像。
 7. 将当前 release env 原子复制为 `previous.env`。
 8. 执行：
 
@@ -252,7 +254,7 @@ Token 只授予 `read:packages`，不要把写入或删除权限交给部署账�
 
 9. 检查 PostgreSQL、API、Worker、Web 容器状态和 healthcheck。
 10. 请求 API live、API ready、Web 首页。
-11. 所有检查成功后，原子更新 `current.env`。
+11. 所有检查成功后，以“同步临时文件、原子替换、同步发布目录”的顺序更新 `current.env`（`previous.env` 使用相同持久化规则）；删除 `source-activation.failed` 后再次同步发布目录，再清理已完成的 staging 目录。
 
 生产 release 目录只保留状态文件：
 
@@ -262,7 +264,7 @@ deploy/releases/previous.env
 deploy/releases/.lock
 ```
 
-这些文件不放入 Git，也不包含应用 Secret。
+`incoming-*` staging 目录在成功发布后自动删除，失败时保留已上传的源码包和脚本用于诊断；`release.env` 无论成功或失败都会清除。`source-activation.failed` 只在源码开始激活但发布尚未成功时存在；账户恢复轮换看到该标记会拒绝运行，必须先由一次成功发布清除。上述运行时文件都不放入 Git，也不包含应用 Secret。
 
 ## 7. 失败与回滚
 
@@ -272,6 +274,7 @@ deploy/releases/.lock
 - 如果已经开始更新容器，脚本会自动使用 `previous.env` 执行应用回滚。
 - 回滚同样要求 API、Worker、Web 和 HTTP 检查全部通过。
 - 如果没有 `previous.env`，脚本会报告无法自动回滚，不会删除数据。
+- 镜像回滚不会把已解包的 live 源码退回旧 commit；`source-activation.failed` 会持续阻断恢复密钥轮换，直到下一次完整发布成功，避免在源码与运行镜像不一致时执行账户恢复操作。
 
 数据库回滚不属于镜像回滚的一部分。数据库迁移必须采用向前兼容的 expand/contract 策略；如果迁移已经造成旧版本无法启动，应暂停自动处理，依据现有备份恢复手册人工操作。
 

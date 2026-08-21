@@ -17,7 +17,7 @@ npm --workspace apps/web run dev
 
 API 健康检查：`GET /health/live`、`GET /health/ready`。
 
-账户恢复安全：首次启动前生成并离线保存高熵恢复码，临时设置 `ACCOUNT_RECOVERY_KEY_BOOTSTRAP`。服务仅在数据库没有有效恢复码时读取该变量并保存 Argon2id 哈希；启动成功后立即从 Compose/.env 删除变量。恢复接口严格校验同源、限流并撤销全部会话，同时轮换恢复码和 TOTP，响应中的 `recoveryKey` 与 `totpSetupURI` 仅显示一次，必须通过受控渠道保存。
+账户恢复安全：首次启动前生成并离线保存高熵恢复码，临时设置 `ACCOUNT_RECOVERY_KEY_BOOTSTRAP`。服务仅在恢复密钥表从未存在任何历史记录的首次引导阶段读取该变量，并保存 Argon2id 哈希；一旦写入过恢复密钥，即使记录已过期或使用且环境变量仍遗留，也绝不会重新启用。启动成功后立即从 Compose/.env 删除变量。`ADMIN_PASSWORD` 也只用于首次创建管理员账户，`TOTP_ENCRYPTION_KEY` 仅加密 TOTP Secret，两者都不能替代恢复密钥。恢复接口严格校验同源、限流并撤销全部会话，同时轮换恢复码和 TOTP，响应中的 `recoveryKey` 与 `totpSetupURI` 仅显示一次，必须通过受控渠道保存。恢复密钥遗失时的受控补发流程见[管理员账户恢复运维文档](docs/operations/account-recovery.md)。
 
 媒体与导入大小限制由 `MAX_UPLOAD_BYTES` 控制（字节，默认 200 MiB，允许范围 1 MiB–2 GiB）；超出范围的配置会安全回退到默认值。ZIP 导入总包上限仍为 256 MiB。
 

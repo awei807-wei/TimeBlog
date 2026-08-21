@@ -52,7 +52,7 @@ jobs:
       - name: Compose config
         run: docker compose -f deploy/compose.yaml -f deploy/compose.ci.yaml config
       - name: Deployment static checks
-        run: node --test deploy/compose.test.mjs deploy/github-runner.test.mjs deploy/nas-config-contract.test.mjs deploy/production-ssh-preflight.test.mjs deploy/release.test.mjs
+        run: node --test deploy/compose.test.mjs deploy/github-runner.test.mjs deploy/nas-config-contract.test.mjs deploy/production-ssh-preflight.test.mjs deploy/release.test.mjs deploy/rotate-recovery-key.test.mjs
       - name: Start Postgres
         run: docker compose -f deploy/compose.yaml -f deploy/compose.ci.yaml up -d --wait postgres
       - name: Postgres integration tests

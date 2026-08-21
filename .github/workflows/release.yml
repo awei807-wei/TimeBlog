@@ -166,7 +166,7 @@ jobs:
           [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$CORE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
           [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-          release_env="$RUNNER_TEMP/timeblog-release.env"
+          release_env="$RUNNER_TEMP/release.env"
           {
             printf 'CORE_IMAGE=%s@%s\n' "$CORE_IMAGE" "$CORE_DIGEST"
             printf 'WEB_IMAGE=%s@%s\n' "$WEB_IMAGE" "$WEB_DIGEST"
@@ -176,6 +176,27 @@ jobs:
           } > "$release_env"
           chmod 0600 "$release_env"
           printf 'release_env=%s\n' "$release_env" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare the exact source archive and staging checksums
+        id: staging
+        shell: bash
+        env:
+          HEAD_SHA: ${{ needs.publish.outputs.head_sha }}
+          RELEASE_ENV: ${{ steps.release_env.outputs.release_env }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          source_archive="$RUNNER_TEMP/source.tar"
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          git archive --format=tar --output="$source_archive" "$HEAD_SHA"
+          chmod 0600 "$source_archive" "$RELEASE_ENV"
+          stage_name="incoming-${HEAD_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$stage_name" =~ ^incoming-[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          printf 'source_archive=%s\n' "$source_archive" >> "$GITHUB_OUTPUT"
+          printf 'source_sha256=%s\n' "$(sha256sum "$source_archive" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          printf 'release_env_sha256=%s\n' "$(sha256sum "$RELEASE_ENV" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          printf 'release_script_sha256=%s\n' "$(sha256sum deploy/release.sh | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          printf 'stage_name=%s\n' "$stage_name" >> "$GITHUB_OUTPUT"
 
       - name: Verify main is still current before remote access
         shell: bash
@@ -192,17 +213,20 @@ jobs:
           fi
           printf 'origin/main is still %s; remote access may proceed\n' "$HEAD_SHA"
 
-      - name: Verify target and preserve the VPS runtime environment
+      - name: Verify target and create one private staging directory
         shell: bash
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           KEY_FILE: ${{ steps.ssh.outputs.key_file }}
           KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
+          STAGE_NAME: ${{ steps.staging.outputs.stage_name }}
         run: |
           set -Eeuo pipefail
           test -n "$VPS_HOST"
           test -n "$VPS_USER"
+          [[ "$STAGE_NAME" =~ ^incoming-[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          remote_stage="$REMOTE_DIR/deploy/releases/$STAGE_NAME"
           ssh -i "$KEY_FILE" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
@@ -210,47 +234,32 @@ jobs:
             -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
             -o ConnectTimeout=15 \
             "$VPS_USER@$VPS_HOST" \
-            "test -d '$REMOTE_DIR' && test -f '$REMOTE_DIR/deploy/.env'"
+            "set -eu; test -d '$REMOTE_DIR'; test ! -L '$REMOTE_DIR'; test -d '$REMOTE_DIR/deploy'; test ! -L '$REMOTE_DIR/deploy'; test -f '$REMOTE_DIR/deploy/.env'; test ! -L '$REMOTE_DIR/deploy/.env'; if test -e '$REMOTE_DIR/deploy/releases' || test -L '$REMOTE_DIR/deploy/releases'; then test -d '$REMOTE_DIR/deploy/releases'; test ! -L '$REMOTE_DIR/deploy/releases'; else mkdir '$REMOTE_DIR/deploy/releases'; fi; chmod 0700 '$REMOTE_DIR/deploy/releases'; test \"\$(stat -c '%u' '$REMOTE_DIR/deploy/releases')\" = \"\$(id -u)\"; test ! -e '$remote_stage'; test ! -L '$remote_stage'; mkdir '$remote_stage'; chmod 0700 '$remote_stage'; test \"\$(stat -c '%a:%u' '$remote_stage')\" = \"700:\$(id -u)\""
 
-      - name: Stream the exact source archive without resetting the VPS
+      - name: Upload the complete release bundle into private staging
         shell: bash
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           KEY_FILE: ${{ steps.ssh.outputs.key_file }}
           KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
-          HEAD_SHA: ${{ needs.publish.outputs.head_sha }}
-        run: |
-          set -Eeuo pipefail
-          git cat-file -e "${HEAD_SHA}^{commit}"
-          git archive --format=tar "$HEAD_SHA" | \
-            ssh -i "$KEY_FILE" \
-              -o BatchMode=yes \
-              -o IdentitiesOnly=yes \
-              -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
-              -o ConnectTimeout=15 \
-              "$VPS_USER@$VPS_HOST" \
-              "tar --extract --file=- --directory='$REMOTE_DIR' --no-same-owner"
-
-      - name: Upload digest-only release metadata
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          KEY_FILE: ${{ steps.ssh.outputs.key_file }}
-          KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
+          STAGE_NAME: ${{ steps.staging.outputs.stage_name }}
+          SOURCE_ARCHIVE: ${{ steps.staging.outputs.source_archive }}
           RELEASE_ENV: ${{ steps.release_env.outputs.release_env }}
         run: |
           set -Eeuo pipefail
+          [[ "$STAGE_NAME" =~ ^incoming-[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          remote_stage="$REMOTE_DIR/deploy/releases/$STAGE_NAME"
           scp -q -i "$KEY_FILE" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
             -o ConnectTimeout=15 \
+            "$SOURCE_ARCHIVE" \
             "$RELEASE_ENV" \
-            "$VPS_USER@$VPS_HOST:$REMOTE_DIR/deploy/.release.incoming.env"
+            deploy/release.sh \
+            "$VPS_USER@$VPS_HOST:$remote_stage/"
 
       - name: Verify main is still current before production SSH
         shell: bash
@@ -274,8 +283,17 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
           KEY_FILE: ${{ steps.ssh.outputs.key_file }}
           KNOWN_HOSTS_FILE: ${{ steps.ssh.outputs.known_hosts_file }}
+          STAGE_NAME: ${{ steps.staging.outputs.stage_name }}
+          SOURCE_SHA256: ${{ steps.staging.outputs.source_sha256 }}
+          RELEASE_ENV_SHA256: ${{ steps.staging.outputs.release_env_sha256 }}
+          RELEASE_SCRIPT_SHA256: ${{ steps.staging.outputs.release_script_sha256 }}
         run: |
           set -Eeuo pipefail
+          [[ "$STAGE_NAME" =~ ^incoming-[0-9a-f]{40}-[0-9]+-[0-9]+$ ]]
+          [[ "$SOURCE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RELEASE_ENV_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$RELEASE_SCRIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          remote_stage="$REMOTE_DIR/deploy/releases/$STAGE_NAME"
           ssh -i "$KEY_FILE" \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
@@ -283,4 +301,4 @@ jobs:
             -o UserKnownHostsFile="$KNOWN_HOSTS_FILE" \
             -o ConnectTimeout=15 \
             "$VPS_USER@$VPS_HOST" \
-            "PROJECT_DIR='$REMOTE_DIR' RELEASE_ENV_FILE='$REMOTE_DIR/deploy/.release.incoming.env' '$REMOTE_DIR/deploy/release.sh'"
+            "set -eu; test -d '$remote_stage'; test ! -L '$remote_stage'; test \"\$(stat -c '%a:%u' '$remote_stage')\" = \"700:\$(id -u)\"; test -f '$remote_stage/source.tar'; test ! -L '$remote_stage/source.tar'; test -f '$remote_stage/release.env'; test ! -L '$remote_stage/release.env'; test -f '$remote_stage/release.sh'; test ! -L '$remote_stage/release.sh'; test \"\$(stat -c '%u' '$remote_stage/source.tar')\" = \"\$(id -u)\"; test \"\$(stat -c '%u' '$remote_stage/release.env')\" = \"\$(id -u)\"; test \"\$(stat -c '%u' '$remote_stage/release.sh')\" = \"\$(id -u)\"; chmod 0600 '$remote_stage/source.tar' '$remote_stage/release.env' '$remote_stage/release.sh'; test \"\$(sha256sum '$remote_stage/source.tar' | awk '{print \$1}')\" = '$SOURCE_SHA256'; test \"\$(sha256sum '$remote_stage/release.env' | awk '{print \$1}')\" = '$RELEASE_ENV_SHA256'; test \"\$(sha256sum '$remote_stage/release.sh' | awk '{print \$1}')\" = '$RELEASE_SCRIPT_SHA256'; PROJECT_DIR='$REMOTE_DIR' RELEASE_ENV_FILE='$remote_stage/release.env' RELEASE_ENV_SHA256='$RELEASE_ENV_SHA256' SOURCE_ARCHIVE_FILE='$remote_stage/source.tar' SOURCE_ARCHIVE_SHA256='$SOURCE_SHA256' RELEASE_SCRIPT_SHA256='$RELEASE_SCRIPT_SHA256' bash '$remote_stage/release.sh'"

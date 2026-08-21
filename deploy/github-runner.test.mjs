@@ -122,6 +122,28 @@ test('release publish selects the runner through a repository variable while dep
   assert.doesNotMatch(publish, /type=gha/);
 });
 
+test('production deploy stages a checksummed archive before one guarded remote release', () => {
+  const deploy = release.slice(release.indexOf('  deploy:'));
+  assert.match(deploy, /git archive --format=tar --output="\$source_archive" "\$HEAD_SHA"/);
+  assert.match(deploy, /incoming-\$\{HEAD_SHA\}-\$\{GITHUB_RUN_ID\}-\$\{GITHUB_RUN_ATTEMPT\}/);
+  assert.match(deploy, /source_sha256=/);
+  assert.match(deploy, /release_env_sha256=/);
+  assert.match(deploy, /release_script_sha256=/);
+  assert.match(deploy, /test ! -L '\$remote_stage'/);
+  assert.match(deploy, /stat -c '%a:%u' '\$remote_stage'/);
+  assert.match(deploy, /chmod 0600 '\$remote_stage\/source\.tar' '\$remote_stage\/release\.env' '\$remote_stage\/release\.sh'/);
+  assert.match(deploy, /sha256sum '\$remote_stage\/source\.tar'/);
+  assert.match(deploy, /sha256sum '\$remote_stage\/release\.env'/);
+  assert.match(deploy, /sha256sum '\$remote_stage\/release\.sh'/);
+  assert.match(deploy, /SOURCE_ARCHIVE_FILE='\$remote_stage\/source\.tar'/);
+  assert.match(deploy, /SOURCE_ARCHIVE_SHA256='\$SOURCE_SHA256'/);
+  assert.match(deploy, /RELEASE_ENV_SHA256='\$RELEASE_ENV_SHA256'/);
+  assert.match(deploy, /RELEASE_SCRIPT_SHA256='\$RELEASE_SCRIPT_SHA256'/);
+  assert.match(deploy, /bash '\$remote_stage\/release\.sh'/);
+  assert.doesNotMatch(deploy, /git archive[^\n]*\|/);
+  assert.doesNotMatch(deploy, /tar --extract --file=-/);
+});
+
 test('CI keeps untrusted work hosted and avoids duplicate main release builds', () => {
   const mainReleaseGuard = /if: \$\{\{ github\.event_name != 'push' \|\| github\.ref != 'refs\/heads\/main' \}\}/;
   const shouldValidateArtifacts = (eventName, ref) => eventName !== 'push' || ref !== 'refs/heads/main';

@@ -5,18 +5,26 @@ umask 077
 IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_FILE="$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
 PROJECT_DIR="${PROJECT_DIR:-$(cd -- "$SCRIPT_DIR/.." && pwd)}"
 COMPOSE_FILE="${COMPOSE_FILE:-$PROJECT_DIR/deploy/compose.yaml}"
 RUNTIME_ENV_FILE="${RUNTIME_ENV_FILE:-$PROJECT_DIR/deploy/.env}"
 RELEASE_ENV_FILE="${RELEASE_ENV_FILE:-$PROJECT_DIR/deploy/.release.incoming.env}"
+RELEASE_ENV_SHA256="${RELEASE_ENV_SHA256:-}"
+SOURCE_ARCHIVE_FILE="${SOURCE_ARCHIVE_FILE:-}"
+SOURCE_ARCHIVE_SHA256="${SOURCE_ARCHIVE_SHA256:-}"
+RELEASE_SCRIPT_SHA256="${RELEASE_SCRIPT_SHA256:-}"
 RELEASE_DIR="${RELEASE_DIR:-$PROJECT_DIR/deploy/releases}"
 CURRENT_ENV_FILE="${CURRENT_ENV_FILE:-$RELEASE_DIR/current.env}"
 PREVIOUS_ENV_FILE="${PREVIOUS_ENV_FILE:-$RELEASE_DIR/previous.env}"
 LOCK_FILE="${LOCK_FILE:-$RELEASE_DIR/.lock}"
+SOURCE_ACTIVATION_MARKER="${SOURCE_ACTIVATION_MARKER:-$RELEASE_DIR/source-activation.failed}"
 MIN_FREE_KB="${MIN_FREE_KB:-5242880}"
 HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-180}"
 
 DEPLOY_STARTED=0
+RELEASE_SUCCEEDED=0
+STAGING_DIR=''
 
 log() {
   printf '[timeblog-release] %s\n' "$*"
@@ -29,6 +37,99 @@ fail() {
 
 cleanup() {
   rm -f -- "$RELEASE_ENV_FILE"
+  if (( RELEASE_SUCCEEDED == 1 )) && [[ -n "$STAGING_DIR" ]]; then
+    if ! rm -f -- "$SOURCE_ARCHIVE_FILE" "$SCRIPT_FILE" || ! rmdir -- "$STAGING_DIR"; then
+      printf '[timeblog-release] WARNING: unable to remove completed staging directory %s\n' "$STAGING_DIR" >&2
+    fi
+  fi
+}
+
+validate_protected_directory() {
+  local path="$1"
+  local label="$2"
+
+  [[ -d "$path" && ! -L "$path" ]] || fail "$label is missing or is not a safe directory"
+  [[ "$(stat -c '%a' "$path")" == 700 ]] || fail "$label permissions must be 0700"
+  [[ "$(stat -c '%u' "$path")" == "$(id -u)" ]] || fail "$label must be owned by the release user"
+}
+
+validate_protected_input() {
+  local path="$1"
+  local label="$2"
+  local expected_sha256="${3:-}"
+  local actual_sha256
+
+  [[ -f "$path" && ! -L "$path" && -r "$path" ]] || fail "$label is missing, unreadable, or not a regular file"
+  [[ "$(stat -c '%a' "$path")" == 600 ]] || fail "$label permissions must be 0600"
+  [[ "$(stat -c '%u' "$path")" == "$(id -u)" ]] || fail "$label must be owned by the release user"
+  if [[ -n "$expected_sha256" ]]; then
+    [[ "$expected_sha256" =~ ^[0-9a-f]{64}$ ]] || fail "$label checksum is invalid"
+    actual_sha256="$(sha256sum "$path" | awk '{print $1}')"
+    [[ "$actual_sha256" == "$expected_sha256" ]] || fail "$label checksum does not match"
+  fi
+}
+
+validate_lock_target() {
+  local path="$1"
+
+  [[ ! -L "$path" ]] || fail "release lock file must not be a symbolic link"
+  if [[ -e "$path" || -L "$path" ]]; then
+    [[ -f "$path" ]] || fail "release lock file must be a regular file"
+    [[ "$(stat -c '%a' "$path")" == 600 ]] || fail "release lock file permissions must be 0600"
+    [[ "$(stat -c '%u' "$path")" == "$(id -u)" ]] || fail "release lock file must be owned by the release user"
+  fi
+}
+
+validate_lock_fd() {
+  local fd_identity
+  local path_identity
+
+  validate_lock_target "$LOCK_FILE"
+  fd_identity="$(stat -Lc '%d:%i' "/proc/$$/fd/9")"
+  path_identity="$(stat -c '%d:%i' "$LOCK_FILE")"
+  [[ "$fd_identity" == "$path_identity" ]] || fail "release lock file was replaced while opening"
+}
+
+validate_source_archive_entries() {
+  local entry
+  local saw_compose=0
+  local saw_release=0
+
+  while IFS= read -r entry || [[ -n "$entry" ]]; do
+    [[ -n "$entry" ]] || fail "source archive contains an empty path"
+    [[ "$entry" != '.' && "$entry" != '..' && "$entry" != /* && "$entry" != ../* \
+      && "$entry" != */../* && "$entry" != *'/..' ]] \
+      || fail "source archive contains an unsafe path"
+    case "$entry" in
+      deploy/.env|deploy/.env/*|deploy/releases|deploy/releases/*)
+        fail "source archive contains protected runtime state"
+        ;;
+    esac
+    [[ "$entry" == 'deploy/compose.yaml' ]] && saw_compose=1
+    [[ "$entry" == 'deploy/release.sh' ]] && saw_release=1
+  done < <(tar --list --file "$SOURCE_ARCHIVE_FILE")
+
+  (( saw_compose == 1 )) || fail "source archive is missing deploy/compose.yaml"
+  (( saw_release == 1 )) || fail "source archive is missing deploy/release.sh"
+}
+
+activate_source_archive() {
+  [[ -n "$SOURCE_ARCHIVE_FILE" ]] || return 0
+
+  if [[ -e "$SOURCE_ACTIVATION_MARKER" || -L "$SOURCE_ACTIVATION_MARKER" ]]; then
+    validate_protected_input "$SOURCE_ACTIVATION_MARKER" "source activation marker"
+  fi
+  : > "$SOURCE_ACTIVATION_MARKER"
+  chmod 0600 "$SOURCE_ACTIVATION_MARKER"
+  sync -f "$SOURCE_ACTIVATION_MARKER"
+  sync -f "$RELEASE_DIR"
+  if ! tar --extract --file "$SOURCE_ARCHIVE_FILE" --directory "$PROJECT_DIR" --no-same-owner --no-overwrite-dir; then
+    fail "source archive activation failed; recovery operations remain blocked by $SOURCE_ACTIVATION_MARKER"
+  fi
+  [[ -f "$COMPOSE_FILE" && ! -L "$COMPOSE_FILE" ]] || fail "activated compose file is invalid"
+  [[ -f "$PROJECT_DIR/deploy/release.sh" && ! -L "$PROJECT_DIR/deploy/release.sh" ]] \
+    || fail "activated release script is invalid"
+  log "exact release source activated under the shared release lock"
 }
 
 atomic_copy() {
@@ -39,7 +140,9 @@ atomic_copy() {
   temporary="$(mktemp "${destination}.tmp.XXXXXX")"
   cp -- "$source" "$temporary"
   chmod 0600 "$temporary"
+  sync -f "$temporary"
   mv -f -- "$temporary" "$destination"
+  sync -f "$RELEASE_DIR"
 }
 
 read_release_value() {
@@ -72,8 +175,7 @@ read_release_value() {
 }
 
 validate_release_env() {
-  [[ -f "$RELEASE_ENV_FILE" ]] || fail "release env is missing: $RELEASE_ENV_FILE"
-  [[ -r "$RELEASE_ENV_FILE" ]] || fail "release env is not readable"
+  validate_protected_input "$RELEASE_ENV_FILE" "release env" "$RELEASE_ENV_SHA256"
 
   CORE_IMAGE="$(read_release_value CORE_IMAGE)"
   WEB_IMAGE="$(read_release_value WEB_IMAGE)"
@@ -88,6 +190,36 @@ validate_release_env() {
   [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "RELEASE_SHA is invalid"
   [[ "$RELEASE_TAG" =~ ^sha-[0-9a-f]{40}$ ]] || fail "RELEASE_TAG is invalid"
   [[ "$RELEASE_CREATED_AT" =~ ^[0-9TZ:+.-]+$ ]] || fail "RELEASE_CREATED_AT is invalid"
+}
+
+validate_staged_release_bundle() {
+  local staging_name
+
+  validate_release_env
+  [[ -n "$SOURCE_ARCHIVE_FILE" ]] || return 0
+  [[ -n "$SOURCE_ARCHIVE_SHA256" ]] || fail "source archive checksum is required"
+  [[ -n "$RELEASE_ENV_SHA256" ]] || fail "release env checksum is required for a staged release"
+  [[ -n "$RELEASE_SCRIPT_SHA256" ]] || fail "release script checksum is required for a staged release"
+  [[ "$SOURCE_ARCHIVE_FILE" == /* && "$RELEASE_ENV_FILE" == /* && "$SCRIPT_FILE" == /* ]] \
+    || fail "staged release inputs must use absolute paths"
+
+  STAGING_DIR="$(dirname -- "$SOURCE_ARCHIVE_FILE")"
+  staging_name="$(basename -- "$STAGING_DIR")"
+  [[ "$(dirname -- "$STAGING_DIR")" == "$RELEASE_DIR" ]] \
+    || fail "staging directory must be directly inside the release directory"
+  [[ "$staging_name" =~ ^incoming-[0-9a-f]{40}-[0-9]+-[0-9]+$ ]] \
+    || fail "staging directory name is invalid"
+  [[ "$(dirname -- "$RELEASE_ENV_FILE")" == "$STAGING_DIR" && "$(dirname -- "$SCRIPT_FILE")" == "$STAGING_DIR" ]] \
+    || fail "source archive, release env, and release script must share one staging directory"
+  [[ "$(basename -- "$SOURCE_ARCHIVE_FILE")" == source.tar ]] || fail "staged source archive name is invalid"
+  [[ "$(basename -- "$RELEASE_ENV_FILE")" == release.env ]] || fail "staged release env name is invalid"
+  [[ "$(basename -- "$SCRIPT_FILE")" == release.sh ]] || fail "staged release script name is invalid"
+
+  validate_protected_directory "$STAGING_DIR" "staging directory"
+  validate_protected_input "$SOURCE_ARCHIVE_FILE" "source archive" "$SOURCE_ARCHIVE_SHA256"
+  validate_protected_input "$RELEASE_ENV_FILE" "release env" "$RELEASE_ENV_SHA256"
+  validate_protected_input "$SCRIPT_FILE" "release script" "$RELEASE_SCRIPT_SHA256"
+  validate_source_archive_entries
 }
 
 validate_runtime_limits() {
@@ -195,21 +327,39 @@ on_exit() {
 
 trap on_exit EXIT
 
+for command_name in docker curl flock sha256sum stat tar awk sync; do
+  command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is not installed"
+done
+
+if [[ -e "$RELEASE_DIR" && ( ! -d "$RELEASE_DIR" || -L "$RELEASE_DIR" ) ]]; then
+  fail "release directory is not a safe directory"
+fi
 mkdir -p -- "$RELEASE_DIR"
 chmod 0700 "$RELEASE_DIR"
-exec 9>"$LOCK_FILE"
+validate_protected_directory "$RELEASE_DIR" "release directory"
+[[ "$(dirname -- "$CURRENT_ENV_FILE")" == "$RELEASE_DIR" ]] || fail "current release env must be inside the release directory"
+[[ "$(dirname -- "$PREVIOUS_ENV_FILE")" == "$RELEASE_DIR" ]] || fail "previous release env must be inside the release directory"
+[[ "$LOCK_FILE" == "$RELEASE_DIR/.lock" ]] || fail "release lock must use the shared release lock path"
+[[ "$SOURCE_ACTIVATION_MARKER" == "$RELEASE_DIR/source-activation.failed" ]] \
+  || fail "source activation marker must use the shared release marker path"
+validate_lock_target "$LOCK_FILE"
+exec 9>>"$LOCK_FILE"
+chmod 0600 "/proc/$$/fd/9"
+validate_lock_fd
 flock -n 9 || fail "another release is already running"
 
-[[ -f "$RUNTIME_ENV_FILE" ]] || fail "runtime env is missing: $RUNTIME_ENV_FILE"
-[[ -f "$COMPOSE_FILE" ]] || fail "compose file is missing: $COMPOSE_FILE"
-command -v docker >/dev/null 2>&1 || fail "docker is not installed"
-command -v curl >/dev/null 2>&1 || fail "curl is not installed"
-command -v flock >/dev/null 2>&1 || fail "flock is not installed"
-
-validate_release_env
+validate_protected_input "$RUNTIME_ENV_FILE" "runtime env"
+[[ ! -e "$CURRENT_ENV_FILE" && ! -L "$CURRENT_ENV_FILE" ]] \
+  || validate_protected_input "$CURRENT_ENV_FILE" "current release env"
+[[ ! -e "$PREVIOUS_ENV_FILE" && ! -L "$PREVIOUS_ENV_FILE" ]] \
+  || validate_protected_input "$PREVIOUS_ENV_FILE" "previous release env"
+validate_staged_release_bundle
 validate_runtime_limits
 check_disk
 docker info >/dev/null 2>&1 || fail "docker daemon is unavailable"
+
+activate_source_archive
+[[ -f "$COMPOSE_FILE" && ! -L "$COMPOSE_FILE" ]] || fail "compose file is missing or unsafe: $COMPOSE_FILE"
 
 if ! compose_run "$RELEASE_ENV_FILE" config --quiet; then
   fail "compose configuration validation failed"
@@ -232,4 +382,7 @@ compose_run "$RELEASE_ENV_FILE" up -d --no-build --wait --wait-timeout "$HEALTH_
 verify_health
 
 atomic_copy "$RELEASE_ENV_FILE" "$CURRENT_ENV_FILE"
+rm -f -- "$SOURCE_ACTIVATION_MARKER"
+sync -f "$RELEASE_DIR"
+RELEASE_SUCCEEDED=1
 log "release $RELEASE_SHA activated"
