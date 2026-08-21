@@ -155,6 +155,21 @@
   min-height: calc(100vh - 68px);
 }
 
+.public-content:has(> #main-content.public-article-shell) {
+  --reader-grid-line: color-mix(in srgb, var(--line) 76%, transparent);
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(to right, var(--reader-grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--reader-grid-line) 1px, transparent 1px);
+  background-position: 0 0;
+  background-size: 10px 10px;
+}
+
+.public-content > #main-content.public-article-shell,
+.public-shell:has(> .public-content > #main-content.public-article-shell) > .public-masthead {
+  background: var(--paper);
+}
+
 .public-footer {
   max-width: 860px;
   margin: 48px auto 0;
@@ -224,6 +239,9 @@
     border-top: 1px solid var(--line);
     background: color-mix(in srgb, var(--surface) 96%, transparent);
     backdrop-filter: blur(12px);
+  }
+  .public-shell:has(> .public-content > #main-content.public-article-shell) > .public-masthead .public-nav {
+    background: var(--surface);
   }
   .public-nav a { font-size: 11px; }
   .public-nav a.is-active::after { top: 0; bottom: auto; }
