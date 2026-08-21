@@ -3,6 +3,7 @@
 import { FormEvent, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
 import { API } from '@/lib/api';
 
 type ProblemBody = { detail?: string; title?: string };
@@ -91,7 +92,7 @@ export default function RecoveryForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ recoveryKey: string; totpSetupURI: string } | null>(null);
+  const [result, setResult] = useState<{ recoveryKey: string; totpSecret: string; totpSetupURI: string } | null>(null);
   const pendingAttempt = useRef<RecoveryAttempt | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -133,6 +134,7 @@ export default function RecoveryForm() {
       // response body after the database transaction has committed.
       setResult({
         recoveryKey: attempt.newRecoveryKey,
+        totpSecret: attempt.newTotpSecret,
         totpSetupURI: recoveryTOTPSetupURI(attempt.newTotpSecret),
       });
     } catch {
@@ -147,10 +149,27 @@ export default function RecoveryForm() {
     <h1 id="recovery-result-title">恢复已完成</h1>
     <p className="note">这些凭据由本浏览器为本次恢复生成，服务端不会保存明文。请立即复制到离线密码管理器，并在重新登录后完成 TOTP 设置。</p>
     <div className="recovery-result" role="status">
-      <label htmlFor="new-recovery-key">新恢复密钥</label>
+      <label htmlFor="new-recovery-key">新恢复密钥（仅用于以后恢复账户，不是 TOTP 密钥）</label>
       <textarea id="new-recovery-key" readOnly value={result.recoveryKey} rows={3} />
-      <label htmlFor="totp-setup-uri">TOTP setup URI</label>
+      <p className="note">TOTP 二维码（推荐使用身份验证器扫描）</p>
+      <QRCodeSVG
+        value={result.totpSetupURI}
+        size={220}
+        level="M"
+        marginSize={4}
+        title="个人时间线 owner 账户的 TOTP 设置二维码"
+        role="img"
+        aria-label="个人时间线 owner 账户的 TOTP 设置二维码"
+        aria-describedby="totp-qr-help"
+        style={{ width: 'min(100%, 220px)', height: 'auto', justifySelf: 'center' }}
+      />
+      <p id="totp-qr-help" className="note">二维码只在当前浏览器中根据下方完整 URI 生成，不会发送给外部二维码服务。</p>
+      <label htmlFor="totp-manual-secret">手动设置密钥（Base32，仅粘贴此值）</label>
+      <textarea id="totp-manual-secret" readOnly spellCheck={false} value={result.totpSecret} rows={2} />
+      <p className="note">在 Google Authenticator 中选择基于时间的密钥；不要粘贴上面的恢复密钥或下面的完整 URI。</p>
+      <label htmlFor="totp-setup-uri">完整 TOTP URI（仅供支持 otpauth 导入或本地生成二维码使用）</label>
       <textarea id="totp-setup-uri" readOnly value={result.totpSetupURI} rows={4} />
+      <p className="note">不得将完整 URI 粘贴进 Authenticator 的手动设置密钥框。</p>
     </div>
     <button className="primary" type="button" onClick={() => router.replace('/login?recovered=1')}>我已保存，前往登录</button>
   </section>;

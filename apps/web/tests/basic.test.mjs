@@ -1052,6 +1052,20 @@ test('account recovery page uses the recovery contract without exposing secrets'
   assert.match(form, /for \(let tryNumber = 0; tryNumber < 2; tryNumber \+= 1\)/);
   assert.match(form, /recoveryTOTPSetupURI\(attempt\.newTotpSecret\)/);
   assert.match(form, /recoveryKey: attempt\.newRecoveryKey/);
+  assert.match(form, /totpSecret: attempt\.newTotpSecret/);
+  assert.match(form, /value=\{result\.totpSecret\}/);
+  assert.match(form, /新恢复密钥（仅用于以后恢复账户，不是 TOTP 密钥）/);
+  assert.match(form, /手动设置密钥（Base32，仅粘贴此值）/);
+  assert.match(form, /仅供支持 otpauth 导入或本地生成二维码使用/);
+  assert.match(form, /不得将完整 URI 粘贴进 Authenticator 的手动设置密钥框/);
+  assert.match(form, /import \{ QRCodeSVG \} from 'qrcode\.react'/);
+  assert.match(form, /<QRCodeSVG/);
+  assert.match(form, /value=\{result\.totpSetupURI\}/);
+  assert.match(form, /title="个人时间线 owner 账户的 TOTP 设置二维码"/);
+  assert.match(form, /role="img"/);
+  assert.match(form, /aria-label="个人时间线 owner 账户的 TOTP 设置二维码"/);
+  assert.match(form, /二维码只在当前浏览器中.*不会发送给外部二维码服务/);
+  assert.doesNotMatch(form, /(?:api\.qrserver|chart\.googleapis|quickchart|qrcode-monkey)/i);
   assert.doesNotMatch(form, /response\.json\(\).*totpSetupURI/);
   assert.match(form, /response\.status === 429/);
   assert.match(form, /response\.status === 409/);
@@ -1062,6 +1076,26 @@ test('account recovery page uses the recovery contract without exposing secrets'
   assert.match(form, /setResult/);
   assert.doesNotMatch(form, /console\.(log|error).*recoveryKey/);
   assert.match(login, /recovered/);
+});
+
+test('account recovery Base32 encoder follows RFC 4648 and emits a 32-character TOTP secret', async () => {
+  const form = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/recovery/RecoveryForm.tsx', import.meta.url), 'utf8'));
+  const functionSource = form.match(/function base32\(value: Uint8Array\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(functionSource, 'base32 encoder should remain available for the recovery flow');
+  const { runInNewContext } = await import('node:vm');
+  const encodeBase32 = runInNewContext(`(${functionSource.replace('value: Uint8Array', 'value')})`);
+
+  for (const [plain, encoded] of [
+    ['', ''],
+    ['f', 'MY'],
+    ['foo', 'MZXW6'],
+    ['foobar', 'MZXW6YTBOI'],
+  ]) {
+    assert.equal(encodeBase32(Buffer.from(plain)), encoded);
+  }
+
+  const totpSecret = encodeBase32(Uint8Array.from({ length: 20 }, (_, index) => index));
+  assert.match(totpSecret, /^[A-Z2-7]{32}$/);
 });
 
 test('media content probe sends credentials and falls back from HEAD to range GET', async () => {
