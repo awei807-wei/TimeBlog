@@ -1,11 +1,88 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
 
 type ProblemBody = { detail?: string; title?: string };
+
+type RecoveryAttempt = {
+  recoveryKey: string;
+  newPassword: string;
+  operationToken: string;
+  newRecoveryKey: string;
+  newTotpSecret: string;
+};
+
+function randomBytes(size: number) {
+  const value = new Uint8Array(size);
+  crypto.getRandomValues(value);
+  return value;
+}
+
+function base64URL(value: Uint8Array) {
+  let binary = '';
+  value.forEach(byte => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+
+function base32(value: Uint8Array) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let buffer = 0;
+  let encoded = '';
+  value.forEach(byte => {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      encoded += alphabet[(buffer >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  });
+  if (bits > 0) encoded += alphabet[(buffer << (5 - bits)) & 31];
+  return encoded;
+}
+
+function newRecoveryAttempt(recoveryKey: string, newPassword: string): RecoveryAttempt {
+  return {
+    recoveryKey,
+    newPassword,
+    operationToken: base64URL(randomBytes(32)),
+    newRecoveryKey: base64URL(randomBytes(32)),
+    newTotpSecret: base32(randomBytes(20)),
+  };
+}
+
+function recoveryTOTPSetupURI(secret: string) {
+  const setup = new URL('otpauth://totp/');
+  setup.pathname = '/个人时间线:owner';
+  setup.searchParams.set('secret', secret);
+  setup.searchParams.set('issuer', '个人时间线');
+  return setup.toString();
+}
+
+async function sendRecoveryAttempt(attempt: RecoveryAttempt) {
+  let lastResponse: Response | null = null;
+  let lastError: unknown;
+  for (let tryNumber = 0; tryNumber < 2; tryNumber += 1) {
+    try {
+      const response = await fetch(`${API}/auth/recovery/account`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(attempt),
+      });
+      lastResponse = response;
+      if (response.status < 500 || tryNumber === 1) return response;
+    } catch (error) {
+      lastError = error;
+      if (tryNumber === 1) throw error;
+    }
+  }
+  if (lastResponse) return lastResponse;
+  throw lastError instanceof Error ? lastError : new Error('account recovery request failed');
+}
 
 export default function RecoveryForm() {
   const router = useRouter();
@@ -15,6 +92,7 @@ export default function RecoveryForm() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ recoveryKey: string; totpSetupURI: string } | null>(null);
+  const pendingAttempt = useRef<RecoveryAttempt | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,28 +109,32 @@ export default function RecoveryForm() {
     }
     setBusy(true);
     try {
-      const response = await fetch(`${API}/auth/recovery/account`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recoveryKey, newPassword }),
-      });
+      const previous = pendingAttempt.current;
+      const attempt = previous?.recoveryKey === recoveryKey && previous.newPassword === newPassword
+        ? previous
+        : newRecoveryAttempt(recoveryKey, newPassword);
+      pendingAttempt.current = attempt;
+      const response = await sendRecoveryAttempt(attempt);
       if (!response.ok) {
         if (response.status === 429) {
           const retryAfter = response.headers.get('Retry-After');
           setError(retryAfter ? `尝试次数过多，请在 ${retryAfter} 秒后重试。` : '尝试次数过多，请稍后重试。');
+        } else if (response.status === 409) {
+          pendingAttempt.current = null;
+          setError('本次恢复操作已失效，请重新提交。');
         } else {
           const body = await response.json().catch(() => ({})) as ProblemBody;
           setError(response.status >= 500 ? '恢复服务暂时不可用，请稍后重试。' : body.detail || body.title || '恢复信息无效。');
         }
         return;
       }
-      const body = await response.json().catch(() => ({})) as { recoveryKey?: string; totpSetupURI?: string };
-      if (body.recoveryKey || body.totpSetupURI) {
-        setResult({ recoveryKey: body.recoveryKey || '', totpSetupURI: body.totpSetupURI || '' });
-      } else {
-        router.replace('/login?recovered=1');
-      }
+      // The browser owns these plaintext credentials. Render them from the
+      // exact accepted request even when a proxy loses or truncates the 200
+      // response body after the database transaction has committed.
+      setResult({
+        recoveryKey: attempt.newRecoveryKey,
+        totpSetupURI: recoveryTOTPSetupURI(attempt.newTotpSecret),
+      });
     } catch {
       setError('无法连接恢复服务，请检查网络后重试。');
     } finally {
@@ -63,7 +145,7 @@ export default function RecoveryForm() {
   if (result) return <section className="login recovery-page" aria-labelledby="recovery-result-title">
     <Link href="/" className="brand">菜鸟手记</Link>
     <h1 id="recovery-result-title">恢复已完成</h1>
-    <p className="note">以下凭据只显示一次，不会保存到浏览器。请立即复制到离线密码管理器，并在重新登录后完成 TOTP 设置。</p>
+    <p className="note">这些凭据由本浏览器为本次恢复生成，服务端不会保存明文。请立即复制到离线密码管理器，并在重新登录后完成 TOTP 设置。</p>
     <div className="recovery-result" role="status">
       <label htmlFor="new-recovery-key">新恢复密钥</label>
       <textarea id="new-recovery-key" readOnly value={result.recoveryKey} rows={3} />

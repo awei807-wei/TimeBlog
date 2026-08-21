@@ -12,10 +12,23 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--rotate-recovery-key" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := runRecoveryKeyRotationCLI(ctx, os.Args[2:], os.Getenv("DATABASE_URL")); err != nil {
+			log.Fatalf("account recovery key rotation failed: %v", err)
+		}
+		log.Print("account recovery key rotated; secret written to the requested output file")
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--generate-recovery-key" {
 		// Explicit operator action: print one high-entropy bootstrap secret to
 		// stdout, never to logs or persistent application state.
-		fmt.Println(randomToken())
+		key, err := generateRecoveryKey()
+		if err != nil {
+			log.Fatalf("account recovery key generation failed: %v", err)
+		}
+		fmt.Println(key)
 		return
 	}
 	if len(os.Args) > 1 && os.Args[1] == "--healthcheck" {

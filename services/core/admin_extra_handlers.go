@@ -1544,10 +1544,11 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	adminPassword := configuredEnv("ADMIN_PASSWORD")
 	adminTOTP := configuredEnv("ADMIN_TOTP_SECRET")
-	recoveryHash := configuredEnv("ACCOUNT_RECOVERY_KEY_HASH")
+	recoveryConfigured := configuredEnv("ACCOUNT_RECOVERY_KEY_HASH")
 	databaseURL := configuredEnv("DATABASE_URL")
 	if srv.store.persistent && srv.store.database != nil {
 		databaseURL = true
+		recoveryConfigured = false
 		var exists bool
 		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM users WHERE username='owner' AND password_hash <> '')`).Scan(&exists); err == nil {
 			adminPassword = exists
@@ -1555,6 +1556,11 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 			if err := srv.store.database.QueryRowContext(r.Context(), `SELECT EXISTS (SELECT 1 FROM users WHERE username='owner' AND totp_secret_encrypted <> '')`).Scan(&totpConfigured); err == nil {
 				adminTOTP = totpConfigured
 			}
+		}
+		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT EXISTS (
+			SELECT 1 FROM account_recovery_keys WHERE used_at IS NULL AND expires_at>now()
+		)`).Scan(&exists); err == nil {
+			recoveryConfigured = exists
 		}
 	}
 	externalStatus := map[string]any{"provider": "custom_public", "configured": false, "enabled": false, "protocolStatus": "ou_image_hosting_v1", "status": "未配置"}
@@ -1581,7 +1587,7 @@ func (srv *Server) runtimeStatus(w http.ResponseWriter, r *http.Request) {
 			"adminTotpSecret":    map[string]any{"configured": adminTOTP, "managedBy": "account_recovery"},
 			"totpEncryptionKey":  map[string]any{"configured": configuredEnv("TOTP_ENCRYPTION_KEY"), "managedBy": "vps_environment"},
 			"databaseConnection": map[string]any{"configured": databaseURL, "managedBy": "vps_environment"},
-			"accountRecoveryKey": map[string]any{"configured": recoveryHash, "managedBy": "account_recovery"},
+			"accountRecoveryKey": map[string]any{"configured": recoveryConfigured, "managedBy": "account_recovery"},
 		},
 		"nasBackup": nasStatus,
 	})

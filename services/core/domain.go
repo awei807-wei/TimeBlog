@@ -89,6 +89,12 @@ type loginThrottle struct {
 	Until    time.Time
 }
 
+type memoryRecoveryOperation struct {
+	PayloadMAC      string
+	RecoveryKeyHash string
+	ExpiresAt       time.Time
+}
+
 type Store struct {
 	mu              sync.RWMutex
 	entries         map[string]*Entry
@@ -101,6 +107,7 @@ type Store struct {
 	mfaChallenges   map[string]time.Time
 	challengeStore  map[string]time.Time
 	loginThrottle   map[string]loginThrottle
+	recoveryOps     map[string]memoryRecoveryOperation
 	recoveryKeyHash string
 	recoveryKeyUsed bool
 	nextPosition    int
@@ -116,7 +123,7 @@ type Store struct {
 }
 
 func NewStore() *Store {
-	s := &Store{entries: map[string]*Entry{}, working: map[string]*WorkingCopy{}, media: map[string]*Media{}, sessions: map[string]*Session{}, undo: map[string]undoRecord{}, mfaChallenges: map[string]time.Time{}, loginThrottle: map[string]loginThrottle{}, settings: map[string]any{}, userPassword: getenv("ADMIN_PASSWORD", ""), userTOTP: getenv("ADMIN_TOTP_SECRET", ""), recoveryKeyHash: getenv("ACCOUNT_RECOVERY_KEY_HASH", ""), csrfKey: newCSRFKey()}
+	s := &Store{entries: map[string]*Entry{}, working: map[string]*WorkingCopy{}, media: map[string]*Media{}, sessions: map[string]*Session{}, undo: map[string]undoRecord{}, mfaChallenges: map[string]time.Time{}, loginThrottle: map[string]loginThrottle{}, recoveryOps: map[string]memoryRecoveryOperation{}, settings: map[string]any{}, userPassword: getenv("ADMIN_PASSWORD", ""), userTOTP: getenv("ADMIN_TOTP_SECRET", ""), recoveryKeyHash: getenv("ACCOUNT_RECOVERY_KEY_HASH", ""), csrfKey: newCSRFKey()}
 	return s
 }
 

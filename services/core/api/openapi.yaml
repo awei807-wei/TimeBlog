@@ -162,7 +162,7 @@ paths:
       tags: [auth]
       operationId: recoverAccount
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/RecoveryRequest'}}}}
-      responses: {'200': {description: 恢复成功并返回一次性新恢复码与 TOTP setup URI, content: {application/json: {schema: {$ref: '#/components/schemas/RecoveryResponse'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '429': {description: 尝试次数过多, headers: {Retry-After: {schema: {type: string}}}}}
+      responses: {'200': {description: 恢复成功；同一 operationToken 与相同载荷可安全重试并返回相同凭据, content: {application/json: {schema: {$ref: '#/components/schemas/RecoveryResponse'}}}}, '400': {$ref: '#/components/responses/BadRequest'}, '401': {$ref: '#/components/responses/Unauthorized'}, '403': {$ref: '#/components/responses/Forbidden'}, '409': {description: operationToken 已用于不同载荷或恢复结果已被后续轮换替代}, '429': {description: 尝试次数过多, headers: {Retry-After: {schema: {type: string}}}}}
 
   /admin/working-copies:
     get:
@@ -758,8 +758,8 @@ components:
     SessionStatusResponse: {type: object, required: [authenticated, csrfToken], properties: {authenticated: {type: boolean}, username: {type: string}, csrfToken: {type: string, description: 当前会话稳定的 CSRF token；不会因重复读取 session 状态而轮换}}}
     Session: {type: object, required: [id, createdAt, lastSeen], properties: {id: {type: string, format: uuid}, createdAt: {type: string, format: date-time}, lastSeen: {type: string, format: date-time}}}
     SessionListResponse: {type: object, required: [sessions], properties: {sessions: {type: array, items: {$ref: '#/components/schemas/Session'}}}}
-    RecoveryRequest: {type: object, required: [recoveryKey, newPassword], properties: {recoveryKey: {type: string}, newPassword: {type: string, format: password, minLength: 12}}}
-    RecoveryResponse: {type: object, required: [ok, recoveryKey, totpSetupURI], properties: {ok: {type: boolean}, recoveryKey: {type: string, description: 仅在本次响应显示一次}, totpSetupURI: {type: string, description: 仅在本次响应显示一次}}}
+    RecoveryRequest: {type: object, required: [recoveryKey, newPassword, operationToken, newRecoveryKey, newTotpSecret], properties: {recoveryKey: {type: string}, newPassword: {type: string, format: password, minLength: 12, maxLength: 1024}, operationToken: {type: string, description: 客户端生成的 256-bit base64url 幂等令牌}, newRecoveryKey: {type: string, description: 客户端生成的 256-bit base64url 新恢复密钥}, newTotpSecret: {type: string, description: 客户端生成的 160-bit 无填充 Base32 TOTP 密钥}}}
+    RecoveryResponse: {type: object, required: [ok, recoveryKey, totpSetupURI], properties: {ok: {type: boolean}, recoveryKey: {type: string, description: 服务端不保存明文；由幂等请求原样返回}, totpSetupURI: {type: string, description: 由幂等请求中的 TOTP 密钥重建}}}
     WorkingCopy:
       type: object
       required: [id, clientDraftId, payload, updatedAt]

@@ -192,26 +192,52 @@ func openPersistentDatabase(ctx context.Context, databaseURL string) (*sql.DB, e
 	return db, nil
 }
 
-// ensureRecoveryKey accepts a bootstrap secret only when the database has no
-// active recovery key. Once provisioned, ACCOUNT_RECOVERY_KEY_BOOTSTRAP can be
-// removed from the environment and startup continues using the DB hash.
+// ensureRecoveryKey accepts a bootstrap secret only before the recovery-key
+// table has any history. Once provisioned, ACCOUNT_RECOVERY_KEY_BOOTSTRAP can
+// never reactivate or replace a lost, consumed, or expired recovery key.
 func ensureRecoveryKey(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := lockRecoveryKeyTable(ctx, tx); err != nil {
+		return err
+	}
+
 	var active bool
-	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM account_recovery_keys WHERE used_at IS NULL AND expires_at>now())`).Scan(&active); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM account_recovery_keys WHERE used_at IS NULL AND expires_at>now())`).Scan(&active); err != nil {
 		return err
 	}
 	if active {
-		return nil
+		return tx.Commit()
+	}
+	var hasHistory bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM account_recovery_keys)`).Scan(&hasHistory); err != nil {
+		return err
+	}
+	if hasHistory {
+		return fmt.Errorf("no active account recovery key; rotate it with the recovery CLI")
 	}
 	secret := getenv("ACCOUNT_RECOVERY_KEY_BOOTSTRAP", "")
 	if secret == "" {
-		return fmt.Errorf("no active account recovery key; set ACCOUNT_RECOVERY_KEY_BOOTSTRAP once or provision a hash with the recovery CLI")
+		return fmt.Errorf("no account recovery key has been provisioned; set ACCOUNT_RECOVERY_KEY_BOOTSTRAP once or use the recovery CLI")
 	}
 	hash, err := hashPassword(secret)
 	if err != nil {
 		return err
 	}
-	_, err = db.ExecContext(ctx, `INSERT INTO account_recovery_keys(id,key_hash,expires_at) VALUES(gen_random_uuid(),$1,now()+interval '90 days')`, hash)
+	if _, err = tx.ExecContext(ctx, `INSERT INTO account_recovery_keys(id,key_hash,expires_at)
+		VALUES(gen_random_uuid(),$1,now()+interval '90 days')`, hash); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// lockRecoveryKeyTable serializes bootstrap, browser recovery and break-glass
+// rotation before any transaction chooses or invalidates the active key.
+func lockRecoveryKeyTable(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `LOCK TABLE account_recovery_keys IN EXCLUSIVE MODE`)
 	return err
 }
 
