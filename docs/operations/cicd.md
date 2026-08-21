@@ -171,6 +171,18 @@ IdentitiesOnly=yes
 
 禁止使用 `StrictHostKeyChecking=no`。
 
+### 4.1 只读 SSH 预检
+
+`.github/workflows/production-ssh-preflight.yml` 提供手动触发的生产 SSH 预检。它绑定 `production` Environment，并验证四个 SSH Secret 均可用、私钥可解析、`known_hosts` 包含目标主机、严格主机指纹校验能够完成 SSH 登录，以及部署目录、权限、`deploy/.env` 和 Docker/Compose 满足发布前置条件。
+
+预检不会检出或上传源码，不会读出 `deploy/.env` 内容，不会拉取镜像、修改容器或调用 `deploy/release.sh`。可在 Actions 页面选择 `Production SSH preflight` 后运行，或使用：
+
+```bash
+gh workflow run production-ssh-preflight.yml --ref main
+```
+
+只有预检通过后，才重跑或触发实际 Release。
+
 如果 GHCR 包是私有的，首发前必须先在 VPS 上使用部署用户完成 GHCR 登录，或将包改为公开：
 
 ```bash
