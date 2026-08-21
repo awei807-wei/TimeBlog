@@ -1024,8 +1024,12 @@ test('mock auth and editor flow keeps challenge, private commit, undo and export
   const entryActions = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/admin-entry-actions.ts', import.meta.url), 'utf8'));
   const undoAction = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/useAdminUndoAction.ts', import.meta.url), 'utf8'));
   const desk = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8'));
-  assert.match(login, /auth\/login\/\$\{step===1\?'password':'totp'\}/);
-  assert.match(login, /setChallenge\(data\.challenge\|\|'\'\)/);
+  assert.match(login, /auth\/login\/\$\{step === 1 \? 'password' : 'totp'\}/);
+  assert.match(login, /setChallenge\(data\.challenge \|\| ''\)/);
+  assert.match(login, /async function submit\(event: FormEvent<HTMLFormElement>\)/);
+  assert.match(login, /<form onSubmit=\{submit\}/);
+  assert.match(login, /<button className="primary" type="submit"/);
+  assert.doesNotMatch(login, /onClick=\{next\}/);
   assert.match(editorState, /serializeEditorStatus\(status\)/);
   assert.match(entryActions, /working-copies\/\$\{working\.id\}\/commit/);
   assert.match(undoAction, /admin\/undo\/\$\{undoToken\}/);
