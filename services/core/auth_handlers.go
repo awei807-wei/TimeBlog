@@ -335,6 +335,7 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 // the CSRF token. Navigation can safely call this endpoint without racing
 // with page mutations that use /auth/session for their CSRF token.
 func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
 	var cookie *http.Cookie
 	var err error
 	if cookie, err = r.Cookie("timeline_session"); err != nil || cookie.Value == "" {

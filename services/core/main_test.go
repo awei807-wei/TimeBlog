@@ -184,6 +184,23 @@ func TestAuthSessionStatusValidatesCookieWithoutCSRF(t *testing.T) {
 	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
 	srv := NewServer(NewStore())
 	h := srv.routes()
+	unauthenticated := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session/status", nil)
+	unauthenticatedRR := httptest.NewRecorder()
+	h.ServeHTTP(unauthenticatedRR, unauthenticated)
+	if unauthenticatedRR.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated session status=%d body=%s", unauthenticatedRR.Code, unauthenticatedRR.Body.String())
+	}
+	if got := unauthenticatedRR.Header().Get("Cache-Control"); got != "no-store, max-age=0" {
+		t.Fatalf("unauthenticated session status cache control=%q", got)
+	}
+	var unauthenticatedBody struct {
+		Status int    `json:"status"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(unauthenticatedRR.Body.Bytes(), &unauthenticatedBody); err != nil || unauthenticatedBody.Status != http.StatusUnauthorized || unauthenticatedBody.Detail != "未登录" {
+		t.Fatalf("unexpected unauthenticated status body=%s", unauthenticatedRR.Body.String())
+	}
+
 	_, raw := loginForTest(t, h)
 	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
 	status := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session/status", nil)
@@ -192,6 +209,9 @@ func TestAuthSessionStatusValidatesCookieWithoutCSRF(t *testing.T) {
 	h.ServeHTTP(rr, status)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("session status=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("Cache-Control"); got != "no-store, max-age=0" {
+		t.Fatalf("authenticated session status cache control=%q", got)
 	}
 	var body struct {
 		Authenticated bool   `json:"authenticated"`
