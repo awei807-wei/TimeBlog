@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 
 type TagInputProps = {
   label: string;
@@ -129,7 +130,7 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
             <span
               key={`${value}-${index}`}
               className="taxonomy-tag"
-              title="双击编辑"
+              title={`${prefix}${value} · 双击编辑`}
               tabIndex={0}
               aria-label={`${label}${value}，按 Enter、F2 或空格编辑`}
               onDoubleClick={event => {
@@ -145,7 +146,7 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
               }}
             >
               <span className="taxonomy-tag-value">{prefix}{value}</span>
-              <button type="button" className="taxonomy-tag-remove" aria-label={`删除${label}${value}`} onClick={() => removeTag(index)}>×</button>
+              <button type="button" className="taxonomy-tag-remove" aria-label={`删除${label}${value}`} onClick={() => removeTag(index)}><X aria-hidden="true" /></button>
             </span>
           ))}
           <input

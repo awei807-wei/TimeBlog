@@ -333,6 +333,7 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   const draftTray = await fs.readFile(new URL('../app/admin/DraftTray.tsx', import.meta.url), 'utf8');
   const datePicker = await fs.readFile(new URL('../app/admin/JournalDatePicker.tsx', import.meta.url), 'utf8');
   const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  const inspectorCss = await fs.readFile(new URL('../app/admin-editor-inspector.css', import.meta.url), 'utf8');
   assert.match(compat, /prepareMarkdownForMdxEditor/);
   assert.match(compat, /restoreMarkdownFromMdxEditor/);
   assert.match(editor, /mdx-compat-notice/);
@@ -351,6 +352,8 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(tags, /htmlFor=\{inputId\}/);
   assert.match(tags, /editingIndex - 1/);
   assert.match(tags, /event\.key === 'Escape'/);
+  assert.match(tags, /import \{ X \} from 'lucide-react'/);
+  assert.match(tags, /<X aria-hidden="true" \/>/);
   assert.match(page, /<JournalDatePicker value=\{date\} onChange=\{onDateChange\}/);
   assert.ok(page.split('\n').length < 400);
   assert.match(page, /<DraftTray drafts=\{drafts\} onLoadDraft=\{onLoadDraft\}/);
@@ -372,6 +375,10 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(css, /\.taxonomy-tag\{[^}]*min-height:44px/);
   assert.match(css, /\.taxonomy-tag-remove\{[^}]*width:44px;height:44px;min-width:44px/);
   assert.match(css, /\.taxonomy-tag:focus-visible\{/);
+  assert.match(inspectorCss, /\.writing-inspector \.tag-input \{[^}]*min-height: 39px;[^}]*padding: 3px 5px/);
+  assert.match(inspectorCss, /\.writing-inspector \.taxonomy-tag \{[^}]*min-height: 29px;[^}]*border: 1px solid/);
+  assert.match(inspectorCss, /\.writing-inspector \.taxonomy-tag-value \{[^}]*text-overflow: ellipsis/);
+  assert.match(inspectorCss, /\.writing-inspector \.taxonomy-tag-remove \{[^}]*width: 27px;[^}]*height: 27px;[^}]*min-width: 27px/);
   assert.match(css, /\.mdx-editor-content\[class\*="placeholder"\]/);
   assert.match(css, /\.mdx-editor \.mdxeditor-toolbar\{[^}]*scrollbar-width:none/);
 });
@@ -391,6 +398,7 @@ test('writing workbench keeps focus visible and bounds responsive editor scrolli
   assert.match(css, /\.writing-rail[\s\S]*align-self: start[\s\S]*overflow: visible/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.writing-save-actions[\s\S]*margin-left: auto/);
+  assert.match(css, /@media \(pointer: coarse\)[\s\S]*\.writing-inspector \.taxonomy-tag-remove[\s\S]*width: 44px;[\s\S]*height: 44px;/);
 });
 
 test('article-prose is the shared Markdown typography contract without card pollution', async () => {

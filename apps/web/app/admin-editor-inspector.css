@@ -100,26 +100,68 @@
 }
 
 .writing-inspector .tag-input {
-  min-height: 42px;
+  min-height: 39px;
+  padding: 3px 5px;
   border-radius: 8px;
 }
 
 .writing-inspector .tag-input-list {
-  gap: 5px;
-  min-height: 40px;
-  padding: 5px 7px;
+  gap: 4px;
+  min-height: 31px;
+  padding: 0;
 }
 
 .writing-inspector .taxonomy-tag {
-  min-height: 27px;
-  padding-left: 7px;
+  min-height: 29px;
+  gap: 2px;
+  padding: 0 2px 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent-soft) 72%, var(--surface));
+  font-size: 11px;
+  font-weight: 650;
+  cursor: text;
+}
+
+.writing-inspector .taxonomy-tag-value {
+  max-width: 132px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.writing-inspector .taxonomy-tag-remove {
+  width: 27px;
+  height: 27px;
+  min-width: 27px;
+  border-radius: 6px;
+  color: color-mix(in srgb, var(--accent) 76%, var(--muted));
+}
+
+.writing-inspector .taxonomy-tag-remove svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.8;
 }
 
 .writing-inspector .tag-input-editor,
 .writing-inspector .taxonomy-tag-edit {
-  min-height: 30px;
-  height: 30px;
+  min-height: 29px;
+  height: 29px;
   font-size: 11px;
+}
+
+.writing-inspector .tag-input-editor {
+  min-width: 72px;
+  flex-basis: 72px;
+  padding: 0 5px;
+}
+
+.writing-inspector .taxonomy-tag-edit {
+  min-width: 84px;
+  flex-basis: 128px;
+  padding: 0 7px;
+  border-radius: 7px;
 }
 
 .writing-inspector-note {
