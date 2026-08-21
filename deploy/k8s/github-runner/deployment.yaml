@@ -46,8 +46,8 @@ spec:
           emptyDir:
             sizeLimit: 4Gi
         - name: dind-data
-          emptyDir:
-            sizeLimit: 20Gi
+          persistentVolumeClaim:
+            claimName: timeblog-github-runner-docker
         - name: dind-certs
           emptyDir: {}
         - name: runner-entrypoint
@@ -101,6 +101,8 @@ spec:
               value: "1"
             - name: DOCKER_CERT_PATH
               value: /certs/client
+            - name: BUILDX_CONFIG
+              value: /runner/.buildx
           volumeMounts:
             - name: runner-config
               mountPath: /runner

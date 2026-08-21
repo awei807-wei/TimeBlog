@@ -63,9 +63,19 @@ jobs:
             echo "stale workflow_run skipped: $HEAD_SHA is not current main ($current_main_sha)"
           fi
 
-      - name: Set up Buildx
+      - name: Set up persistent local Buildx
         if: steps.freshness.outputs.should_release == 'true'
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          name: timeblog-release-builder
+          keep-state: true
+          cache-binary: false
+          buildkitd-config-inline: |
+            [worker.oci]
+              gc = true
+              reservedSpace = "4GB"
+              maxUsedSpace = "16GB"
+              minFreeSpace = "2GB"
 
       - name: Log in to GHCR
         if: steps.freshness.outputs.should_release == 'true'
@@ -87,8 +97,6 @@ jobs:
           tags: |
             ${{ env.CORE_IMAGE }}:sha-${{ github.event.workflow_run.head_sha }}
             ${{ env.CORE_IMAGE }}:main
-          cache-from: type=gha,scope=timeblog-core
-          cache-to: type=gha,mode=max,scope=timeblog-core
 
       - name: Build and push web image
         id: web
@@ -102,8 +110,6 @@ jobs:
           tags: |
             ${{ env.WEB_IMAGE }}:sha-${{ github.event.workflow_run.head_sha }}
             ${{ env.WEB_IMAGE }}:main
-          cache-from: type=gha,scope=timeblog-web
-          cache-to: type=gha,mode=max,scope=timeblog-web
 
   deploy:
     name: Deploy to production VPS

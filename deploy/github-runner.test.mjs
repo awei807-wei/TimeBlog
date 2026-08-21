@@ -17,13 +17,27 @@ const [deployment, configMap, kustomization, networkPolicy, pvc, serviceAccount,
 ]);
 
 test('runner manifests are complete and kustomize-ordered', () => {
+  const configClaimStart = pvc.indexOf('  name: timeblog-github-runner-config');
+  const dockerClaimStart = pvc.indexOf('  name: timeblog-github-runner-docker');
+
   for (const resource of ['namespace.yaml', 'serviceaccount.yaml', 'pvc.yaml', 'configmap.yaml', 'networkpolicy.yaml', 'deployment.yaml']) {
     assert.match(kustomization, new RegExp(`- ${resource.replace('.', '\\.')}`));
   }
   assert.match(kustomization, /^namespace: timeblog-ci$/m);
-  assert.match(pvc, /kind: PersistentVolumeClaim/);
-  assert.match(pvc, /storageClassName: local-path/);
-  assert.match(pvc, /storage: 5Gi/);
+  assert.equal((pvc.match(/^kind: PersistentVolumeClaim$/gm) ?? []).length, 2);
+  assert.ok(configClaimStart >= 0);
+  assert.ok(dockerClaimStart > configClaimStart);
+
+  const configClaim = pvc.slice(configClaimStart, dockerClaimStart);
+  const dockerClaim = pvc.slice(dockerClaimStart);
+
+  assert.match(configClaim, /storageClassName: local-path/);
+  assert.match(configClaim, /storage: 5Gi/);
+  assert.doesNotMatch(configClaim, /storage: 20Gi/);
+  assert.match(dockerClaim, /storageClassName: local-path/);
+  assert.match(dockerClaim, /storage: 20Gi/);
+  assert.doesNotMatch(dockerClaim, /storage: 5Gi/);
+  assert.equal((pvc.match(/^  storageClassName: local-path$/gm) ?? []).length, 2);
   assert.match(serviceAccount, /automountServiceAccountToken: false/);
 });
 
@@ -37,10 +51,13 @@ test('runner deployment has one amd64 replica and the required images', () => {
   assert.match(deployment, /kubernetes\.io\/os: linux/);
 });
 
-test('runner configuration is persistent while work and Docker state are temporary', () => {
+test('runner configuration and Docker state are persistent while work is temporary', () => {
+  const dindData = deployment.slice(deployment.indexOf('        - name: dind-data'), deployment.indexOf('        - name: dind-certs'));
+
   assert.match(deployment, /name: runner-config[\s\S]*?persistentVolumeClaim:[\s\S]*?claimName: timeblog-github-runner-config/);
   assert.match(deployment, /name: runner-work[\s\S]*?emptyDir:[\s\S]*?sizeLimit: 4Gi/);
-  assert.match(deployment, /name: dind-data[\s\S]*?emptyDir:[\s\S]*?sizeLimit: 20Gi/);
+  assert.match(dindData, /persistentVolumeClaim:[\s\S]*?claimName: timeblog-github-runner-docker/);
+  assert.doesNotMatch(dindData, /emptyDir:/);
   assert.match(deployment, /mountPath: \/runner$/m);
   assert.match(deployment, /mountPath: \/runner\/_work$/m);
   assert.match(deployment, /mountPath: \/var\/lib\/docker$/m);
@@ -79,6 +96,7 @@ test('registration entrypoint uses the optional one-time token only for a new PV
   assert.doesNotMatch(configMap, /--runnergroup/);
   assert.match(configMap, /DOCKER-in-Docker did not become ready/i);
   assert.match(deployment, /name: DOCKER_CERT_PATH[\s\S]*?value: \/certs\/client/);
+  assert.match(deployment, /name: BUILDX_CONFIG[\s\S]*?value: \/runner\/\.buildx/);
   assert.match(deployment, /name: dind-certs[\s\S]*?mountPath: \/certs\/client[\s\S]*?subPath: client[\s\S]*?readOnly: true/);
 });
 
@@ -94,8 +112,14 @@ test('release publish selects the runner through a repository variable while dep
   assert.match(publish, /contents: read/);
   assert.match(publish, /packages: write/);
   assert.match(publish, /platforms: linux\/amd64/);
-  assert.match(publish, /cache-from: type=gha,scope=timeblog-core/);
-  assert.match(publish, /cache-from: type=gha,scope=timeblog-web/);
+  assert.match(publish, /name: timeblog-release-builder/);
+  assert.match(publish, /keep-state: true/);
+  assert.match(publish, /cache-binary: false/);
+  assert.match(publish, /reservedSpace = "4GB"/);
+  assert.match(publish, /maxUsedSpace = "16GB"/);
+  assert.match(publish, /minFreeSpace = "2GB"/);
+  assert.doesNotMatch(publish, /cache-(?:from|to):/);
+  assert.doesNotMatch(publish, /type=gha/);
 });
 
 test('CI keeps untrusted work hosted and avoids duplicate main release builds', () => {

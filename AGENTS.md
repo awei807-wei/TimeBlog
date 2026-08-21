@@ -109,7 +109,7 @@ GitHub main push
   - `k8s-works-02`：`10.0.0.140`
 - TimeBlog Runner namespace：`timeblog-ci`。
 - Deployment：`timeblog-github-runner`；Runner 标签：`timeblog-build-amd64`。
-- PVC：`timeblog-github-runner-config`，`5Gi`、`local-path`；保存 Runner 注册状态。
+- PVC：`timeblog-github-runner-config` 为 `5Gi`，保存 Runner 注册状态；`timeblog-github-runner-docker` 为 `20Gi`，保存 Docker 与 BuildKit 构建缓存；两者均使用 `local-path`。
 - Runner 使用 Docker-in-Docker，DIND 容器为 `privileged`；只允许可信 `main` 发布构建，不能承载 Pull Request 或其他仓库任务。
 - 常用只读检查：
 

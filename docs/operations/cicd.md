@@ -43,14 +43,14 @@ Pull Request、tag 和非 `main` 分支 push 不会触发 Release，因此仍在
 
 - runner 容器固定为 `ghcr.io/actions/actions-runner:2.336.0`，注册标签为 `timeblog-build-amd64`。
 - Docker-in-Docker sidecar 固定为 `docker:29.6.1-dind`；只有该 sidecar 使用 `privileged`。
-- runner 注册状态、加密凭据和 runner 安装目录保存在使用 `local-path` StorageClass 的 `5Gi` PVC `/runner`；工作目录和 Docker 数据分别使用限额 `emptyDir`。
+- runner 注册状态、加密凭据、runner 安装目录和 Buildx 客户端状态保存在使用 `local-path` StorageClass 的 `5Gi` PVC `/runner`；BuildKit 与 Docker 状态保存在独立的 `20Gi` PVC `/var/lib/docker`；只有工作目录使用限额 `emptyDir`。
 - ServiceAccount 明确关闭 token 挂载；不使用 `hostPath`、`hostNetwork` 或 `hostPID`，并通过 node affinity 排除 control-plane 节点。
-- NetworkPolicy 拒绝所有入站连接，并将出站限制为 DNS 与 TCP 443；runner 只需要访问 GitHub Actions、GHCR、Docker Hub、`gcr.io` 与 Actions cache 的 HTTPS 服务。标准 NetworkPolicy 不能按域名过滤，若集群需要域名级白名单，应在 Calico 或外部防火墙继续收紧。
-- runner 与 DIND 的内存上限合计约 `3.3Gi`，DIND 数据卷上限为 `20Gi`。
+- NetworkPolicy 拒绝所有入站连接，并将出站限制为 DNS 与 TCP 443；runner 只需要访问 GitHub Actions、GHCR、Docker Hub 与 `gcr.io` 的 HTTPS 服务。标准 NetworkPolicy 不能按域名过滤，若集群需要域名级白名单，应在 Calico 或外部防火墙继续收紧。
+- runner 与 DIND 的内存上限合计约 `3.3Gi`，DIND 状态使用独立的 `20Gi` PVC。
 
 该 Runner 是持久化、单租户的过渡方案。DIND 需要 `privileged`，其信任边界等同于承载它的 worker 节点，因此只能执行本仓库受信任 `main` 的单次发布构建，严禁将 Pull Request、外部仓库、非 `main` 分支或用户可控工作流路由到该标签。建议启用 `main` 分支保护；若节点还承载其他业务，应迁移到专用构建节点或后续改为短生命周期 Runner。
 
-`local-path` PVC 会与首次调度节点绑定，不提供跨节点高可用或备份。节点或 PVC 丢失时应删除 GitHub 中的离线 Runner 记录，重新生成一次性注册 token 并注册；不要把 PVC 当作长期凭据备份。
+`local-path` PVC 会与首次调度节点绑定，不提供跨节点高可用或备份。节点或配置 PVC 丢失时应删除 GitHub 中的离线 Runner 记录，重新生成一次性注册 token 并注册；Docker 状态 PVC 丢失只会让下一次镜像构建冷启动，不影响已发布镜像或生产数据。不要把任一 PVC 当作长期凭据或构建产物备份。
 
 发布 job 的 `runs-on` 使用：
 
@@ -83,7 +83,9 @@ runner 在线后立即删除注册 Secret；PVC 中的 `.runner` 配置会继续
 kubectl -n timeblog-ci delete secret timeblog-github-runner-registration
 ```
 
-入口脚本仅在 PVC 没有 `.runner` 时调用一次 `config.sh`，随后 `unset RUNNER_TOKEN` 再启动 `run.sh`。如果 PVC 丢失或重建，需要重新生成 repository-level registration token。runner Pod 必须能访问 GitHub Actions、GHCR、Docker Hub、`gcr.io` 和 GitHub Actions cache 服务的 HTTPS 出站连接。
+Deployment 使用 `Recreate` 策略。更新 Runner 清单前必须确认没有正在执行的 Release；应用清单会短暂下线 runner，并在首次启用 `timeblog-github-runner-docker` PVC 后执行一次冷构建。
+
+入口脚本仅在 PVC 没有 `.runner` 时调用一次 `config.sh`，随后 `unset RUNNER_TOKEN` 再启动 `run.sh`。如果 PVC 丢失或重建，需要重新生成 repository-level registration token。runner Pod 必须能访问 GitHub Actions、GHCR、Docker Hub 和 `gcr.io` 的 HTTPS 出站连接。
 
 ## 2. 镜像与 Compose 约定
 
@@ -287,13 +289,15 @@ concurrency:
 
 同一时间只允许一个生产发布，已开始的发布不会被新工作流取消。
 
-构建缓存只保存在 GitHub Actions：
+构建缓存只保存在 Kubernetes Runner 本地：
 
-- `timeblog-core` 使用独立 BuildKit GHA cache scope。
-- `timeblog-web` 使用独立 BuildKit GHA cache scope。
+- Release 使用固定的 `timeblog-release-builder`，Buildx 客户端状态写入 `/runner/.buildx`，并在 job 清理时保留 BuildKit 内部状态。
+- Docker 与 BuildKit 状态位于 `timeblog-github-runner-docker` 的 `20Gi` PVC；Pod 重建后可继续复用。
+- BuildKit 垃圾回收保留至少 `4GB` 缓存、将缓存使用量限制在 `16GB`，并尽量保留 `2GB` 空闲空间。
+- Release 不配置 `cache-from` 或 `cache-to`，不会再把中间层上传到 GitHub Actions Cache；远端只接收最终的 core/web GHCR 镜像及常规 Actions 日志和元数据。
 - `main` 的正式镜像只在 Release 构建一次；CI 不再先生成一套不会发布的重复镜像。
 - Pull Request 与非 `main` 分支的容器契约构建使用 GitHub-hosted 临时 Docker cache，且不会推送镜像。
-- Kubernetes runner 的 Pod 和本地 Docker 数据可随时重建，不能依赖本地层缓存；GHA cache 需要允许 runner 访问 GitHub Actions cache 服务。
+- Docker 状态 PVC 丢失或主动重建后，第一次 Release 会执行冷构建，之后恢复本地增量构建。
 - VPS 不执行 Docker build，因此不会再次累积 BuildKit 构建缓存。
 
 VPS 清理应遵守：
