@@ -35,15 +35,22 @@ TimeBlog（站点名“菜鸟手记”）是个人时间线与博客系统。公
                               ├─ 外部图床异步发布
                               └─ 媒体删除/回收
 
-GitHub main push
+GitHub Pull Request / tag / 非 main push
   └─ CI（GitHub-hosted）
+       ├─ API/Web 质量检查与 Web production build
+       └─ core/web Docker matrix build
+
+GitHub main push
+  └─ CI（GitHub-hosted，跳过重复的 production/Docker build）
        └─ Release（Kubernetes self-hosted Runner）
-            └─ GHCR core/web 镜像
-                 └─ VPS Docker Compose（生产部署另有显式门控）
+            ├─ 构建并推送 GHCR core/web 镜像
+            └─ VPS Docker Compose 自动部署（受显式变量门控）
 ```
 
 - `api` 与 `worker` 使用 `CORE_IMAGE`，入口分别为 `/app/api`、`/app/worker`。
 - `web` 使用 `WEB_IMAGE`。
+- `main` 的 CI 只运行单元测试、静态检查、类型检查和数据库集成测试；生产 Web 与容器镜像只在 Release 中构建一次。
+- Pull Request、tag 与非 `main` push 仍在 GitHub-hosted Runner 完成 Web production build，并以 matrix 并行验证 core/web 容器。
 - 核心 Compose 不包含 Caddy；生产 Caddy 已独立部署，按同源路径反代 Web 与 `/api/*`。
 - 生产部署只更新应用容器，不删除 PostgreSQL、媒体卷或导出卷。
 
@@ -68,7 +75,7 @@ GitHub main push
 - `deploy/release.sh`：基于不可变镜像 digest 的 VPS 发布、健康检查与回滚。
 - `deploy/backup.sh`、`deploy/restore.sh`：数据库与媒体卷备份/恢复。
 - `deploy/k8s/github-runner/`：Kubernetes self-hosted GitHub Actions Runner 清单。
-- `.github/workflows/ci.yml`：测试与构建检查。
+- `.github/workflows/ci.yml`：主分支快速质量检查，以及 PR/tag/非主分支的完整构建检查。
 - `.github/workflows/release.yml`：构建、推送 GHCR；生产部署受变量门控。
 - `docs/operations/cicd.md`：CI/CD、Runner、GHCR、VPS 发布与回滚说明。
 - `docs/integrations/ou-image-hosting-api.md`：外部图床协议审计与适配器契约。
@@ -90,7 +97,7 @@ GitHub main push
   - `ghcr.io/awei807-wei/timeblog-core`
   - `ghcr.io/awei807-wei/timeblog-web`
 - Repository Variable `TIMEBLOG_BUILD_RUNNER=timeblog-build-amd64` 已启用。
-- `ENABLE_PRODUCTION_DEPLOY` 当前未启用，因此 Release 默认只发布镜像，不自动改生产环境。
+- Repository Variable `ENABLE_PRODUCTION_DEPLOY=true` 已启用；成功的最新 `main` Release 会继续自动部署生产环境。
 
 ### Kubernetes 构建集群
 
