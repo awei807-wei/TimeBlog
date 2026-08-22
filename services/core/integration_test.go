@@ -54,6 +54,39 @@ func TestPostgresMigrationSmoke(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("owner count=%d", n)
 	}
+	if err := applyMigrations(context.Background(), db); err != nil {
+		t.Fatalf("reapplying migrations after the 009 transaction: %v", err)
+	}
+	var purposeColumn bool
+	if err := db.QueryRow(`SELECT EXISTS (
+		SELECT 1 FROM information_schema.columns
+		WHERE table_schema=current_schema() AND table_name='mfa_challenges' AND column_name='purpose'
+		  AND is_nullable='NO' AND column_default LIKE '%login%'
+	)`).Scan(&purposeColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !purposeColumn {
+		t.Fatal("migration 009 did not install the non-null mfa_challenges.purpose column")
+	}
+	var purposeConstraint string
+	if err := db.QueryRow(`SELECT pg_get_constraintdef(oid)
+		FROM pg_constraint
+		WHERE conrelid='mfa_challenges'::regclass AND conname='mfa_challenges_purpose_check'`).Scan(&purposeConstraint); err != nil {
+		t.Fatalf("migration 009 purpose constraint: %v", err)
+	}
+	constraint := strings.ToLower(purposeConstraint)
+	if !strings.Contains(constraint, "login") || !strings.Contains(constraint, "password_reset") {
+		t.Fatalf("migration 009 purpose constraint=%q", purposeConstraint)
+	}
+	for _, table := range []string{"totp_replay_guards", "auth_operation_idempotency"} {
+		var exists bool
+		if err := db.QueryRow(`SELECT to_regclass(current_schema() || $1) IS NOT NULL`, "."+table).Scan(&exists); err != nil {
+			t.Fatalf("migration 009 table %s: %v", table, err)
+		}
+		if !exists {
+			t.Fatalf("migration 009 table %s is missing", table)
+		}
+	}
 }
 
 func TestPostgresAuthSessionResponseIncludesExpiryMetadata(t *testing.T) {
@@ -63,20 +96,124 @@ func TestPostgresAuthSessionResponseIncludesExpiryMetadata(t *testing.T) {
 	t.Setenv("CONFIG_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	t.Setenv("ACCOUNT_RECOVERY_KEY_BOOTSTRAP", "integration-recovery-key-very-long")
 	db := openDatabaseIntegration(t)
-	srv := NewServer(NewPersistentStore(db))
-	h := srv.routes()
-	_, raw := loginForTest(t, h)
-	parts := strings.SplitN(raw, "\n", 2)
-	if len(parts) != 2 || parts[0] == "" {
-		t.Fatalf("invalid login session fixture: %q", raw)
+	ctx := context.Background()
+	var ownerID, originalPasswordHash, originalTOTPCipher string
+	if err := db.QueryRowContext(ctx, `SELECT id::text,password_hash,totp_secret_encrypted
+		FROM users WHERE username='owner'`).Scan(&ownerID, &originalPasswordHash, &originalTOTPCipher); err != nil {
+		t.Fatal(err)
 	}
+	type sessionSnapshot struct {
+		tokenHash       string
+		csrfTokenHash   string
+		lastSeen        time.Time
+		idleExpires     time.Time
+		absoluteExpires time.Time
+		revokedAt       sql.NullTime
+	}
+	sessions := map[string]sessionSnapshot{}
+	rows, err := db.QueryContext(ctx, `SELECT id::text,token_hash,csrf_token_hash,last_seen,idle_expires,absolute_expires,revoked_at FROM sessions`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id string
+		var snapshot sessionSnapshot
+		if err := rows.Scan(&id, &snapshot.tokenHash, &snapshot.csrfTokenHash, &snapshot.lastSeen, &snapshot.idleExpires, &snapshot.absoluteExpires, &snapshot.revokedAt); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		sessions[id] = snapshot
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	knownPasswordHash, err := hashPassword("test-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	knownTOTPCipher, err := encryptSecret(securityRecoveryTestTOTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loginCookie, challengeHash string
 	t.Cleanup(func() {
-		if _, err := db.ExecContext(context.Background(), `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(parts[0])); err != nil {
-			t.Errorf("cleanup auth session: %v", err)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		tx, cleanupErr := db.BeginTx(cleanupCtx, nil)
+		if cleanupErr == nil {
+			_, cleanupErr = tx.ExecContext(cleanupCtx, `UPDATE users SET password_hash=$1,totp_secret_encrypted=$2 WHERE id=$3::uuid`, originalPasswordHash, originalTOTPCipher, ownerID)
+		}
+		if cleanupErr == nil && challengeHash != "" {
+			_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM mfa_challenges WHERE token_hash=$1`, challengeHash)
+		}
+		if cleanupErr == nil && loginCookie != "" {
+			_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(loginCookie))
+		}
+		for id, snapshot := range sessions {
+			if cleanupErr != nil {
+				break
+			}
+			_, cleanupErr = tx.ExecContext(cleanupCtx, `UPDATE sessions
+				SET token_hash=$2,csrf_token_hash=$3,last_seen=$4,idle_expires=$5,absolute_expires=$6,revoked_at=$7
+				WHERE id=$1::uuid`, id, snapshot.tokenHash, snapshot.csrfTokenHash, snapshot.lastSeen, snapshot.idleExpires, snapshot.absoluteExpires, snapshot.revokedAt)
+		}
+		if cleanupErr == nil {
+			cleanupErr = tx.Commit()
+		} else {
+			_ = tx.Rollback()
+		}
+		if cleanupErr != nil {
+			t.Errorf("restore auth session fixture: %v", cleanupErr)
 		}
 	})
+	if _, err := db.ExecContext(ctx, `UPDATE users SET password_hash=$1,totp_secret_encrypted=$2 WHERE id=$3::uuid`, knownPasswordHash, knownTOTPCipher, ownerID); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := NewServer(NewPersistentStore(db))
+	h := srv.routes()
+	remoteAddr := "timeblog-auth-session-fixture-" + newID()
+	passwordRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/password", strings.NewReader(`{"password":"test-password"}`))
+	passwordRequest.RemoteAddr = remoteAddr
+	passwordRequest.Header.Set("Content-Type", "application/json")
+	passwordResponse := httptest.NewRecorder()
+	h.ServeHTTP(passwordResponse, passwordRequest)
+	if passwordResponse.Code != http.StatusOK {
+		t.Fatalf("password login status=%d body=%s", passwordResponse.Code, passwordResponse.Body.String())
+	}
+	var passwordBody struct {
+		Challenge string `json:"challenge"`
+	}
+	if err := json.Unmarshal(passwordResponse.Body.Bytes(), &passwordBody); err != nil || passwordBody.Challenge == "" {
+		t.Fatalf("password challenge response=%s", passwordResponse.Body.String())
+	}
+	challengeHash = tokenHash(passwordBody.Challenge)
+	code, err := totp.GenerateCode(securityRecoveryTestTOTP, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	totpRequest := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/totp", strings.NewReader(`{"code":"`+code+`","challenge":"`+passwordBody.Challenge+`"}`))
+	totpRequest.RemoteAddr = remoteAddr
+	totpRequest.Header.Set("Content-Type", "application/json")
+	totpResponse := httptest.NewRecorder()
+	h.ServeHTTP(totpResponse, totpRequest)
+	if totpResponse.Code != http.StatusOK {
+		t.Fatalf("TOTP login status=%d body=%s", totpResponse.Code, totpResponse.Body.String())
+	}
+	for _, cookie := range totpResponse.Result().Cookies() {
+		if cookie.Name == "timeline_session" {
+			loginCookie = cookie.Value
+			break
+		}
+	}
+	if loginCookie == "" {
+		t.Fatalf("TOTP login did not create a session: %s", totpResponse.Body.String())
+	}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
-	request.AddCookie(&http.Cookie{Name: "timeline_session", Value: parts[0]})
+	request.AddCookie(&http.Cookie{Name: "timeline_session", Value: loginCookie})
 	response := httptest.NewRecorder()
 	h.ServeHTTP(response, request)
 	if response.Code != http.StatusOK {
@@ -208,6 +345,26 @@ func TestPostgresCanonicalArticleCommitAndUUIDFallback(t *testing.T) {
 	}
 	srv := NewServer(NewPersistentStore(db))
 	h := srv.routes()
+	var sessionCookie, challengeHash string
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		tx, cleanupErr := db.BeginTx(cleanupCtx, nil)
+		if cleanupErr == nil && challengeHash != "" {
+			_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM mfa_challenges WHERE token_hash=$1 AND purpose='login'`, challengeHash)
+		}
+		if cleanupErr == nil && sessionCookie != "" {
+			_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(sessionCookie))
+		}
+		if cleanupErr == nil {
+			cleanupErr = tx.Commit()
+		} else if tx != nil {
+			_ = tx.Rollback()
+		}
+		if cleanupErr != nil {
+			t.Errorf("cleanup canonical article auth session: %v", cleanupErr)
+		}
+	})
 
 	passwordReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/password", bytes.NewBufferString(`{"password":"`+password+`"}`))
 	passwordReq.Header.Set("Content-Type", "application/json")
@@ -222,6 +379,7 @@ func TestPostgresCanonicalArticleCommitAndUUIDFallback(t *testing.T) {
 	if err := json.Unmarshal(passwordRR.Body.Bytes(), &challenge); err != nil || challenge.Challenge == "" {
 		t.Fatalf("password challenge: %s", passwordRR.Body.String())
 	}
+	challengeHash = tokenHash(challenge.Challenge)
 	code, err := totp.GenerateCode(os.Getenv("ADMIN_TOTP_SECRET"), time.Now())
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +397,6 @@ func TestPostgresCanonicalArticleCommitAndUUIDFallback(t *testing.T) {
 	if err := json.Unmarshal(totpRR.Body.Bytes(), &loginBody); err != nil || loginBody.CSRFToken == "" {
 		t.Fatalf("totp response: %s", totpRR.Body.String())
 	}
-	var sessionCookie string
 	for _, cookie := range totpRR.Result().Cookies() {
 		if cookie.Name == "timeline_session" {
 			sessionCookie = cookie.Value

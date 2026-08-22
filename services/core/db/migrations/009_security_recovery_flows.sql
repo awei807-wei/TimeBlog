@@ -1,5 +1,5 @@
 -- Recovery challenges remain short-lived and single-purpose. Existing rows
--- are login challenges; new rows may be used for TOTP password recovery.
+-- are login challenges. New rows may be used for TOTP password recovery.
 ALTER TABLE mfa_challenges
     ADD COLUMN IF NOT EXISTS purpose text NOT NULL DEFAULT 'login';
 
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS totp_replay_guards (
 
 -- Operation records make a committed password reset or recovery-key rotation
 -- safely retryable after an ambiguous HTTP response. Plaintext credentials are
--- never stored here; payload_mac is derived from the configured operation key.
+-- never stored here. payload_mac is derived from the configured operation key.
 CREATE TABLE IF NOT EXISTS auth_operation_idempotency (
     operation_hash text PRIMARY KEY,
     purpose text NOT NULL CHECK (purpose IN ('totp_password_reset', 'recovery_key_rotation')),
