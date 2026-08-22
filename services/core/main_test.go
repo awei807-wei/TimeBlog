@@ -222,6 +222,47 @@ func TestAuthSessionStatusValidatesCookieWithoutCSRF(t *testing.T) {
 	}
 }
 
+func TestAuthSessionResponseIncludesExpiryMetadataInMemory(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+	srv := NewServer(NewStore())
+	h := srv.routes()
+	_, raw := loginForTest(t, h)
+	parts := bytes.SplitN([]byte(raw), []byte("\n"), 2)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	request.AddCookie(&http.Cookie{Name: "timeline_session", Value: string(parts[0])})
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("session status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Authenticated         bool      `json:"authenticated"`
+		IdleExpiresAt         time.Time `json:"idleExpiresAt"`
+		AbsoluteExpiresAt     time.Time `json:"absoluteExpiresAt"`
+		IdleExpiresInDays     int       `json:"idleExpiresInDays"`
+		AbsoluteExpiresInDays int       `json:"absoluteExpiresInDays"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Authenticated || body.IdleExpiresAt.IsZero() || body.AbsoluteExpiresAt.IsZero() {
+		t.Fatalf("session expiry metadata missing: %+v", body)
+	}
+	if body.IdleExpiresInDays != 30 || body.AbsoluteExpiresInDays != 90 {
+		t.Fatalf("legacy session duration metadata=%d/%d", body.IdleExpiresInDays, body.AbsoluteExpiresInDays)
+	}
+	if !body.AbsoluteExpiresAt.After(body.IdleExpiresAt) || !body.IdleExpiresAt.After(time.Now()) {
+		t.Fatalf("unexpected session expiry order: idle=%s absolute=%s", body.IdleExpiresAt, body.AbsoluteExpiresAt)
+	}
+	srv.store.mu.RLock()
+	session := srv.store.sessions[tokenHash(string(parts[0]))]
+	srv.store.mu.RUnlock()
+	if session == nil || !body.IdleExpiresAt.Equal(session.IdleExpires) || !body.AbsoluteExpiresAt.Equal(session.AbsoluteExpires) {
+		t.Fatalf("response expiry metadata does not match memory session: body=%+v session=%+v", body, session)
+	}
+}
+
 func TestAuthSessionCSRFIsStableAcrossConsecutiveReads(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "test-password")
 	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")

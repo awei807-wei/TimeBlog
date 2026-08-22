@@ -106,18 +106,59 @@ test('external image host probe prevents submit, preserves drafts and reports st
 test('settings actions are non-submit controls and endpoint probe does not remount the panel', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
-  const settingsSource = source.slice(source.indexOf('function SettingsPanel'));
+  const settingsSource = await fs.readFile(new URL('../app/admin/settings/IntegrationsSettingsPanel.tsx', import.meta.url), 'utf8');
   const buttons = [...settingsSource.matchAll(/<button\b([^>]*)>/g)];
-  assert.ok(buttons.length >= 4);
+  assert.ok(buttons.length >= 3);
   for (const [, attributes] of buttons) assert.match(attributes, /type="button"/);
+  assert.doesNotMatch(source, /function SettingsPanel/);
   assert.doesNotMatch(source, /<SettingsPanel\s+key=/);
-  assert.doesNotMatch(source.slice(source.indexOf('async function testImageHost'), source.indexOf('async function saveNASBackup')), /setBusy|setImageHost|router\.refresh/);
-  assert.match(settingsSource, /event\.preventDefault\(\)/);
+  assert.match(settingsSource, /runEndpointProbe/);
   assert.match(settingsSource, /probeState\.phase === 'testing'/);
-  assert.match(settingsSource, /onTestImageHost:\s*\(endpoint: string, workspaceId: string, token: string\)/);
-  assert.match(settingsSource, /images:write/);
+  assert.match(settingsSource, /external_image_host\/test/);
+  assert.match(settingsSource, /Token/);
   assert.match(settingsSource, /stablePublicUrls/);
   assert.match(settingsSource, /syncDeletes/);
+});
+
+test('settings center keeps real capabilities in dedicated routes with an entries compatibility link', async () => {
+  const fs = await import('node:fs/promises');
+  const entries = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  const shell = await fs.readFile(new URL('../app/AppShell.tsx', import.meta.url), 'utf8');
+  const center = await fs.readFile(new URL('../app/admin/settings/SettingsCenter.tsx', import.meta.url), 'utf8');
+  const nav = await fs.readFile(new URL('../app/admin/settings/SettingsNav.tsx', import.meta.url), 'utf8');
+  for (const section of ['general', 'security', 'integrations', 'infrastructure']) {
+    const page = await fs.readFile(new URL(`../app/admin/settings/${section}/page.tsx`, import.meta.url), 'utf8');
+    assert.match(page, /SettingsCenter/);
+    assert.match(page, new RegExp(`section=\\"${section}\\"`));
+  }
+  assert.match(entries, /href="\/admin\/settings"/);
+  assert.doesNotMatch(entries, /section === 'settings' \? <SettingsPanel/);
+  assert.match(shell, /href: '\/admin\/settings'/);
+  assert.match(nav, /aria-label="设置区域"/);
+  assert.match(center, /SettingsCenter/);
+});
+
+test('security settings never use sensitive values as status fields and expose session controls', async () => {
+  const fs = await import('node:fs/promises');
+  const security = await fs.readFile(new URL('../app/admin/settings/SecuritySettingsPanel.tsx', import.meta.url), 'utf8');
+  const settingsAPI = await fs.readFile(new URL('../app/admin/settings/settings-api.ts', import.meta.url), 'utf8');
+  const api = await fs.readFile(new URL('../lib/api.ts', import.meta.url), 'utf8');
+  assert.match(security, /auth\/sessions/);
+  assert.match(security, /revoke-others/);
+  assert.match(security, /newRecoveryKey/);
+  assert.match(security, /operationToken/);
+  assert.match(security, /session\.current/);
+  assert.doesNotMatch(security, /sessions\.map\(\(session, index\)/);
+  assert.match(security, /router\.replace\('\/login\?changed=1'\)/);
+  assert.match(security, /router\.refresh\(\)/);
+  assert.match(security, /await reloadSessions\(\)/);
+  assert.match(security, /我已保存到离线密码管理器/);
+  assert.match(security, /type="password"/);
+  assert.doesNotMatch(security, /console\.(log|error)/);
+  assert.doesNotMatch(security, /totpSecret|totpSetupURI/);
+  assert.match(settingsAPI, /Retry-After/);
+  assert.match(settingsAPI, /formatRetryAfterMessage/);
+  assert.match(api, /export function formatRetryAfterMessage/);
 });
 
 test('version panel returns to the in-page content list', async () => {
@@ -769,19 +810,32 @@ test('editor reuses one CSRF token across upload and save, surfaces API details,
   assert.match(source, /const csrfRef = useRef\(''\)/);
   assert.match(source, /const refreshSessionCSRF = useCallback/);
   assert.match(source, /sessionRequestRef\.current/);
+  assert.match(source, /fetch\(`\$\{API\}\/auth\/session`, \{[^}]*cache: 'no-store'/);
   assert.doesNotMatch(uploadSource, /fetch\(`\$\{API\}\/auth\/session`/);
   assert.match(uploadSource, /responseError\(ticketResponse, '创建上传任务失败'\)/);
   assert.match(uploadSource, /if \(item\.status === 'uploading' \|\| item\.status === 'queued'\)/);
   assert.match(view, /onCancelUpload\(item\)/);
 });
 
+test('all browser auth session reads opt out of caching', async () => {
+  const fs = await import('node:fs/promises');
+  const entries = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
+  const authNav = await fs.readFile(new URL('../app/AuthNav.tsx', import.meta.url), 'utf8');
+  const settingsAPI = await fs.readFile(new URL('../app/admin/settings/settings-api.ts', import.meta.url), 'utf8');
+  const sessionContext = await fs.readFile(new URL('../app/SessionContext.tsx', import.meta.url), 'utf8');
+  assert.equal((entries.match(/fetch\(`\$\{API\}\/auth\/session`, \{ cache: 'no-store'/g) || []).length, 4);
+  assert.match(authNav, /fetch\(`\$\{API\}\/auth\/session\/status`, \{ cache: 'no-store'/);
+  assert.match(settingsAPI, /fetch\(`\$\{API\}\/auth\/session`, \{[\s\S]*?cache: 'no-store'/);
+  assert.match(sessionContext, /fetcher\(`\$\{API\}\/auth\/session\/status`, \{\s*cache: 'no-store'/);
+});
+
 test('external image host probe refreshes enabled status after server-side verification', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
-  assert.match(source, /const refreshIntegrationStatus = useCallback/);
-  assert.match(source, /await refreshIntegrationStatus\(\)/);
-  assert.match(source, /setRuntimeStatus\(runtime\)/);
-  assert.match(source, /setImageHost\(image\)/);
+  const source = await fs.readFile(new URL('../app/admin/settings/IntegrationsSettingsPanel.tsx', import.meta.url), 'utf8');
+  assert.match(source, /getExternalImageHostConfig/);
+  assert.match(source, /setImage\(value\)/);
+  assert.match(source, /external_image_host\/test/);
+  assert.match(source, /runEndpointProbe/);
 });
 
 test('upload action labels stay on one line', async () => {
@@ -1055,6 +1109,8 @@ test('mock auth and editor flow keeps challenge, private commit, undo and export
   assert.match(login, /auth\/login\/\$\{step === 1 \? 'password' : 'totp'\}/);
   assert.match(login, /resolveSuccessfulLogin\(step, response, refreshSession\)/);
   assert.match(login, /setChallenge\(result\.challenge\)/);
+  assert.match(login, /params\.get\('changed'\)/);
+  assert.match(login, /密码已更新，请使用新密码和当前 TOTP 登录/);
   assert.match(login, /router\.replace\('\/admin'\)/);
   assert.match(login, /router\.refresh\(\)/);
   assert.match(login, /async function submit\(event: FormEvent<HTMLFormElement>\)/);
@@ -1075,6 +1131,12 @@ test('account recovery page uses the recovery contract without exposing secrets'
   const login = await import('node:fs/promises').then(fs => fs.readFile(new URL('../app/login/page.tsx', import.meta.url), 'utf8'));
   assert.match(page, /index: false/);
   assert.match(form, /auth\/recovery\/account/);
+  assert.match(form, /auth\/recovery\/totp\/start/);
+  assert.match(form, /auth\/recovery\/totp\/complete/);
+  assert.match(form, /operationToken: base64URL\(randomBytes\(32\)\)/);
+  assert.match(form, /仍有 TOTP/);
+  assert.match(form, /当前 TOTP 认证器保持不变/);
+  assert.match(form, /登录后前往安全设置轮换恢复密钥/);
   assert.match(form, /crypto\.getRandomValues/);
   assert.match(form, /operationToken: base64URL\(randomBytes\(32\)\)/);
   assert.match(form, /newRecoveryKey: base64URL\(randomBytes\(32\)\)/);
@@ -1099,6 +1161,7 @@ test('account recovery page uses the recovery contract without exposing secrets'
   assert.doesNotMatch(form, /(?:api\.qrserver|chart\.googleapis|quickchart|qrcode-monkey)/i);
   assert.doesNotMatch(form, /response\.json\(\).*totpSetupURI/);
   assert.match(form, /response\.status === 429/);
+  assert.match(form, /formatRetryAfterMessage/);
   assert.match(form, /response\.status === 409/);
   assert.match(form, /Retry-After/);
   assert.match(form, /router\.replace\('\/login\?recovered=1'\)/);

@@ -40,8 +40,16 @@ export type RuntimeStatus = {
   security: Record<string, { configured: boolean; managedBy: string }>;
   nasBackup: { configured: boolean; enabled: boolean; applyStatus: string; status: string };
 };
+export type AuthSession = { id: string; createdAt: string; lastSeen: string; current: boolean };
 export type AdminCalendarDay = { public: number; private: number; draft: number; trashed: number };
 export type AdminCalendarResponse = { year: string; includeDrafts: boolean; days: Record<string, AdminCalendarDay> };
+
+export function formatRetryAfterMessage(retryAfter: string | null | undefined): string {
+  const value = retryAfter?.trim();
+  return value && /^\d+$/.test(value)
+    ? `尝试次数过多，请在 ${value} 秒后重试。`
+    : '尝试次数过多，请稍后重试。';
+}
 
 // The production proxy and the local Next rewrite both expose the API under
 // /api/v1. Keeping this same-origin by default makes cookies and CSRF work in
@@ -146,6 +154,10 @@ export async function getExternalImageHostConfig(): Promise<ExternalImageHostCon
 
 export async function getNASBackupConfig(): Promise<NASBackupConfig> {
   return getJSON('/admin/integrations/nas_backup', { cache: 'no-store' });
+}
+
+export async function getAuthSessions(): Promise<{ sessions: AuthSession[] }> {
+  return getJSON('/auth/sessions', { cache: 'no-store' });
 }
 
 export async function getAdminCalendar(year: string, includeDrafts = false): Promise<AdminCalendarResponse> {

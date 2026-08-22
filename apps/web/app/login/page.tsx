@@ -50,7 +50,10 @@ export default function LoginPage() {
   useEffect(() => {
     mountedRef.current = true;
     const timer = window.setTimeout(() => {
-      if (new URLSearchParams(window.location.search).get('recovered') === '1') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('changed') === '1') {
+        setNotice('密码已更新，请使用新密码和当前 TOTP 登录。');
+      } else if (params.get('recovered') === '1') {
         setNotice('密码已更新，请使用新密码登录；登录后仍需 TOTP 验证。');
       }
     }, 0);

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -83,6 +84,68 @@ func TestMemoryAccountRecoverySerializesDifferentOperations(t *testing.T) {
 	}
 }
 
+func TestMemoryAccountRecoveryStrictJSONRejectsOperationTokenVariants(t *testing.T) {
+	const currentKey = "strict-current-recovery-key"
+	currentHash, err := hashPassword(currentKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ACCOUNT_RECOVERY_KEY_HASH", currentHash)
+	srv := NewServer(NewStore())
+	in := testRecoveryRequest(9)
+	in.RecoveryKey = currentKey
+	validBody, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response := performRecoveryRawRequest(srv, validBody); response.Code != http.StatusOK {
+		t.Fatalf("valid recovery status=%d body=%s", response.Code, response.Body.String())
+	}
+	var unknownPayload map[string]any
+	if err := json.Unmarshal(validBody, &unknownPayload); err != nil {
+		t.Fatal(err)
+	}
+	unknownPayload["unexpected"] = true
+	unknownBody, err := json.Marshal(unknownPayload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string][]byte{
+		"unknown field": unknownBody,
+		"trailing JSON": append(append([]byte(nil), validBody...), []byte("\n{}")...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			response := performRecoveryRawRequest(srv, body)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("strict recovery status=%d body=%s", response.Code, response.Body.String())
+			}
+			if !strings.HasPrefix(response.Header().Get("Content-Type"), "application/problem+json") {
+				t.Fatalf("problem content type=%q", response.Header().Get("Content-Type"))
+			}
+		})
+	}
+}
+
+func TestMemoryAccountRecoveryResetsTOTPReplayGuardForNewSecret(t *testing.T) {
+	const currentKey = "replay-reset-current-recovery-key"
+	currentHash, err := hashPassword(currentKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ACCOUNT_RECOVERY_KEY_HASH", currentHash)
+	srv := NewServer(NewStore())
+	srv.store.totpLastUsedStep = 123456
+	srv.store.totpLastUsedSet = true
+	in := testRecoveryRequest(10)
+	in.RecoveryKey = currentKey
+	if response := performRecoveryRequest(srv, in); response.Code != http.StatusOK {
+		t.Fatalf("recovery status=%d body=%s", response.Code, response.Body.String())
+	}
+	if srv.store.totpLastUsedSet || srv.store.totpLastUsedStep != 0 {
+		t.Fatalf("recovery did not reset old TOTP replay guard: set=%v step=%d", srv.store.totpLastUsedSet, srv.store.totpLastUsedStep)
+	}
+}
+
 func testRecoveryRequest(seed byte) accountRecoveryRequest {
 	totpBytes := bytes.Repeat([]byte{seed}, 20)
 	return accountRecoveryRequest{
@@ -96,6 +159,10 @@ func testRecoveryRequest(seed byte) accountRecoveryRequest {
 
 func performRecoveryRequest(srv *Server, in accountRecoveryRequest) *httptest.ResponseRecorder {
 	body, _ := json.Marshal(in)
+	return performRecoveryRawRequest(srv, body)
+}
+
+func performRecoveryRawRequest(srv *Server, body []byte) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/recovery/account", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "http://localhost:3000")

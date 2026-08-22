@@ -56,6 +56,53 @@ func TestPostgresMigrationSmoke(t *testing.T) {
 	}
 }
 
+func TestPostgresAuthSessionResponseIncludesExpiryMetadata(t *testing.T) {
+	t.Setenv("ADMIN_PASSWORD", "test-password")
+	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")
+	t.Setenv("TOTP_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	t.Setenv("CONFIG_ENCRYPTION_KEY", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	t.Setenv("ACCOUNT_RECOVERY_KEY_BOOTSTRAP", "integration-recovery-key-very-long")
+	db := openDatabaseIntegration(t)
+	srv := NewServer(NewPersistentStore(db))
+	h := srv.routes()
+	_, raw := loginForTest(t, h)
+	parts := strings.SplitN(raw, "\n", 2)
+	if len(parts) != 2 || parts[0] == "" {
+		t.Fatalf("invalid login session fixture: %q", raw)
+	}
+	t.Cleanup(func() {
+		if _, err := db.ExecContext(context.Background(), `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(parts[0])); err != nil {
+			t.Errorf("cleanup auth session: %v", err)
+		}
+	})
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
+	request.AddCookie(&http.Cookie{Name: "timeline_session", Value: parts[0]})
+	response := httptest.NewRecorder()
+	h.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("session status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body struct {
+		Authenticated         bool      `json:"authenticated"`
+		IdleExpiresAt         time.Time `json:"idleExpiresAt"`
+		AbsoluteExpiresAt     time.Time `json:"absoluteExpiresAt"`
+		IdleExpiresInDays     int       `json:"idleExpiresInDays"`
+		AbsoluteExpiresInDays int       `json:"absoluteExpiresInDays"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Authenticated || body.IdleExpiresAt.IsZero() || body.AbsoluteExpiresAt.IsZero() {
+		t.Fatalf("session expiry metadata missing: %+v", body)
+	}
+	if body.IdleExpiresInDays != 30 || body.AbsoluteExpiresInDays != 90 {
+		t.Fatalf("legacy session duration metadata=%d/%d", body.IdleExpiresInDays, body.AbsoluteExpiresInDays)
+	}
+	if !body.AbsoluteExpiresAt.After(body.IdleExpiresAt) || !body.IdleExpiresAt.After(time.Now()) {
+		t.Fatalf("unexpected session expiry order: idle=%s absolute=%s", body.IdleExpiresAt, body.AbsoluteExpiresAt)
+	}
+}
+
 func TestPostgresMediaRefsAndExpiredPurge(t *testing.T) {
 	t.Setenv("ADMIN_PASSWORD", "integration-password")
 	t.Setenv("ADMIN_TOTP_SECRET", "JBSWY3DPEHPK3PXP")

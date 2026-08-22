@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, FileText, Home, LogIn, LogOut, PenLine, Search, Tags } from 'lucide-react';
+import { CalendarDays, FileText, Home, LogIn, LogOut, PenLine, Search, Settings2, Tags } from 'lucide-react';
 import { useEffect } from 'react';
 import { SessionProvider, useSession } from './SessionContext';
 import PublicShell from './public/PublicShell';
@@ -32,6 +32,7 @@ const browseItems: NavItem[] = [
 const manageItems: NavItem[] = [
   { href: '/admin', label: '写作', icon: PenLine, exact: true },
   { href: '/admin/entries', label: '内容管理', icon: FileText },
+  { href: '/admin/settings', label: '设置', icon: Settings2 },
 ];
 
 function isActive(pathname: string, item: NavItem) {

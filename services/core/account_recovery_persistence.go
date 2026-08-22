@@ -14,8 +14,9 @@ type recoveryOperationQuerier interface {
 }
 
 type recoveryOperationState struct {
-	PayloadMAC string
-	KeyActive  bool
+	RecoveryKeyID string
+	PayloadMAC    string
+	KeyActive     bool
 }
 
 func (srv *Server) recoverPersistentAccount(r *http.Request, in accountRecoveryRequest, payloadMAC string) error {
@@ -38,7 +39,7 @@ func (srv *Server) recoverPersistentAccount(r *http.Request, in accountRecoveryR
 	if state, found, loadErr := loadRecoveryOperation(r.Context(), tx, operationHash); loadErr != nil {
 		return fmt.Errorf("load account recovery operation: %w", loadErr)
 	} else if found {
-		if !recoveryPayloadMACMatches(state.PayloadMAC, payloadMAC) || !state.KeyActive {
+		if !recoveryCommitMatches(state, true, payloadMAC) {
 			return errRecoveryOperationConflict
 		}
 		return nil
@@ -54,6 +55,9 @@ func (srv *Server) recoverPersistentAccount(r *http.Request, in accountRecoveryR
 		return errInvalidRecoveryKey
 	}
 	if err = updateRecoveredOwner(r.Context(), tx, passwordHash, encryptedTOTP); err != nil {
+		return err
+	}
+	if err = resetOwnerTOTPReplayGuard(r.Context(), tx); err != nil {
 		return err
 	}
 	if _, err = tx.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE revoked_at IS NULL`); err != nil {
@@ -118,6 +122,15 @@ func updateRecoveredOwner(ctx context.Context, tx *sql.Tx, passwordHash, encrypt
 	return nil
 }
 
+func resetOwnerTOTPReplayGuard(ctx context.Context, tx *sql.Tx) error {
+	if _, err := tx.ExecContext(ctx, `UPDATE totp_replay_guards
+		SET last_used_step=-1,updated_at=now()
+		WHERE user_id=(SELECT id FROM users WHERE username='owner')`); err != nil {
+		return fmt.Errorf("reset recovered owner TOTP replay guard: %w", err)
+	}
+	return nil
+}
+
 func consumeRecoveryKey(ctx context.Context, tx *sql.Tx, keyID string) error {
 	result, err := tx.ExecContext(ctx, `UPDATE account_recovery_keys SET used_at=now()
 		WHERE id=$1::uuid AND used_at IS NULL`, keyID)
@@ -146,11 +159,11 @@ func insertRecoveryKey(ctx context.Context, tx *sql.Tx, keyHash string) (string,
 
 func loadRecoveryOperation(ctx context.Context, query recoveryOperationQuerier, operationHash string) (recoveryOperationState, bool, error) {
 	var state recoveryOperationState
-	err := query.QueryRowContext(ctx, `SELECT recovery_operation.payload_mac,
+	err := query.QueryRowContext(ctx, `SELECT recovery_operation.recovery_key_id::text,recovery_operation.payload_mac,
 		(recovery_key.used_at IS NULL AND recovery_key.expires_at>now())
 		FROM account_recovery_operations recovery_operation
 		JOIN account_recovery_keys recovery_key ON recovery_key.id=recovery_operation.recovery_key_id
-		WHERE recovery_operation.operation_hash=$1 AND recovery_operation.expires_at>now()`, operationHash).Scan(&state.PayloadMAC, &state.KeyActive)
+		WHERE recovery_operation.operation_hash=$1 AND recovery_operation.expires_at>now()`, operationHash).Scan(&state.RecoveryKeyID, &state.PayloadMAC, &state.KeyActive)
 	if errors.Is(err, sql.ErrNoRows) {
 		return recoveryOperationState{}, false, nil
 	}
@@ -161,11 +174,15 @@ func (srv *Server) resolveRecoveryCommit(requestContext context.Context, operati
 	verifyContext, cancel := context.WithTimeout(context.WithoutCancel(requestContext), 5*time.Second)
 	defer cancel()
 	state, found, verifyErr := loadRecoveryOperation(verifyContext, srv.store.database, operationHash)
-	if verifyErr == nil && found && state.KeyActive && recoveryPayloadMACMatches(state.PayloadMAC, payloadMAC) {
+	if verifyErr == nil && recoveryCommitMatches(state, found, payloadMAC) {
 		return nil
 	}
 	if verifyErr != nil {
 		return errors.Join(fmt.Errorf("commit account recovery: %w", commitErr), fmt.Errorf("verify account recovery commit: %w", verifyErr))
 	}
 	return fmt.Errorf("commit account recovery: %w", commitErr)
+}
+
+func recoveryCommitMatches(state recoveryOperationState, found bool, payloadMAC string) bool {
+	return found && state.RecoveryKeyID != "" && state.KeyActive && recoveryPayloadMACMatches(state.PayloadMAC, payloadMAC)
 }

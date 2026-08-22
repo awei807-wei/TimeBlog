@@ -95,26 +95,42 @@ type memoryRecoveryOperation struct {
 	ExpiresAt       time.Time
 }
 
+type memoryMFAChallenge struct {
+	ChallengeHash string
+	ExpiresAt     time.Time
+	Purpose       string
+}
+
+type memoryAuthOperation struct {
+	Purpose         string
+	PayloadMAC      string
+	RecoveryKeyHash string
+	ExpiresAt       time.Time
+}
+
 type Store struct {
-	mu              sync.RWMutex
-	entries         map[string]*Entry
-	working         map[string]*WorkingCopy
-	media           map[string]*Media
-	sessions        map[string]*Session
-	undo            map[string]undoRecord
-	userPassword    string
-	userTOTP        string
-	mfaChallenges   map[string]time.Time
-	challengeStore  map[string]time.Time
-	loginThrottle   map[string]loginThrottle
-	recoveryOps     map[string]memoryRecoveryOperation
-	recoveryKeyHash string
-	recoveryKeyUsed bool
-	nextPosition    int
-	database        *sql.DB
-	persistent      bool
-	ownerID         string
-	settings        map[string]any
+	mu               sync.RWMutex
+	entries          map[string]*Entry
+	working          map[string]*WorkingCopy
+	media            map[string]*Media
+	sessions         map[string]*Session
+	undo             map[string]undoRecord
+	userPassword     string
+	userTOTP         string
+	mfaChallenges    map[string]memoryMFAChallenge
+	authOperations   map[string]memoryAuthOperation
+	challengeStore   map[string]time.Time
+	loginThrottle    map[string]loginThrottle
+	recoveryOps      map[string]memoryRecoveryOperation
+	recoveryKeyHash  string
+	recoveryKeyUsed  bool
+	totpLastUsedStep int64
+	totpLastUsedSet  bool
+	nextPosition     int
+	database         *sql.DB
+	persistent       bool
+	ownerID          string
+	settings         map[string]any
 	// csrfKey is process-local in memory mode and derived from the stable
 	// encryption key in persistent mode.  CSRF tokens are deterministic for a
 	// session cookie, so repeated session reads cannot invalidate a mutation
@@ -123,7 +139,7 @@ type Store struct {
 }
 
 func NewStore() *Store {
-	s := &Store{entries: map[string]*Entry{}, working: map[string]*WorkingCopy{}, media: map[string]*Media{}, sessions: map[string]*Session{}, undo: map[string]undoRecord{}, mfaChallenges: map[string]time.Time{}, loginThrottle: map[string]loginThrottle{}, recoveryOps: map[string]memoryRecoveryOperation{}, settings: map[string]any{}, userPassword: getenv("ADMIN_PASSWORD", ""), userTOTP: getenv("ADMIN_TOTP_SECRET", ""), recoveryKeyHash: getenv("ACCOUNT_RECOVERY_KEY_HASH", ""), csrfKey: newCSRFKey()}
+	s := &Store{entries: map[string]*Entry{}, working: map[string]*WorkingCopy{}, media: map[string]*Media{}, sessions: map[string]*Session{}, undo: map[string]undoRecord{}, mfaChallenges: map[string]memoryMFAChallenge{}, authOperations: map[string]memoryAuthOperation{}, loginThrottle: map[string]loginThrottle{}, recoveryOps: map[string]memoryRecoveryOperation{}, settings: map[string]any{}, userPassword: getenv("ADMIN_PASSWORD", ""), userTOTP: getenv("ADMIN_TOTP_SECRET", ""), recoveryKeyHash: getenv("ACCOUNT_RECOVERY_KEY_HASH", ""), csrfKey: newCSRFKey()}
 	return s
 }
 

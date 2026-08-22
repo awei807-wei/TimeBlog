@@ -14,7 +14,7 @@ export function useAdminSession() {
   }, []);
   const refreshSessionCSRF = useCallback(async () => {
     if (sessionRequestRef.current) return sessionRequestRef.current;
-    const request = fetch(`${API}/auth/session`, { credentials: 'include', headers: { Accept: 'application/json' } }).then(async response => {
+    const request = fetch(`${API}/auth/session`, { cache: 'no-store', credentials: 'include', headers: { Accept: 'application/json' } }).then(async response => {
       if (!response.ok) throw await responseError(response, '登录会话已失效');
       const value = await response.json() as { csrfToken?: string };
       if (!value.csrfToken) throw new AdminRequestError(401, '登录会话已失效');

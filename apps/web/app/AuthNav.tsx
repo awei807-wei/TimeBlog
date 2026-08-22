@@ -21,7 +21,7 @@ export default function AuthNav() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API}/auth/session/status`, { credentials: 'include', headers: { Accept: 'application/json' } })
+    fetch(`${API}/auth/session/status`, { cache: 'no-store', credentials: 'include', headers: { Accept: 'application/json' } })
       .then(async response => {
         if (response.status === 401) return { authenticated: false };
         if (!response.ok) throw new Error(`session ${response.status}`);

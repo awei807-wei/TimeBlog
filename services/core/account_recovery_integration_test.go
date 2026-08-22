@@ -11,13 +11,16 @@ import (
 )
 
 type persistentRecoveryFixture struct {
-	keyID         string
-	keyHash       string
-	keyExpiry     time.Time
-	passwordHash  string
-	totpCipher    string
-	auditBaseline int64
-	sessions      map[string]sql.NullTime
+	keyID             string
+	keyHash           string
+	keyExpiry         time.Time
+	ownerID           string
+	passwordHash      string
+	totpCipher        string
+	replayGuardStep   int64
+	replayGuardExists bool
+	auditBaseline     int64
+	sessions          map[string]sql.NullTime
 }
 
 func TestPersistentAccountRecoveryIsIdempotent(t *testing.T) {
@@ -65,7 +68,12 @@ func installPersistentRecoveryFixture(t *testing.T, ctx context.Context, db *sql
 		WHERE used_at IS NULL AND expires_at>now()`).Scan(&fixture.keyID, &fixture.keyHash, &fixture.keyExpiry); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.QueryRowContext(ctx, `SELECT password_hash,totp_secret_encrypted FROM users WHERE username='owner'`).Scan(&fixture.passwordHash, &fixture.totpCipher); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT id::text,password_hash,totp_secret_encrypted FROM users WHERE username='owner'`).Scan(&fixture.ownerID, &fixture.passwordHash, &fixture.totpCipher); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT last_used_step FROM totp_replay_guards WHERE user_id=$1::uuid`, fixture.ownerID).Scan(&fixture.replayGuardStep); err == nil {
+		fixture.replayGuardExists = true
+	} else if err != sql.ErrNoRows {
 		t.Fatal(err)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM account_recovery_audit`).Scan(&fixture.auditBaseline); err != nil {
@@ -146,6 +154,15 @@ func assertPersistentRecoveryState(t *testing.T, ctx context.Context, db *sql.DB
 	if operationCount != 1 || auditCount != 1 {
 		t.Fatalf("operation rows=%d audit rows=%d want=1,1", operationCount, auditCount)
 	}
+	if fixture.replayGuardExists {
+		var replayStep int64
+		if err = db.QueryRowContext(ctx, `SELECT last_used_step FROM totp_replay_guards WHERE user_id=$1::uuid`, fixture.ownerID).Scan(&replayStep); err != nil {
+			t.Fatal(err)
+		}
+		if replayStep != -1 {
+			t.Fatalf("TOTP replay guard was not reset after replacing secret: %d", replayStep)
+		}
+	}
 }
 
 func registerPersistentRecoveryCleanup(t *testing.T, db *sql.DB, fixture persistentRecoveryFixture, operationHash string) {
@@ -173,6 +190,12 @@ func registerPersistentRecoveryCleanup(t *testing.T, db *sql.DB, fixture persist
 		}
 		if err == nil {
 			_, err = tx.ExecContext(ctx, `UPDATE users SET password_hash=$1,totp_secret_encrypted=$2 WHERE username='owner'`, fixture.passwordHash, fixture.totpCipher)
+		}
+		if err == nil && fixture.replayGuardExists {
+			_, err = tx.ExecContext(ctx, `UPDATE totp_replay_guards SET last_used_step=$2,updated_at=now() WHERE user_id=$1::uuid`, fixture.ownerID, fixture.replayGuardStep)
+		}
+		if err == nil && !fixture.replayGuardExists {
+			_, err = tx.ExecContext(ctx, `DELETE FROM totp_replay_guards WHERE user_id=$1::uuid`, fixture.ownerID)
 		}
 		for id, revokedAt := range fixture.sessions {
 			if err != nil {

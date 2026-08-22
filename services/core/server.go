@@ -8,6 +8,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+)
+
+const (
+	localAppOrigin    = "http://localhost:3000"
+	loopbackAppOrigin = "http://127.0.0.1:3000"
 )
 
 type Server struct {
@@ -69,6 +75,10 @@ func (srv *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/auth/login/password", srv.loginPassword)
 	mux.HandleFunc("/api/v1/auth/login/totp", srv.loginTOTP)
 	mux.HandleFunc("/api/v1/auth/recovery/account", srv.recoverAccount)
+	mux.HandleFunc("/api/v1/auth/recovery/totp/start", srv.startTOTPPasswordRecovery)
+	mux.HandleFunc("/api/v1/auth/recovery/totp/complete", srv.completeTOTPPasswordRecovery)
+	mux.HandleFunc("/api/v1/auth/password/change", srv.changePassword)
+	mux.HandleFunc("/api/v1/auth/recovery/key/rotate", srv.rotateRecoveryKey)
 	mux.HandleFunc("/api/v1/auth/logout", srv.logout)
 	mux.HandleFunc("/api/v1/auth/session", srv.authSession)
 	mux.HandleFunc("/api/v1/auth/session/status", srv.authSessionStatus)
@@ -195,9 +205,27 @@ func (srv *Server) authenticatedPersistent(r *http.Request) bool {
 	return err == nil && id != ""
 }
 
+// originAllowed is the single origin trust decision shared by CORS, browser
+// recovery, and authenticated mutations.  In production APP_ORIGIN is the
+// only trust anchor; loopback origins are a development convenience only.
+func originAllowed(origin string) bool {
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return false
+	}
+	configured := strings.TrimSpace(os.Getenv("APP_ORIGIN"))
+	if os.Getenv("APP_ENV") == "production" {
+		return configured != "" && origin == configured && origin != localAppOrigin && origin != loopbackAppOrigin
+	}
+	if configured != "" && origin == configured {
+		return true
+	}
+	return origin == localAppOrigin || origin == loopbackAppOrigin
+}
+
 func (srv *Server) checkMutation(w http.ResponseWriter, r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin != "" && origin != getenv("APP_ORIGIN", "http://localhost:3000") && origin != "http://127.0.0.1:3000" {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin != "" && !originAllowed(origin) {
 		problem(w, http.StatusForbidden, "来源不被允许")
 		return false
 	}
@@ -257,16 +285,15 @@ func withCORS(next http.Handler) http.Handler {
 		if os.Getenv("APP_ENV") == "production" {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}
-		origin := r.Header.Get("Origin")
-		configuredOrigin := getenv("APP_ORIGIN", "http://localhost:3000")
-		if origin == configuredOrigin || origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000" {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if originAllowed(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-CSRF-Token, Idempotency-Key, X-Request-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 		}
 		if r.Method == http.MethodOptions {
-			if origin != configuredOrigin && origin != "http://localhost:3000" && origin != "http://127.0.0.1:3000" {
+			if !originAllowed(origin) {
 				problem(w, http.StatusForbidden, "来源不被允许")
 				return
 			}

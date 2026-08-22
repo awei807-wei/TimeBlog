@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -42,7 +44,15 @@ func jsonResponse(w http.ResponseWriter, status int, v any) {
 }
 
 func problem(w http.ResponseWriter, status int, detail string) {
-	jsonResponse(w, status, map[string]any{"type": "about:blank", "title": http.StatusText(status), "status": status, "detail": detail})
+	w.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]any{"type": "about:blank", "title": http.StatusText(status), "status": status, "detail": detail})
+}
+
+func setNoStore(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("CDN-Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 }
 
 func decode(r *http.Request, dst any) error {
@@ -50,6 +60,44 @@ func decode(r *http.Request, dst any) error {
 		return io.EOF
 	}
 	return json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(dst)
+}
+
+// decodeStrictJSON accepts exactly one JSON object and rejects unknown
+// fields, null, arrays, and any second JSON value.  Keep the legacy decoder
+// above unchanged: older endpoints intentionally retain their compatibility
+// contract while security-sensitive recovery mutations use this stricter
+// boundary.
+func decodeStrictJSON(r *http.Request, dst any) error {
+	if r.Body == nil {
+		return io.EOF
+	}
+	const maxJSONBodyBytes = 2 << 20
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxJSONBodyBytes {
+		return errors.New("request body is too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return errors.New("request body must be a JSON object")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("request body must contain one JSON value")
+		}
+		return err
+	}
+	strict := json.NewDecoder(bytes.NewReader(trimmed))
+	strict.DisallowUnknownFields()
+	return strict.Decode(dst)
 }
 
 func tokenHash(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }

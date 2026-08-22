@@ -58,13 +58,60 @@ func trustedProxy(remote string) bool {
 
 func loginThrottleKey(r *http.Request, account string) string {
 	base, stage := throttleAccountStage(account)
-	sum := sha256.Sum256([]byte(base + "|" + requestRemoteIP(r) + "|" + stage))
+	return loginThrottleDimensionKey(base, requestRemoteIP(r), stage)
+}
+
+func loginThrottleDimensionKey(account, ip, stage string) string {
+	sum := sha256.Sum256([]byte(account + "|" + ip + "|" + stage))
 	return hex.EncodeToString(sum[:])
 }
 
-func (srv *Server) throttleAllows(r *http.Request, account string) bool {
+// recoveryThrottleDimensions adds account-only and IP-only buckets to the
+// existing account+IP bucket. The account and IP buckets prevent an attacker
+// from distributing guesses across many addresses or accounts respectively.
+func recoveryThrottleDimensions(base, remoteIP, stage string) [][2]string {
+	wildcard := hashLoginField("*")
+	accountHash := hashLoginField(base)
+	ipHash := hashLoginField(remoteIP)
+	return [][2]string{{accountHash, ipHash}, {accountHash, wildcard}, {wildcard, ipHash}}
+}
+
+func (srv *Server) recoveryThrottleDimensionsAllowed(r *http.Request, account string) bool {
+	base, stage := throttleAccountStage(account)
+	if stage != "recovery" {
+		return srv.throttleAllows(r, account)
+	}
+	dimensions := recoveryThrottleDimensions(base, requestRemoteIP(r), stage)
 	if srv.store.persistent && srv.store.database != nil {
-		base, stage := throttleAccountStage(account)
+		for _, dimension := range dimensions {
+			var blocked sql.NullTime
+			err := srv.store.database.QueryRowContext(r.Context(), `SELECT blocked_until FROM login_attempts WHERE account_hash=$1 AND ip_hash=$2 AND stage=$3`, dimension[0], dimension[1], stage).Scan(&blocked)
+			if err != nil && err != sql.ErrNoRows {
+				return false
+			}
+			if err == nil && blocked.Valid && time.Now().Before(blocked.Time) {
+				return false
+			}
+		}
+		return true
+	}
+	srv.store.mu.Lock()
+	defer srv.store.mu.Unlock()
+	for _, dimension := range dimensions {
+		key := loginThrottleDimensionKey(dimension[0], dimension[1], stage)
+		if time.Now().Before(srv.store.loginThrottle[key].Until) {
+			return false
+		}
+	}
+	return true
+}
+
+func (srv *Server) throttleAllows(r *http.Request, account string) bool {
+	base, stage := throttleAccountStage(account)
+	if stage == "recovery" {
+		return srv.recoveryThrottleDimensionsAllowed(r, account)
+	}
+	if srv.store.persistent && srv.store.database != nil {
 		accountHash := hashLoginField(base)
 		ipHash := hashLoginField(requestRemoteIP(r))
 		var blocked sql.NullTime
@@ -85,8 +132,38 @@ func (srv *Server) throttleAllows(r *http.Request, account string) bool {
 }
 
 func (srv *Server) throttleFailure(r *http.Request, account string) {
+	base, stage := throttleAccountStage(account)
+	if stage == "recovery" {
+		dimensions := recoveryThrottleDimensions(base, requestRemoteIP(r), stage)
+		if srv.store.persistent && srv.store.database != nil {
+			for _, dimension := range dimensions {
+				if _, err := srv.store.database.ExecContext(r.Context(), `
+					INSERT INTO login_attempts(account_hash,ip_hash,stage,failures,blocked_until,updated_at)
+					VALUES($1,$2,$3,1,CASE WHEN 1 >= 5 THEN now()+interval '30 seconds' ELSE NULL END,now())
+					ON CONFLICT(account_hash,ip_hash,stage) DO UPDATE SET
+						failures=login_attempts.failures+1,
+						blocked_until=CASE WHEN login_attempts.failures+1 >= 5 THEN now()+interval '30 seconds' ELSE login_attempts.blocked_until END,
+						updated_at=now()`, dimension[0], dimension[1], stage); err != nil {
+					log.Printf("auth throttle failure update stage=%s: %v", stage, err)
+				}
+			}
+			return
+		}
+		srv.store.mu.Lock()
+		defer srv.store.mu.Unlock()
+		for _, dimension := range dimensions {
+			key := loginThrottleDimensionKey(dimension[0], dimension[1], stage)
+			state := srv.store.loginThrottle[key]
+			state.Failures++
+			if state.Failures >= 5 {
+				backoff := time.Duration(1<<minInt(state.Failures-5, 5)) * time.Second
+				state.Until = time.Now().Add(backoff)
+			}
+			srv.store.loginThrottle[key] = state
+		}
+		return
+	}
 	if srv.store.persistent && srv.store.database != nil {
-		base, stage := throttleAccountStage(account)
 		if _, err := srv.store.database.ExecContext(r.Context(), `
 			INSERT INTO login_attempts(account_hash,ip_hash,stage,failures,blocked_until,updated_at)
 			VALUES($1,$2,$3,1,CASE WHEN 1 >= 5 THEN now()+interval '30 seconds' ELSE NULL END,now())
@@ -111,8 +188,25 @@ func (srv *Server) throttleFailure(r *http.Request, account string) {
 }
 
 func (srv *Server) throttleSuccess(r *http.Request, account string) {
+	base, stage := throttleAccountStage(account)
+	if stage == "recovery" {
+		dimensions := recoveryThrottleDimensions(base, requestRemoteIP(r), stage)
+		if srv.store.persistent && srv.store.database != nil {
+			for _, dimension := range dimensions {
+				if _, err := srv.store.database.ExecContext(r.Context(), `DELETE FROM login_attempts WHERE account_hash=$1 AND ip_hash=$2 AND stage=$3`, dimension[0], dimension[1], stage); err != nil {
+					log.Printf("auth throttle success reset stage=%s: %v", stage, err)
+				}
+			}
+			return
+		}
+		srv.store.mu.Lock()
+		for _, dimension := range dimensions {
+			delete(srv.store.loginThrottle, loginThrottleDimensionKey(dimension[0], dimension[1], stage))
+		}
+		srv.store.mu.Unlock()
+		return
+	}
 	if srv.store.persistent && srv.store.database != nil {
-		base, stage := throttleAccountStage(account)
 		if _, err := srv.store.database.ExecContext(r.Context(), `DELETE FROM login_attempts WHERE account_hash=$1 AND ip_hash=$2 AND stage=$3`, hashLoginField(base), hashLoginField(requestRemoteIP(r)), stage); err != nil {
 			log.Printf("auth throttle success reset stage=%s: %v", stage, err)
 		}
@@ -171,7 +265,8 @@ func (srv *Server) loginPassword(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		srv.store.mu.Lock()
-		srv.store.mfaChallenges[challenge] = expiresAt
+		challengeHash := tokenHash(challenge)
+		srv.store.mfaChallenges[challengeHash] = memoryMFAChallenge{ChallengeHash: challengeHash, ExpiresAt: expiresAt, Purpose: "login"}
 		srv.store.mu.Unlock()
 	}
 	jsonResponse(w, 200, map[string]any{"challenge": challenge, "requiresTotp": true})
@@ -200,9 +295,10 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		srv.store.mu.Lock()
-		expires, exists := srv.store.mfaChallenges[in.Challenge]
+		challengeHash := tokenHash(in.Challenge)
+		challenge, exists := srv.store.mfaChallenges[challengeHash]
 		srv.store.mu.Unlock()
-		ok = exists && time.Now().Before(expires)
+		ok = exists && challenge.ChallengeHash == challengeHash && challenge.Purpose == "login" && time.Now().Before(challenge.ExpiresAt)
 	}
 	if !ok {
 		srv.throttleFailure(r, "owner-totp")
@@ -231,9 +327,10 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 		ok, err = consumeChallenge(r.Context(), srv.store.database, in.Challenge)
 	} else {
 		srv.store.mu.Lock()
-		expires, exists := srv.store.mfaChallenges[in.Challenge]
-		if exists && time.Now().Before(expires) {
-			delete(srv.store.mfaChallenges, in.Challenge)
+		challengeHash := tokenHash(in.Challenge)
+		challenge, exists := srv.store.mfaChallenges[challengeHash]
+		if exists && challenge.ChallengeHash == challengeHash && challenge.Purpose == "login" && time.Now().Before(challenge.ExpiresAt) {
+			delete(srv.store.mfaChallenges, challengeHash)
 			ok = true
 		} else {
 			ok = false
@@ -301,6 +398,11 @@ func (srv *Server) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
+	setNoStore(w)
+	if r.Method != http.MethodGet {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
 	if srv.store.persistent && srv.store.database != nil {
 		if !srv.authenticatedPersistent(r) {
 			problem(w, 401, "未登录")
@@ -317,7 +419,7 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 			problem(w, 401, "未登录")
 			return
 		}
-		jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "csrfToken": csrf, "idleExpiresAt": idle, "absoluteExpiresAt": absolute})
+		jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "csrfToken": csrf, "idleExpiresAt": idle, "absoluteExpiresAt": absolute, "idleExpiresInDays": 30, "absoluteExpiresInDays": 90})
 		return
 	}
 	if !srv.store.authenticated(r) {
@@ -327,15 +429,24 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie("timeline_session")
 	srv.store.mu.RLock()
 	csrf := csrfToken(srv.store.csrfKey, c.Value)
+	session := srv.store.sessions[tokenHash(c.Value)]
+	var idle, absolute time.Time
+	if session != nil {
+		idle, absolute = session.IdleExpires, session.AbsoluteExpires
+	}
 	srv.store.mu.RUnlock()
-	jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "idleExpiresInDays": 30, "absoluteExpiresInDays": 90, "csrfToken": csrf})
+	jsonResponse(w, 200, map[string]any{"authenticated": true, "username": "owner", "csrfToken": csrf, "idleExpiresAt": idle, "absoluteExpiresAt": absolute, "idleExpiresInDays": 30, "absoluteExpiresInDays": 90})
 }
 
 // authSessionStatus validates the HttpOnly session cookie without rotating
 // the CSRF token. Navigation can safely call this endpoint without racing
 // with page mutations that use /auth/session for their CSRF token.
 func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	setNoStore(w)
+	if r.Method != http.MethodGet {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
 	var cookie *http.Cookie
 	var err error
 	if cookie, err = r.Cookie("timeline_session"); err != nil || cookie.Value == "" {
@@ -365,12 +476,24 @@ func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, max-age=0")
+	w.Header().Set("CDN-Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
+	if r.Method != http.MethodGet {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
 	if srv.store.persistent && srv.store.database != nil {
 		if !srv.authenticatedPersistent(r) {
 			problem(w, 401, "未登录")
 			return
 		}
-		rows, err := srv.store.database.QueryContext(r.Context(), `SELECT id::text,created_at,last_seen FROM sessions WHERE revoked_at IS NULL ORDER BY last_seen DESC`)
+		currentHash := ""
+		if cookie, cookieErr := r.Cookie("timeline_session"); cookieErr == nil {
+			currentHash = tokenHash(cookie.Value)
+		}
+		rows, err := srv.store.database.QueryContext(r.Context(), `SELECT id::text,token_hash,created_at,last_seen FROM sessions
+			WHERE revoked_at IS NULL AND idle_expires>now() AND absolute_expires>now() ORDER BY last_seen DESC`)
 		if err != nil {
 			problem(w, 500, "读取会话失败")
 			return
@@ -379,12 +502,17 @@ func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {
 		out := []any{}
 		for rows.Next() {
 			var id string
+			var sessionHash string
 			var created, last time.Time
-			if err := rows.Scan(&id, &created, &last); err != nil {
+			if err := rows.Scan(&id, &sessionHash, &created, &last); err != nil {
 				problem(w, 500, "读取会话失败")
 				return
 			}
-			out = append(out, map[string]any{"id": id, "createdAt": created, "lastSeen": last})
+			out = append(out, map[string]any{"id": id, "createdAt": created, "lastSeen": last, "current": sessionHash == currentHash})
+		}
+		if err := rows.Err(); err != nil {
+			problem(w, 500, "读取会话失败")
+			return
 		}
 		jsonResponse(w, 200, map[string]any{"sessions": out})
 		return
@@ -395,20 +523,34 @@ func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	srv.store.mu.RLock()
 	defer srv.store.mu.RUnlock()
+	currentHash := ""
+	if cookie, cookieErr := r.Cookie("timeline_session"); cookieErr == nil {
+		currentHash = tokenHash(cookie.Value)
+	}
+	now := time.Now()
 	out := []any{}
 	for _, ss := range srv.store.sessions {
-		if ss.RevokedAt == nil {
-			out = append(out, map[string]any{"id": ss.ID, "createdAt": ss.CreatedAt, "lastSeen": ss.LastSeen})
+		if ss.RevokedAt == nil && now.Before(ss.IdleExpires) && now.Before(ss.AbsoluteExpires) {
+			out = append(out, map[string]any{"id": ss.ID, "createdAt": ss.CreatedAt, "lastSeen": ss.LastSeen, "current": ss.TokenHash == currentHash})
 		}
 	}
 	jsonResponse(w, 200, map[string]any{"sessions": out})
 }
 
 func (srv *Server) authSessionAction(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/v1/auth/sessions/")
+	if path == "revoke-others" {
+		if r.Method != http.MethodPost {
+			problem(w, http.StatusMethodNotAllowed, "方法不允许")
+			return
+		}
+	} else if r.Method != http.MethodDelete || path == "" {
+		problem(w, http.StatusMethodNotAllowed, "方法不允许")
+		return
+	}
 	if !srv.checkMutation(w, r) {
 		return
 	}
-	path := strings.TrimPrefix(r.URL.Path, "/api/v1/auth/sessions/")
 	if path == "revoke-others" {
 		c, _ := r.Cookie("timeline_session")
 		if srv.store.persistent && srv.store.database != nil {
@@ -419,6 +561,16 @@ func (srv *Server) authSessionAction(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, 200, map[string]bool{"ok": true})
 			return
 		}
+		srv.store.mu.Lock()
+		currentHash := tokenHash(c.Value)
+		now := time.Now()
+		for hash, session := range srv.store.sessions {
+			if hash != currentHash && session.RevokedAt == nil {
+				revokedAt := now
+				session.RevokedAt = &revokedAt
+			}
+		}
+		srv.store.mu.Unlock()
 		jsonResponse(w, 200, map[string]bool{"ok": true})
 		return
 	}
@@ -435,5 +587,21 @@ func (srv *Server) authSessionAction(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, 200, map[string]bool{"ok": true})
 		return
 	}
-	problem(w, 501, "内存模式不支持会话撤销")
+	srv.store.mu.Lock()
+	var target *Session
+	for _, session := range srv.store.sessions {
+		if session.ID == path {
+			target = session
+			break
+		}
+	}
+	if target == nil || target.RevokedAt != nil {
+		srv.store.mu.Unlock()
+		problem(w, 404, "会话不存在")
+		return
+	}
+	now := time.Now()
+	target.RevokedAt = &now
+	srv.store.mu.Unlock()
+	jsonResponse(w, 200, map[string]bool{"ok": true})
 }

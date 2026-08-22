@@ -14,8 +14,8 @@ func (srv *Server) recoverAccount(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusMethodNotAllowed, "方法不允许")
 		return
 	}
-	if !srv.recoveryOriginAllowed(r) {
-		problem(w, http.StatusForbidden, "来源不被允许")
+	if !srv.recoveryOriginAllowed(r) || !jsonContentType(r) {
+		problem(w, http.StatusForbidden, "请求来源或格式不被允许")
 		return
 	}
 	if !srv.throttleAllows(r, "owner-recovery") {
@@ -25,7 +25,7 @@ func (srv *Server) recoverAccount(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var in accountRecoveryRequest
-	if decode(r, &in) != nil || in.normalizeAndValidate() != nil {
+	if decodeStrictJSON(r, &in) != nil || in.normalizeAndValidate() != nil {
 		srv.throttleFailure(r, "owner-recovery")
 		srv.recordRecoveryAudit(r, "", false, "invalid_request")
 		problem(w, http.StatusBadRequest, "恢复信息无效")
@@ -114,6 +114,8 @@ func (srv *Server) recoverMemoryAccount(in accountRecoveryRequest, payloadMAC st
 
 	srv.store.userPassword = in.NewPassword
 	srv.store.userTOTP = in.NewTOTPSecret
+	srv.store.totpLastUsedStep = 0
+	srv.store.totpLastUsedSet = false
 	srv.store.recoveryKeyHash = newRecoveryHash
 	srv.store.recoveryKeyUsed = false
 	for _, session := range srv.store.sessions {
@@ -129,9 +131,7 @@ func (srv *Server) recoverMemoryAccount(in accountRecoveryRequest, payloadMAC st
 }
 
 func setRecoveryNoStore(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store, max-age=0")
-	w.Header().Set("CDN-Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
+	setNoStore(w)
 }
 
 func (srv *Server) recordRecoveryAudit(r *http.Request, keyID string, success bool, event string) {
@@ -144,9 +144,5 @@ func (srv *Server) recordRecoveryAudit(r *http.Request, keyID string, success bo
 }
 
 func (srv *Server) recoveryOriginAllowed(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin == "" {
-		return false
-	}
-	return origin == getenv("APP_ORIGIN", "http://localhost:3000") || origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000"
+	return originAllowed(r.Header.Get("Origin"))
 }
