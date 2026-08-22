@@ -1,6 +1,6 @@
 # 项目上下文
 
-> 用途：供新的开发窗口快速恢复项目背景。代码、运行时状态和 Git 历史优先于本文；本文不保存密码、Token、私钥或完整环境变量。
+> 用途：供新的开发窗口快速恢复项目背景。代码、运行时状态和 Git 历史优先于本文；本文通常不保存密码、Token、私钥或完整环境变量，NAS 专用集成测试库连接信息按明确授权记录于对应小节。
 >
 > 最近核验：2026-08-20（Asia/Shanghai）
 
@@ -136,6 +136,22 @@ GitHub main push
 - NAS 拉取备份使用 `deploy/nas-pull-backup.sh` 和独立 `0600` 配置文件。
 - 外部图床服务：`https://image.cainiao.me`，适配器标识 `ou_image_hosting_v1`。
 - 未经用户明确要求，不执行真实图片上传、删除或带副作用的图床调用。
+
+### NAS PostgreSQL 专用集成测试库
+
+- 连接地址：host `10.0.0.104`、port `5432`、database `blog_test`、user `blog_test`、password `blog_test`。
+- 完整连接串：`postgres://blog_test:blog_test@10.0.0.104:5432/blog_test?sslmode=disable`。
+- 该库完全位于内网，不包含生产数据，可被迁移和测试写入；禁止将 `DATABASE_URL` 指向生产库。
+- 从仓库根目录运行完整 Go 集成套件：
+
+  ```bash
+  cd services/core
+  DATABASE_URL='postgres://blog_test:blog_test@10.0.0.104:5432/blog_test?sslmode=disable' \
+  TIMEBLOG_RUN_DATABASE_INTEGRATION=1 \
+  go test -count=1 ./...
+  ```
+
+- 2026-08-22 已从空 `public` schema 连续两次通过 001–009 迁移和完整 Go 集成套件。每次测试后应确认 `sessions`、`mfa_challenges`、`auth_operation_idempotency` 的行数均为 `0`。
 
 ## 常用验证命令
 
