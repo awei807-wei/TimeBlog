@@ -20,9 +20,10 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .writing-shell {
-    padding: 0 14px 52px;
+    width: 100%;
+    padding: 0 14px max(64px, calc(64px + env(safe-area-inset-bottom)));
   }
 
   .app-content > .writing-shell {
@@ -44,6 +45,7 @@
 
   .writing-header-actions {
     width: 100%;
+    min-width: 0;
     justify-content: space-between;
   }
 
@@ -57,7 +59,7 @@
 
   .writing-save-button,
   .writing-undo-button {
-    min-height: 38px;
+    min-height: 44px;
     padding-inline: 12px;
   }
 
@@ -71,20 +73,37 @@
   }
 
   .writing-composer .mdx-editor-shell {
-    min-height: 62vh;
+    min-height: clamp(420px, 62vh, 760px);
+    min-height: clamp(420px, 62dvh, 760px);
   }
 
   .writing-composer .mdxeditor-diff-source-wrapper,
   .writing-composer .mdxeditor-source-editor,
   .writing-composer .mdxeditor-diff-editor {
-    height: 54vh;
+    height: clamp(360px, 54vh, 680px);
+    height: clamp(360px, 54dvh, 680px);
     min-height: 0;
   }
 
   .writing-composer .mdx-editor-content {
-    min-height: 54vh;
+    min-height: clamp(360px, 54vh, 680px);
+    min-height: clamp(360px, 54dvh, 680px);
     padding: 24px 18px 70px;
     font-size: 16px;
+  }
+
+  .writing-composer .mdx-editor .mdxeditor-toolbar button,
+  .writing-composer .mdx-editor .mdxeditor-toolbar [role="button"],
+  .writing-composer .upload-browse-button,
+  .writing-composer .inline-action {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .writing-inspector > summary,
+  .writing-selector-row select,
+  .writing-inspector .journal-date-group {
+    min-height: 44px;
   }
 
   .writing-rail {
@@ -139,12 +158,15 @@
 
   .writing-composer .mdx-editor .mdxeditor-toolbar {
     overflow-x: auto;
+    scrollbar-width: thin;
+    overscroll-behavior-inline: contain;
   }
 
   .writing-composer .mdxeditor-diff-source-wrapper,
   .writing-composer .mdxeditor-source-editor,
   .writing-composer .mdxeditor-diff-editor {
-    height: 50vh;
+    height: clamp(340px, 50vh, 620px);
+    height: clamp(340px, 50dvh, 620px);
     min-height: 0;
   }
 
@@ -154,6 +176,12 @@
 
   .writing-composer .mdx-editor .mdx-view-mode-toggle button {
     padding-inline: 7px;
+  }
+
+  .writing-composer .mdx-editor .mdxeditor-toolbar button,
+  .writing-composer .mdx-editor .mdxeditor-toolbar [role="button"] {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -182,15 +210,17 @@
 
   .writing-inspector .tag-input-editor,
   .writing-inspector .taxonomy-tag-edit {
-    min-height: 34px;
-    height: 34px;
+    min-height: 44px;
+    height: 44px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .writing-save-button,
   .writing-undo-button,
-  .writing-drafts .draft-list button {
+  .writing-drafts .draft-list button,
+  .writing-composer .mdx-editor .mdxeditor-toolbar,
+  .writing-composer .mdx-view-mode-toggle button {
     transition: none;
   }
 }

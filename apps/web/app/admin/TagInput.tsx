@@ -42,7 +42,7 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
   const [draft, setDraft] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState('');
-  const [composing, setComposing] = useState(false);
+  const composingRef = useRef(false);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   const inputId = useId();
 
@@ -87,31 +87,54 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
     setEditingValue(values[index] || '');
   };
 
+  const isComposingKey = (event: React.KeyboardEvent<HTMLElement>) => (
+    event.nativeEvent.isComposing || composingRef.current || event.keyCode === 229
+  );
+
+  const isEnterKey = (event: React.KeyboardEvent<HTMLElement>) => event.key === 'Enter' || event.keyCode === 13;
+
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing || composing || event.keyCode === 229) return;
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      commitDraft();
-    } else if (event.key === 'Backspace' && !draft && values.length > 0) {
+    if (isComposingKey(event)) return;
+    if (event.key === 'Backspace' && !draft && values.length > 0) {
       removeTag(values.length - 1);
     }
   };
 
   const handleEditingKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing || composing || event.keyCode === 229) return;
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      commitEdit();
-    } else if (event.key === 'Escape') {
+    if (isComposingKey(event)) return;
+    if (event.key === 'Escape') {
       event.preventDefault();
       cancelEdit();
     }
   };
 
+  const handleTagInputKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isEnterKey(event) || isComposingKey(event)) return;
+    const target = event.target as HTMLInputElement;
+    if (target?.tagName !== 'INPUT') return;
+    if (target.classList.contains('taxonomy-tag-edit')) {
+      event.preventDefault();
+      event.stopPropagation();
+      commitEdit();
+    } else if (target.classList.contains('tag-input-editor')) {
+      event.preventDefault();
+      event.stopPropagation();
+      commitDraft();
+    }
+  };
+
+  const handleCompositionStart = () => {
+    composingRef.current = true;
+  };
+
+  const handleCompositionEnd = () => {
+    composingRef.current = false;
+  };
+
   return (
     <div className="taxonomy-field">
       <label className="taxonomy-label" htmlFor={inputId}>{label}</label>
-      <div className="tag-input" role="group" aria-label={ariaLabel}>
+      <div className="tag-input" role="group" aria-label={ariaLabel} onKeyDown={handleTagInputKeyDown}>
         <div className="tag-input-list">
           {values.map((value, index) => editingIndex === index ? (
             <input
@@ -123,8 +146,9 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
               onChange={event => setEditingValue(event.target.value)}
               onKeyDown={handleEditingKeyDown}
               onBlur={commitEdit}
-              onCompositionStart={() => setComposing(true)}
-              onCompositionEnd={() => setComposing(false)}
+              onCompositionStart={handleCompositionStart}
+              onCompositionEnd={handleCompositionEnd}
+              enterKeyHint="done"
             />
           ) : (
             <span
@@ -155,10 +179,11 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
             value={draft}
             onChange={event => setDraft(event.target.value)}
             onKeyDown={handleInputKeyDown}
-            onCompositionStart={() => setComposing(true)}
-            onCompositionEnd={() => setComposing(false)}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             placeholder={placeholder}
             aria-label={ariaLabel}
+            enterKeyHint="done"
           />
         </div>
       </div>

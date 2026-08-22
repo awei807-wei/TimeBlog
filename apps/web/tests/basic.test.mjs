@@ -283,18 +283,21 @@ test('home page does not render the removed introductory note copy', async () =>
   assert.doesNotMatch(source, /className="note"/);
 });
 
-test('sidebar has no trigger and maps theme tokens for desktop and mobile', async () => {
+test('admin sidebar has a mobile trigger and maps theme tokens for desktop and mobile', async () => {
   const fs = await import('node:fs/promises');
   const shell = await fs.readFile(new URL('../app/AppShell.tsx', import.meta.url), 'utf8');
   const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
-  assert.doesNotMatch(shell, /SidebarTrigger|data-slot=["']sidebar-trigger/);
+  assert.match(shell, /SidebarTrigger/);
+  assert.match(shell, /collapsible="offcanvas"/);
+  assert.match(shell, /useSidebar/);
+  assert.match(shell, /setOpenMobile\(false\)/);
   assert.match(css, /--sidebar:\s*var\(--background\)/);
   assert.match(css, /--sidebar-foreground:\s*var\(--foreground\)/);
   assert.match(css, /background:\s*var\(--sidebar\)/);
   assert.match(css, /color:\s*var\(--sidebar-foreground\)/);
-  assert.match(css, /@media \(max-width: 760px\)/);
-  assert.match(css, /position:\s*relative/);
-  assert.match(css, /transform:\s*none/);
+  assert.match(css, /@media \(max-width: 767px\)/);
+  assert.match(css, /\[data-sidebar="sidebar"\]\[data-mobile="true"\]\[data-state="open"\]\s*\{\s*transform:\s*translateX\(0\)/);
+  assert.match(css, /\[data-sidebar="sidebar"\]\[data-mobile="true"\]\[data-state="closed"\]\s*\{\s*transform:\s*translateX\(-100%\)/);
 });
 
 test('MDXEditor is the sole Markdown source of truth and supports rich/source modes', async () => {
@@ -383,6 +386,31 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(css, /\.mdx-editor \.mdxeditor-toolbar\{[^}]*scrollbar-width:none/);
 });
 
+test('tag input commits mobile Enter in its boundary and preserves IME, empty, and duplicate guards', async () => {
+  const fs = await import('node:fs/promises');
+  const tags = await fs.readFile(new URL('../app/admin/TagInput.tsx', import.meta.url), 'utf8');
+  const keyHandler = tags.slice(tags.indexOf('const handleTagInputKeyDown'), tags.indexOf('const handleCompositionStart'));
+  assert.match(tags, /onKeyDown=\{handleTagInputKeyDown\}/);
+  assert.match(tags, /const isEnterKey = \(event: React\.KeyboardEvent<HTMLElement>\) => event\.key === 'Enter' \|\| event\.keyCode === 13/);
+  assert.match(keyHandler, /isEnterKey\(event\)/);
+  assert.match(keyHandler, /event\.preventDefault\(\)/);
+  assert.match(keyHandler, /event\.stopPropagation\(\)/);
+  assert.match(keyHandler, /target\.classList\.contains\('tag-input-editor'\)/);
+  assert.match(keyHandler, /target\.classList\.contains\('taxonomy-tag-edit'\)/);
+  assert.match(keyHandler, /commitDraft\(\)/);
+  assert.match(keyHandler, /commitEdit\(\)/);
+  assert.match(tags, /event\.nativeEvent\.isComposing \|\| composingRef\.current \|\| event\.keyCode === 229/);
+  assert.match(tags, /onCompositionStart=\{handleCompositionStart\}/);
+  assert.match(tags, /onCompositionEnd=\{handleCompositionEnd\}/);
+  assert.match(tags, /enterKeyHint="done"/);
+
+  const commitDraft = tags.slice(tags.indexOf('const commitDraft'), tags.indexOf('const commitEdit'));
+  assert.match(commitDraft, /if \(!value\) \{[\s\S]*setDraft\(''\)/);
+  assert.match(commitDraft, /onChange\(dedupeTags\(\[\.\.\.values, value\]\)\)/);
+  assert.match(tags, /const key = normalized\.toLowerCase\(\)/);
+  assert.match(tags, /if \(seen\.has\(key\)\) continue/);
+});
+
 test('writing workbench keeps focus visible and bounds responsive editor scrolling', async () => {
   const fs = await import('node:fs/promises');
   const cssFiles = ['admin-editor-layout.css', 'admin-editor-editor.css', 'admin-editor-inspector.css', 'admin-editor-responsive.css'];
@@ -396,7 +424,7 @@ test('writing workbench keeps focus visible and bounds responsive editor scrolli
   assert.match(css, /\.writing-composer \.mdxeditor-source-editor \.cm-scroller,[\s\S]*overflow: auto/);
   assert.match(css, /\.writing-composer \.mdxeditor-diff-editor[\s\S]*height: clamp/);
   assert.match(css, /\.writing-rail[\s\S]*align-self: start[\s\S]*overflow: visible/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.writing-save-actions[\s\S]*margin-left: auto/);
   assert.match(css, /@media \(pointer: coarse\)[\s\S]*\.writing-inspector \.taxonomy-tag-remove[\s\S]*width: 44px;[\s\S]*height: 44px;/);
 });

@@ -18,13 +18,18 @@
 
 .writing-editor-heading .editor-toolbar {
   flex: none;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
 .writing-editor-heading .tool {
-  min-height: 36px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -65,8 +70,15 @@
   position: sticky;
   top: 0;
   z-index: 4;
+  min-width: 0;
+  max-width: 100%;
   min-height: 48px;
   padding: 5px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  white-space: nowrap;
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--surface) 96%, var(--paper));
 }
@@ -78,9 +90,15 @@
   border-radius: 6px;
 }
 
+.writing-composer .mdx-editor .mdxeditor-toolbar > * {
+  flex: 0 0 auto;
+}
+
 .writing-composer .mdx-editor-content {
   min-height: clamp(400px, 56vh, 740px);
+  width: 100%;
   max-width: 780px;
+  min-width: 0;
   margin: 0 auto;
   padding: 34px 42px 90px;
   color: var(--ink);
@@ -100,11 +118,13 @@
 .writing-composer .mdxeditor-diff-source-wrapper {
   min-height: clamp(400px, 56vh, 740px);
   min-width: 0;
+  max-width: 100%;
 }
 
 .writing-composer .mdxeditor-source-editor,
 .writing-composer .mdxeditor-diff-editor {
   height: clamp(400px, 56vh, 740px);
+  width: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -154,6 +174,11 @@
 .writing-composer .upload-list li {
   border: 1px solid var(--line);
   background: var(--paper);
+}
+
+.writing-composer .upload-browse-button,
+.writing-composer .inline-action {
+  min-height: 44px;
 }
 
 .writing-rail {

@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Rows3, StretchHorizontal, X } from 'lucide-react';
+import { LogIn, PenLine, Rows3, StretchHorizontal, X } from 'lucide-react';
 import { getTimeline, type TimelineDay } from '@/lib/api';
 import { mergeTimelineDays } from '@/lib/timeline';
 import { PUBLIC_CACHE_INVALIDATED_EVENT } from '@/lib/cache-invalidation';
+import { useSession } from './SessionContext';
 import PublicEntryCard from './public/PublicEntryCard';
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', weekday: 'short', timeZone: 'Asia/Shanghai' });
@@ -16,6 +17,20 @@ function DateRail({ date }: { date: string }) {
   const month = parts.find(part => part.type === 'month')?.value || '';
   const weekday = parts.find(part => part.type === 'weekday')?.value || '';
   return <aside className="public-date-rail"><b>{date.slice(-2)}</b><span>{month}<br/>{weekday}</span><small>{date.slice(0, 4)}</small></aside>;
+}
+
+function MobileWritingFab() {
+  const { state } = useSession();
+  if (state === 'loading') return null;
+
+  const authenticated = state === 'authenticated';
+  const label = authenticated ? '开始写作' : '登录';
+  const Icon = authenticated ? PenLine : LogIn;
+
+  return <Link className="public-mobile-fab" href={authenticated ? '/admin' : '/login'} aria-label={label} title={label}>
+    <Icon aria-hidden="true" />
+    <span className="sr-only">{label}</span>
+  </Link>;
 }
 
 export default function HomeTimeline({ initialDays, initialCursor }: { initialDays: TimelineDay[]; initialCursor?: string }) {
@@ -75,5 +90,6 @@ export default function HomeTimeline({ initialDays, initialCursor }: { initialDa
       {cursor && !selectedTag && <button type="button" className="public-secondary-button public-load-more" onClick={() => void loadMore()} disabled={loading}>{loading ? '加载中…' : '加载更多'}</button>}
       {selectedTag && <Link className="public-secondary-button public-load-more" href={`/tag/${encodeURIComponent(selectedTag)}`}>查看此标签的全部记录</Link>}
     </section>
+    <MobileWritingFab />
   </>;
 }

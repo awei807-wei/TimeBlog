@@ -5,6 +5,7 @@
 .mdx-view-mode-toggle {
   display: inline-flex;
   flex: 0 0 auto;
+  min-width: 0;
   align-items: stretch;
   margin-inline-start: auto;
   border: 1px solid var(--line);
@@ -25,6 +26,19 @@
   font-weight: 650;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+.mdx-editor .mdxeditor-toolbar {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.mdx-editor .mdxeditor-toolbar > * {
+  flex: 0 0 auto;
 }
 
 .mdx-editor .mdx-view-mode-toggle button + button {
@@ -72,15 +86,25 @@
   font-weight: 400;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 767px) {
   .mdx-editor .mdx-view-mode-toggle button {
     min-height: 44px;
     padding-inline: 9px;
+  }
+
+  .mdx-editor .mdxeditor-toolbar button,
+  .mdx-editor .mdxeditor-toolbar [role="button"] {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .mdx-editor .mdx-view-mode-toggle button {
     transition: none;
+  }
+
+  .mdx-editor .mdxeditor-toolbar {
+    scroll-behavior: auto;
   }
 }

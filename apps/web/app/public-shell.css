@@ -151,6 +151,10 @@
   font-weight: 700;
 }
 
+.public-mobile-fab {
+  display: none;
+}
+
 .public-content {
   min-height: calc(100vh - 68px);
 }
@@ -221,6 +225,7 @@
     height: 58px;
     grid-template-columns: 1fr auto;
     padding-inline: 16px;
+    backdrop-filter: none;
   }
   .public-wordmark-copy small { display: none; }
   .public-brand-mark { width: 31px; height: 31px; }
@@ -250,6 +255,25 @@
   .public-write-button { width: 40px; padding: 0; }
   .public-write-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .public-head-actions { gap: 6px; }
+  .public-mobile-fab {
+    position: fixed;
+    z-index: 75;
+    left: 50%;
+    bottom: calc(50px + env(safe-area-inset-bottom, 0px));
+    width: 52px;
+    height: 52px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #000;
+    color: #fff;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 22%);
+    transform: translateX(-50%);
+  }
+  .public-mobile-fab svg { width: 21px; height: 21px; }
+  .public-mobile-fab:hover { background: #202020; }
+  .public-mobile-fab:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
   .public-home .public-hero::after { top: 17px; right: -7px; width: 88px; height: 88px; opacity: .13; }
   .public-content { min-height: calc(100vh - 58px); }
   .public-footer { max-width: calc(100% - 32px); grid-template-columns: 1fr auto; padding-bottom: 30px; }
