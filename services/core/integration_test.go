@@ -102,6 +102,11 @@ func TestPostgresAuthSessionResponseIncludesExpiryMetadata(t *testing.T) {
 		FROM users WHERE username='owner'`).Scan(&ownerID, &originalPasswordHash, &originalTOTPCipher); err != nil {
 		t.Fatal(err)
 	}
+	originalReplayStep, replayErr := queryReplayGuard(ctx, db, ownerID)
+	replayGuardExists := replayErr == nil
+	if replayErr != nil && replayErr != sql.ErrNoRows {
+		t.Fatal(replayErr)
+	}
 	type sessionSnapshot struct {
 		tokenHash       string
 		csrfTokenHash   string
@@ -146,6 +151,13 @@ func TestPostgresAuthSessionResponseIncludesExpiryMetadata(t *testing.T) {
 		if cleanupErr == nil {
 			_, cleanupErr = tx.ExecContext(cleanupCtx, `UPDATE users SET password_hash=$1,totp_secret_encrypted=$2 WHERE id=$3::uuid`, originalPasswordHash, originalTOTPCipher, ownerID)
 		}
+		if cleanupErr == nil {
+			if replayGuardExists {
+				_, cleanupErr = tx.ExecContext(cleanupCtx, `UPDATE totp_replay_guards SET last_used_step=$2,updated_at=now() WHERE user_id=$1::uuid`, ownerID, originalReplayStep)
+			} else {
+				_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM totp_replay_guards WHERE user_id=$1::uuid`, ownerID)
+			}
+		}
 		if cleanupErr == nil && challengeHash != "" {
 			_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM mfa_challenges WHERE token_hash=$1`, challengeHash)
 		}
@@ -170,6 +182,10 @@ func TestPostgresAuthSessionResponseIncludesExpiryMetadata(t *testing.T) {
 		}
 	})
 	if _, err := db.ExecContext(ctx, `UPDATE users SET password_hash=$1,totp_secret_encrypted=$2 WHERE id=$3::uuid`, knownPasswordHash, knownTOTPCipher, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO totp_replay_guards(user_id,last_used_step) VALUES($1::uuid,-1)
+		ON CONFLICT(user_id) DO UPDATE SET last_used_step=-1,updated_at=now()`, ownerID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -343,6 +359,15 @@ func TestPostgresCanonicalArticleCommitAndUUIDFallback(t *testing.T) {
 	if err := db.QueryRow(`SELECT id::text FROM users WHERE username='owner'`).Scan(&ownerID); err != nil {
 		t.Fatal(err)
 	}
+	originalReplayStep, replayErr := queryReplayGuard(context.Background(), db, ownerID)
+	replayGuardExists := replayErr == nil
+	if replayErr != nil && replayErr != sql.ErrNoRows {
+		t.Fatal(replayErr)
+	}
+	if _, err := db.Exec(`INSERT INTO totp_replay_guards(user_id,last_used_step) VALUES($1::uuid,-1)
+		ON CONFLICT(user_id) DO UPDATE SET last_used_step=-1,updated_at=now()`, ownerID); err != nil {
+		t.Fatal(err)
+	}
 	srv := NewServer(NewPersistentStore(db))
 	h := srv.routes()
 	var sessionCookie, challengeHash string
@@ -355,6 +380,13 @@ func TestPostgresCanonicalArticleCommitAndUUIDFallback(t *testing.T) {
 		}
 		if cleanupErr == nil && sessionCookie != "" {
 			_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM sessions WHERE token_hash=$1`, tokenHash(sessionCookie))
+		}
+		if cleanupErr == nil {
+			if replayGuardExists {
+				_, cleanupErr = tx.ExecContext(cleanupCtx, `UPDATE totp_replay_guards SET last_used_step=$2,updated_at=now() WHERE user_id=$1::uuid`, ownerID, originalReplayStep)
+			} else {
+				_, cleanupErr = tx.ExecContext(cleanupCtx, `DELETE FROM totp_replay_guards WHERE user_id=$1::uuid`, ownerID)
+			}
 		}
 		if cleanupErr == nil {
 			cleanupErr = tx.Commit()

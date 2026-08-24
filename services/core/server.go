@@ -178,7 +178,7 @@ func (srv *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func (srv *Server) persistentUserID(r *http.Request) (string, error) {
-	c, err := r.Cookie("timeline_session")
+	c, err := requestSessionCookie(r)
 	if err != nil || c.Value == "" {
 		return "", fmt.Errorf("session cookie missing")
 	}
@@ -196,7 +196,7 @@ func (srv *Server) requirePersistent(w http.ResponseWriter) bool {
 }
 
 func (srv *Server) authenticatedPersistent(r *http.Request) bool {
-	c, err := r.Cookie("timeline_session")
+	c, err := requestSessionCookie(r)
 	if err != nil || c.Value == "" || srv.store.database == nil {
 		return false
 	}
@@ -234,7 +234,7 @@ func (srv *Server) checkMutation(w http.ResponseWriter, r *http.Request) bool {
 			problem(w, http.StatusUnauthorized, "需要登录")
 			return false
 		}
-		c, _ := r.Cookie("timeline_session")
+		c, _ := requestSessionCookie(r)
 		var csrfHash string
 		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT csrf_token_hash FROM sessions WHERE token_hash=$1 AND revoked_at IS NULL`, tokenHash(c.Value)).Scan(&csrfHash); err != nil || csrfHash != tokenHash(r.Header.Get("X-CSRF-Token")) {
 			problem(w, http.StatusForbidden, "CSRF 校验失败")
@@ -246,7 +246,7 @@ func (srv *Server) checkMutation(w http.ResponseWriter, r *http.Request) bool {
 		problem(w, http.StatusUnauthorized, "需要登录")
 		return false
 	}
-	c, _ := r.Cookie("timeline_session")
+	c, _ := requestSessionCookie(r)
 	srv.store.mu.RLock()
 	ss := srv.store.sessions[tokenHash(c.Value)]
 	srv.store.mu.RUnlock()

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -446,14 +447,29 @@ func loginForTest(t *testing.T, h http.Handler) (*http.Client, string) {
 	}
 	_ = json.Unmarshal(rr.Body.Bytes(), &challenge)
 	secret := os.Getenv("ADMIN_TOTP_SECRET")
-	code, err := totp.GenerateCode(secret, time.Now())
-	if err != nil {
-		t.Fatalf("generate test TOTP code: %v", err)
+	loginTOTP := func(code string) *httptest.ResponseRecorder {
+		tResp := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/totp", bytes.NewBufferString(`{"code":"`+code+`","challenge":"`+challenge.Challenge+`"}`))
+		tResp.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, tResp)
+		return response
 	}
-	tResp := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login/totp", bytes.NewBufferString(`{"code":"`+code+`","challenge":"`+challenge.Challenge+`"}`))
-	tResp.Header.Set("Content-Type", "application/json")
-	rr = httptest.NewRecorder()
-	h.ServeHTTP(rr, tResp)
+	currentStep := totpStepForTime(time.Now())
+	for _, step := range []int64{currentStep - 1, currentStep, currentStep + 1} {
+		code, err := totp.GenerateCodeCustom(secret, time.Unix(step*totpPeriodSeconds, 0).UTC(), totp.ValidateOpts{
+			Period:    uint(totpPeriodSeconds),
+			Skew:      0,
+			Digits:    otp.DigitsSix,
+			Algorithm: otp.AlgorithmSHA1,
+		})
+		if err != nil {
+			t.Fatalf("generate test TOTP code: %v", err)
+		}
+		rr = loginTOTP(code)
+		if rr.Code != http.StatusUnauthorized {
+			break
+		}
+	}
 	if rr.Code != http.StatusOK {
 		t.Fatalf("totp login: %d", rr.Code)
 	}
@@ -463,8 +479,11 @@ func loginForTest(t *testing.T, h http.Handler) (*http.Client, string) {
 	_ = json.Unmarshal(rr.Body.Bytes(), &body)
 	var cookie *http.Cookie
 	for _, c := range rr.Result().Cookies() {
-		if c.Name == "timeline_session" {
+		if c.Name == secureSessionCookieName || c.Name == legacySessionCookieName {
 			cookie = c
+			if c.Name == secureSessionCookieName {
+				break
+			}
 		}
 	}
 	if cookie == nil || body.CSRFToken == "" {

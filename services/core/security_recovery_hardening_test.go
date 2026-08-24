@@ -201,6 +201,12 @@ func TestMemorySessionCollectionAndActions(t *testing.T) {
 		t.Fatalf("revoked other session survived: %d", otherStatus.Code)
 	}
 
+	// This test creates a third independent session; clear the global replay
+	// fixture so the session-management assertions do not depend on a future
+	// TOTP step being available.
+	srv.store.mu.Lock()
+	srv.store.totpLastUsedSet = false
+	srv.store.mu.Unlock()
 	_, rawDelete := loginForTest(t, h)
 	deleteParts := bytes.SplitN([]byte(rawDelete), []byte("\n"), 2)
 	deleteCookie := string(deleteParts[0])

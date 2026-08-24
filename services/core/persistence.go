@@ -273,33 +273,6 @@ func persistChallengePurpose(ctx context.Context, db *sql.DB, challenge string, 
 	return err
 }
 
-// challengeValid checks a challenge without consuming it. The challenge is
-// consumed only after the submitted TOTP has been validated.
-func challengeValid(ctx context.Context, db *sql.DB, challenge string) (bool, error) {
-	return challengeValidPurpose(ctx, db, challenge, "login")
-}
-
-func challengeValidPurpose(ctx context.Context, db *sql.DB, challenge, purpose string) (bool, error) {
-	var valid bool
-	err := db.QueryRowContext(ctx, `SELECT expires_at>now() FROM mfa_challenges WHERE token_hash=$1 AND purpose=$2`, tokenHash(challenge), purpose).Scan(&valid)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return valid, err
-}
-
-func consumeChallenge(ctx context.Context, db *sql.DB, challenge string) (bool, error) {
-	return consumeChallengePurpose(ctx, db, challenge, "login")
-}
-
-func consumeChallengePurpose(ctx context.Context, db *sql.DB, challenge, purpose string) (bool, error) {
-	var ok bool
-	err := db.QueryRowContext(ctx, `DELETE FROM mfa_challenges WHERE token_hash=$1 AND purpose=$2 AND expires_at>now() RETURNING true`, tokenHash(challenge), purpose).Scan(&ok)
-	if err == sql.ErrNoRows {
-		return false, nil
-	}
-	return ok, err
-}
 func persistUndo(ctx context.Context, db *sql.DB, token, entryID string, payload []byte, expires time.Time) error {
 	_, err := db.ExecContext(ctx, `INSERT INTO undo_tokens(token_hash,entry_id,payload,expires_at) VALUES($1,$2::uuid,$3,$4)`, tokenHash(token), entryID, payload, expires)
 	return err

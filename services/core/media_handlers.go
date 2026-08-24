@@ -159,14 +159,15 @@ func (srv *Server) mediaTicket(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusBadRequest, "媒体可见性无效")
 		return
 	}
+	normalizedName := normalizeMediaName(in.Name, "media")
 	if in.Mime == "" {
-		in.Mime = mime.TypeByExtension(filepath.Ext(in.Name))
+		in.Mime = mime.TypeByExtension(filepath.Ext(normalizedName))
 	}
 	if in.Mime == "" || !allowedMediaMime(in.Mime) {
 		problem(w, http.StatusUnsupportedMediaType, "不支持的媒体类型")
 		return
 	}
-	m := &Media{ID: newID(), OriginalName: filepath.Base(in.Name), MimeType: in.Mime, SizeBytes: in.Size, Visibility: in.Visibility, Status: "uploading", CreatedAt: time.Now()}
+	m := &Media{ID: newID(), OriginalName: normalizedName, MimeType: in.Mime, SizeBytes: in.Size, Visibility: in.Visibility, Status: "uploading", CreatedAt: time.Now()}
 	if srv.store.persistent && srv.store.database != nil {
 		var owner string
 		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT id::text FROM users WHERE username='owner'`).Scan(&owner); err != nil {
@@ -695,7 +696,7 @@ func (srv *Server) mediaContent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", m.MimeType)
 	if m.Visibility == "private" {
 		w.Header().Set("Cache-Control", "private, no-store")
-		w.Header().Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(m.OriginalName, `"`, "")+`"`)
+		w.Header().Set("Content-Disposition", safeMediaContentDisposition(m.OriginalName))
 	}
 	if m.SHA256 == "" {
 		h := sha256.New()
@@ -715,7 +716,7 @@ func (srv *Server) mediaContent(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	http.ServeContent(w, r, m.OriginalName, m.CreatedAt, f)
+	http.ServeContent(w, r, normalizeMediaName(m.OriginalName, "media"), m.CreatedAt, f)
 }
 
 func (srv *Server) mediaContentDatabase(w http.ResponseWriter, r *http.Request) {
@@ -748,9 +749,9 @@ func (srv *Server) mediaContentDatabase(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", m.MimeType)
 	if m.Visibility == "private" {
 		w.Header().Set("Cache-Control", "private, no-store")
-		w.Header().Set("Content-Disposition", `inline; filename="`+strings.ReplaceAll(m.OriginalName, `"`, "")+`"`)
+		w.Header().Set("Content-Disposition", safeMediaContentDisposition(m.OriginalName))
 	}
 	w.Header().Set("ETag", `"`+m.SHA256+`"`)
 	w.Header().Set("Accept-Ranges", "bytes")
-	http.ServeContent(w, r, m.OriginalName, m.CreatedAt, f)
+	http.ServeContent(w, r, normalizeMediaName(m.OriginalName, "media"), m.CreatedAt, f)
 }

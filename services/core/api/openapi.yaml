@@ -559,7 +559,7 @@ paths:
 
 components:
   securitySchemes:
-    SessionCookie: {type: apiKey, in: cookie, name: timeline_session, description: HttpOnly SameSite=Lax session cookie; production sets Secure}
+    SessionCookie: {type: apiKey, in: cookie, name: __Host-timeline_session, description: HttpOnly SameSite=Lax Secure __Host- session cookie in production/TLS/explicit secure mode or trusted HTTPS proxy; HTTP development accepts legacy timeline_session}
   parameters:
     Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
     Cursor: {name: cursor, in: query, schema: {type: string}}

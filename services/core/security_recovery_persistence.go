@@ -243,7 +243,7 @@ func (srv *Server) changePasswordMemory(r *http.Request, in passwordChangeReques
 	now := time.Now()
 	srv.store.mu.Lock()
 	defer srv.store.mu.Unlock()
-	if in.CurrentPassword != srv.store.userPassword {
+	if !constantTimePasswordEqual(in.CurrentPassword, srv.store.userPassword) {
 		return errInvalidSecurityFactors
 	}
 	step, valid, err := validateTOTPWithStep(in.Code, srv.store.userTOTP, now)

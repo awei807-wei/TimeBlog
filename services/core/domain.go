@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -158,10 +157,7 @@ func getenv(k, fallback string) string {
 }
 
 func newID() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
+	b := mustRandomBytes(16)
 	return fmt.Sprintf("%s-%s-%s-%s-%s", hex.EncodeToString(b[:4]), hex.EncodeToString(b[4:6]), hex.EncodeToString(b[6:8]), hex.EncodeToString(b[8:10]), hex.EncodeToString(b[10:]))
 }
 
@@ -170,7 +166,7 @@ func nowShanghaiDate() string {
 }
 
 func (s *Store) authenticated(r *http.Request) bool {
-	c, err := r.Cookie("timeline_session")
+	c, err := requestSessionCookie(r)
 	if err != nil || c.Value == "" {
 		return false
 	}

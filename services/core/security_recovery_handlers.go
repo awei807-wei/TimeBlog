@@ -154,7 +154,7 @@ func (srv *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	srv.throttleSuccess(r, "owner-recovery")
-	clearTimelineSessionCookie(w)
+	clearTimelineSessionCookie(w, r)
 	jsonResponse(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
@@ -216,7 +216,6 @@ func jsonContentType(r *http.Request) bool {
 	return strings.EqualFold(contentType, "application/json")
 }
 
-func clearTimelineSessionCookie(w http.ResponseWriter) {
-	secure := getenv("APP_ENV", "") == "production"
-	http.SetCookie(w, &http.Cookie{Name: "timeline_session", MaxAge: -1, Path: "/", HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
+func clearTimelineSessionCookie(w http.ResponseWriter, r *http.Request) {
+	clearSessionCookies(w, r)
 }

@@ -938,6 +938,8 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   const embed = await fs.readFile(new URL('../app/article/EmbedResolver.tsx', import.meta.url), 'utf8');
   const mermaid = await fs.readFile(new URL('../app/article/MermaidResolver.tsx', import.meta.url), 'utf8');
   const markup = await fs.readFile(new URL('../app/article/EmbedMarkup.tsx', import.meta.url), 'utf8');
+  const sidebar = await fs.readFile(new URL('../app/components/ui/sidebar.tsx', import.meta.url), 'utf8');
+  const adminLayout = await fs.readFile(new URL('../app/admin/layout.tsx', import.meta.url), 'utf8');
   const worker = await fs.readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
   assert.match(embed, /sandbox="allow-scripts allow-same-origin allow-presentation"/);
   assert.match(embed, /referrerPolicy="strict-origin-when-cross-origin"/);
@@ -945,6 +947,8 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   assert.match(embed, /embedSource\(embed\.provider, embed\.url\)/);
   assert.match(mermaid, /decodeMermaidBase64/);
   assert.match(mermaid, /securityLevel: 'strict'/);
+  assert.match(mermaid, /DOMPurify\.sanitize\(result\.svg/);
+  assert.match(mermaid, /foreignobject/);
   assert.match(mermaid, /classList\.add\('mermaid-error'\)/);
   assert.match(mermaid, /图表暂时无法渲染/);
   assert.match(markup, /data-provider=/);
@@ -952,9 +956,87 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   assert.match(worker, /event\.request\.destination === 'image'/);
   assert.match(worker, /response\.ok && url\.origin === self\.location\.origin/);
   assert.match(worker, /startsWith\('\/private-media\/'\)/);
+  assert.match(worker, /timeline-shell-v6/);
+  assert.match(worker, /if \(url\.pathname\.startsWith\('\/search'\)\)/);
+  assert.match(worker, /event\.respondWith\(fetch\(event\.request\)\)/);
   assert.match(worker, /CACHE_INVALIDATE/);
   assert.match(worker, /CACHE_INVALIDATED/);
-  assert.match(worker, /timeline-shell-v5/);
+  assert.doesNotMatch(sidebar, /SIDEBAR_COOKIE|document\.cookie/);
+  assert.doesNotMatch(adminLayout, /'use client'/);
+  assert.match(adminLayout, /cookies\(\)/);
+  assert.match(adminLayout, /API_ORIGIN/);
+  assert.match(adminLayout, /api\/v1\/auth\/session\/status/);
+  assert.match(adminLayout, /Cookie: cookieHeader/);
+  assert.match(adminLayout, /cache: 'no-store'/);
+  assert.match(adminLayout, /session\.authenticated === true/);
+  assert.match(adminLayout, /redirect\('\/login'\)/);
+});
+
+test('Mermaid SVG sanitizer preserves HTML labels and removes active output', async () => {
+  const fs = await import('node:fs/promises');
+  const DOMPurify = (await import('isomorphic-dompurify')).default;
+  const mermaid = await fs.readFile(new URL('../app/article/MermaidResolver.tsx', import.meta.url), 'utf8');
+  const dirty = '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><span>保留标签</span><img src="x" onerror="alert(1)"></div></foreignObject><a href="javascript:alert(2)">link</a><script>alert(3)</script></svg>';
+  const clean = DOMPurify.sanitize(dirty, {
+    USE_PROFILES: { html: true, svg: true, svgFilters: true },
+    ADD_TAGS: ['foreignobject'],
+    ADD_ATTR: ['dominant-baseline'],
+    HTML_INTEGRATION_POINTS: { foreignobject: true },
+  });
+  assert.match(mermaid, /wrapper\.innerHTML = safeSvg/);
+  assert.match(clean, /保留标签/);
+  assert.doesNotMatch(clean, /<script|onerror|javascript:/i);
+});
+
+test('Next page security headers cover runtime and embed boundaries', async () => {
+  const config = (await import('../next.config.mjs')).default;
+  const groups = await config.headers();
+  const headers = Object.fromEntries(groups.flatMap(group => group.headers.map(header => [header.key, header.value])));
+  assert.match(headers['Content-Security-Policy'], /script-src 'self' 'unsafe-inline'/);
+  assert.match(headers['Content-Security-Policy'], /connect-src 'self'/);
+  assert.match(headers['Content-Security-Policy'], /worker-src 'self'/);
+  for (const source of ['https:\/\/www\.youtube-nocookie\.com', 'https:\/\/player\.vimeo\.com', 'https:\/\/player\.bilibili\.com']) {
+    assert.match(headers['Content-Security-Policy'], new RegExp(source));
+  }
+  assert.equal(headers['Strict-Transport-Security'], 'max-age=31536000; includeSubDomains');
+  assert.equal(headers['X-Frame-Options'], 'SAMEORIGIN');
+  assert.equal(headers['X-Content-Type-Options'], 'nosniff');
+  assert.equal(headers['Referrer-Policy'], 'strict-origin-when-cross-origin');
+  assert.equal(headers['Permissions-Policy'], 'camera=(), microphone=(), geolocation=()');
+});
+
+test('Service Worker keeps every search request network-only', async () => {
+  const fs = await import('node:fs/promises');
+  const vm = await import('node:vm');
+  const worker = await fs.readFile(new URL('../public/sw.js', import.meta.url), 'utf8');
+  const listeners = {};
+  const networkRequests = [];
+  const scope = {
+    self: {
+      location: { origin: 'https://blog.example.test' },
+      addEventListener: (type, handler) => { listeners[type] = handler; },
+      skipWaiting: () => undefined,
+      clients: { claim: () => undefined, matchAll: async () => [] },
+    },
+    caches: { open: async () => { throw new Error('search must not open a cache'); }, keys: async () => [], match: async () => undefined },
+    fetch: async request => { networkRequests.push(request.url); return { ok: true }; },
+    URL,
+    Promise,
+  };
+  vm.runInNewContext(worker, scope);
+  for (const mode of ['navigate', 'cors']) {
+    let responsePromise;
+    listeners.fetch({
+      request: { method: 'GET', mode, destination: '', url: `https://blog.example.test/search?q=${mode}` },
+      respondWith: value => { responsePromise = value; },
+      waitUntil: () => undefined,
+    });
+    await responsePromise;
+  }
+  assert.deepEqual(networkRequests, [
+    'https://blog.example.test/search?q=navigate',
+    'https://blog.example.test/search?q=cors',
+  ]);
 });
 
 test('public API fetches bypass Next data cache and mutations notify the worker', async () => {

@@ -216,6 +216,11 @@ func rewriteImportedMediaReferences(text string, mapping map[string]string) stri
 	})
 }
 
+func normalizeImportedEntryContent(entry *importEntryRecord, mediaMapping map[string]string) {
+	entry.Markdown = rewriteImportedMediaReferences(entry.Markdown, mediaMapping)
+	entry.RenderedHTML, entry.PlainText = renderMarkdown(entry.Markdown)
+}
+
 func rewriteImportedJSONReferences(raw json.RawMessage, mediaMapping, entryMapping map[string]string) json.RawMessage {
 	if len(raw) == 0 || !json.Valid(raw) {
 		return raw
@@ -606,7 +611,7 @@ func (srv *Server) importEntries(w http.ResponseWriter, r *http.Request) {
 			problem(w, http.StatusBadRequest, "媒体文件缺失或大小不匹配")
 			return
 		}
-		if filepath.Base(record.OriginalName) != filename {
+		if normalizeMediaName(record.OriginalName, filename) != normalizeMediaName(filename, filename) {
 			problem(w, http.StatusBadRequest, "媒体原始文件名与归档不一致")
 			return
 		}
@@ -665,6 +670,11 @@ func (srv *Server) importEntries(w http.ResponseWriter, r *http.Request) {
 			problem(w, http.StatusInternalServerError, "媒体临时写入失败")
 			return
 		}
+		validatedSHA, validatedSize, validationErr := validateMediaFile(stagedPath, record.SizeBytes, record.MimeType)
+		if validationErr != nil || validatedSize != record.SizeBytes || !strings.EqualFold(validatedSHA, contentSHA) {
+			problem(w, http.StatusBadRequest, "媒体 MIME 或内容校验失败")
+			return
+		}
 		finalPath := filepath.Join(mediaRoot, targetID)
 		if !mediaPathWithinRoot(mediaRoot, finalPath) {
 			problem(w, http.StatusInternalServerError, "媒体路径无效")
@@ -685,10 +695,7 @@ func (srv *Server) importEntries(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		movedMedia = append(movedMedia, finalPath)
-		originalName := record.OriginalName
-		if originalName == "" {
-			originalName = filename
-		}
+		originalName := normalizeMediaName(record.OriginalName, filename)
 		result, err := tx.ExecContext(r.Context(), `INSERT INTO media(id,owner_id,provider,visibility,storage_path,original_name,mime_type,size_bytes,sha256,status) VALUES($1::uuid,$2::uuid,'local_private',$3,$4,$5,$6,$7,$8,'ready') ON CONFLICT (id) DO UPDATE SET visibility=EXCLUDED.visibility,storage_path=EXCLUDED.storage_path,original_name=EXCLUDED.original_name,mime_type=EXCLUDED.mime_type,size_bytes=EXCLUDED.size_bytes,sha256=EXCLUDED.sha256,status='ready' WHERE media.owner_id=$2::uuid`, targetID, ownerID, record.Visibility, finalPath, originalName, record.MimeType, record.SizeBytes, contentSHA)
 		if err != nil {
 			problem(w, http.StatusConflict, "保存媒体失败")
@@ -717,6 +724,7 @@ func (srv *Server) importEntries(w http.ResponseWriter, r *http.Request) {
 			problem(w, http.StatusBadRequest, "entry UUID invalid")
 			return
 		}
+		normalizeImportedEntryContent(&entry, mediaMapping)
 		targetID := entry.ID
 		var existing importEntryRecord
 		var existingJournalTime sql.NullString
@@ -784,8 +792,6 @@ func (srv *Server) importEntries(w http.ResponseWriter, r *http.Request) {
 		if entry.TimePrecision == "" {
 			entry.TimePrecision = "day"
 		}
-		entry.Markdown = rewriteImportedMediaReferences(entry.Markdown, mediaMapping)
-		entry.RenderedHTML = rewriteImportedMediaReferences(entry.RenderedHTML, mediaMapping)
 		entryTargetIDs[entry.ID] = targetID
 		result, err := tx.ExecContext(r.Context(), `INSERT INTO entries(id,author_id,kind,status,visibility,title,slug,summary,markdown,rendered_html,plain_text,journal_date,journal_time,time_precision,day_position,revision,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NULLIF($13,''),$14,$15,$16,COALESCE(NULLIF($17::timestamptz,'epoch'::timestamptz),now()),COALESCE(NULLIF($18::timestamptz,'epoch'::timestamptz),now())) ON CONFLICT (id) DO UPDATE SET kind=EXCLUDED.kind,status=EXCLUDED.status,visibility=EXCLUDED.visibility,title=EXCLUDED.title,slug=EXCLUDED.slug,summary=EXCLUDED.summary,markdown=EXCLUDED.markdown,rendered_html=EXCLUDED.rendered_html,plain_text=EXCLUDED.plain_text,journal_date=EXCLUDED.journal_date,journal_time=EXCLUDED.journal_time,time_precision=EXCLUDED.time_precision,day_position=EXCLUDED.day_position,revision=EXCLUDED.revision,updated_at=now() WHERE entries.author_id=$2::uuid`, targetID, ownerID, entry.Kind, entry.Status, entry.Visibility, entry.Title, entry.Slug, entry.Summary, entry.Markdown, entry.RenderedHTML, entry.PlainText, entry.JournalDate, entry.JournalTime, entry.TimePrecision, entry.DayPosition, entry.Revision, entry.CreatedAt, entry.UpdatedAt)
 		if err != nil {
@@ -1882,6 +1888,11 @@ func (srv *Server) exportDownload(w http.ResponseWriter, r *http.Request) {
 	var filePath string
 	if err := srv.store.database.QueryRowContext(r.Context(), `SELECT storage_path FROM exports WHERE id=$1::uuid AND owner_id=$2::uuid AND status='ready'`, path, ownerID).Scan(&filePath); err != nil {
 		problem(w, 404, "导出不存在")
+		return
+	}
+	withinRoot, pathErr := pathWithinResolvedRoot(configuredExportRoot(), filePath)
+	if pathErr != nil || !withinRoot {
+		problem(w, http.StatusNotFound, "导出不存在")
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -59,7 +58,26 @@ func decode(r *http.Request, dst any) error {
 	if r.Body == nil {
 		return io.EOF
 	}
-	return json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(dst)
+	const maxJSONBodyBytes = 2 << 20
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxJSONBodyBytes+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxJSONBodyBytes {
+		return errors.New("request body is too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	if err := decoder.Decode(dst); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return errors.New("request body must contain one JSON value")
+		}
+		return err
+	}
+	return nil
 }
 
 // decodeStrictJSON accepts exactly one JSON object and rejects unknown
@@ -102,7 +120,7 @@ func decodeStrictJSON(r *http.Request, dst any) error {
 
 func tokenHash(v string) string { h := sha256.Sum256([]byte(v)); return hex.EncodeToString(h[:]) }
 
-func randomToken() string { b := make([]byte, 24); _, _ = rand.Read(b); return hex.EncodeToString(b) }
+func randomToken() string { return hex.EncodeToString(mustRandomBytes(24)) }
 
 // newCSRFKey derives a dedicated CSRF signing key from a configured secret.
 // Persistent deployments already require TOTP_ENCRYPTION_KEY; deriving a
@@ -123,12 +141,7 @@ func newCSRFKey() []byte {
 			return h[:]
 		}
 	}
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		h := sha256.Sum256([]byte("timeblog/csrf/fallback"))
-		return h[:]
-	}
-	return key
+	return mustRandomBytes(32)
 }
 
 func csrfToken(key []byte, sessionToken string) string {

@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"github.com/pquerna/otp/totp"
+	"errors"
 	"log"
 	"net"
 	"net/http"
@@ -250,7 +250,7 @@ func (srv *Server) loginPassword(w http.ResponseWriter, r *http.Request) {
 			problem(w, http.StatusUnauthorized, "密码错误")
 			return
 		}
-	} else if srv.store.userPassword == "" || in.Password != srv.store.userPassword {
+	} else if srv.store.userPassword == "" || !constantTimePasswordEqual(in.Password, srv.store.userPassword) {
 		srv.throttleFailure(r, "owner")
 		problem(w, 401, "密码错误")
 		return
@@ -286,95 +286,37 @@ func (srv *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 		problem(w, 401, "验证码错误")
 		return
 	}
-	ok := false
+	var result loginSessionResult
 	var err error
 	if srv.store.persistent && srv.store.database != nil {
-		ok, err = challengeValid(r.Context(), srv.store.database, in.Challenge)
-		if err != nil {
-			ok = false
-		}
+		result, err = srv.completeLoginTOTPPersistent(r.Context(), in.Challenge, in.Code)
 	} else {
-		srv.store.mu.Lock()
-		challengeHash := tokenHash(in.Challenge)
-		challenge, exists := srv.store.mfaChallenges[challengeHash]
-		srv.store.mu.Unlock()
-		ok = exists && challenge.ChallengeHash == challengeHash && challenge.Purpose == "login" && time.Now().Before(challenge.ExpiresAt)
+		result, err = srv.completeLoginTOTPMemory(in.Challenge, in.Code, time.Now())
 	}
-	if !ok {
+	if err != nil {
 		srv.throttleFailure(r, "owner-totp")
-		problem(w, http.StatusUnauthorized, "MFA challenge 无效或已过期")
-		return
-	}
-	validCode := false
-	if srv.store.persistent && srv.store.database != nil {
-		var secret string
-		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT totp_secret_encrypted FROM users WHERE username='owner'`).Scan(&secret); err == nil {
-			if plain, err := decryptSecret(secret); err == nil {
-				validCode = totp.Validate(in.Code, plain)
-			}
+		switch {
+		case errors.Is(err, errLoginChallengeInvalid):
+			problem(w, http.StatusUnauthorized, "MFA challenge 无效或已过期")
+		case errors.Is(err, errLoginTOTPInvalid):
+			problem(w, http.StatusUnauthorized, "验证码错误")
+		case errors.Is(err, errLoginTOTPReplay):
+			problem(w, http.StatusUnauthorized, "验证码已使用，请重新获取验证码")
+		default:
+			problem(w, http.StatusInternalServerError, "登录失败")
 		}
-	} else {
-		validCode = srv.store.userTOTP != "" && totp.Validate(in.Code, srv.store.userTOTP)
-	}
-	if !validCode {
-		srv.throttleFailure(r, "owner-totp")
-		problem(w, http.StatusUnauthorized, "验证码错误")
-		return
-	}
-	// Consume the challenge only after TOTP validation. This keeps a challenge
-	// usable after a mistyped code while retaining one-time replay protection.
-	if srv.store.persistent && srv.store.database != nil {
-		ok, err = consumeChallenge(r.Context(), srv.store.database, in.Challenge)
-	} else {
-		srv.store.mu.Lock()
-		challengeHash := tokenHash(in.Challenge)
-		challenge, exists := srv.store.mfaChallenges[challengeHash]
-		if exists && challenge.ChallengeHash == challengeHash && challenge.Purpose == "login" && time.Now().Before(challenge.ExpiresAt) {
-			delete(srv.store.mfaChallenges, challengeHash)
-			ok = true
-		} else {
-			ok = false
-		}
-		srv.store.mu.Unlock()
-	}
-	if err != nil || !ok {
-		srv.throttleFailure(r, "owner-totp")
-		problem(w, http.StatusUnauthorized, "MFA challenge 无效或已过期")
 		return
 	}
 	srv.throttleSuccess(r, "owner-totp")
-	token := randomToken()
-	now := time.Now()
-	// Bind the CSRF token to the session cookie with a server-only key.  The
-	// value is stable for the lifetime of this session, so parallel page reads
-	// cannot invalidate a mutation request that already captured the token.
-	csrf := csrfToken(srv.store.csrfKey, token)
-	if srv.store.persistent && srv.store.database != nil {
-		var uid string
-		if err := srv.store.database.QueryRowContext(r.Context(), `SELECT id::text FROM users WHERE username='owner'`).Scan(&uid); err != nil {
-			problem(w, 500, "用户不存在")
-			return
-		}
-		_, err := srv.store.database.ExecContext(r.Context(), `INSERT INTO sessions(id,user_id,token_hash,csrf_token_hash,last_seen,idle_expires,absolute_expires) VALUES(gen_random_uuid(),$1::uuid,$2,$3,$4,$5,$6)`, uid, tokenHash(token), tokenHash(csrf), now, now.Add(30*24*time.Hour), now.Add(90*24*time.Hour))
-		if err != nil {
-			problem(w, 500, "会话创建失败")
-			return
-		}
-	} else {
-		srv.store.mu.Lock()
-		srv.store.sessions[tokenHash(token)] = &Session{ID: newID(), TokenHash: tokenHash(token), CreatedAt: now, LastSeen: now, IdleExpires: now.Add(30 * 24 * time.Hour), AbsoluteExpires: now.Add(90 * 24 * time.Hour), CSRFToken: csrf}
-		srv.store.mu.Unlock()
-	}
-	secure := os.Getenv("APP_ENV") == "production"
-	http.SetCookie(w, &http.Cookie{Name: "timeline_session", Value: token, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode, Path: "/", MaxAge: 90 * 24 * 3600})
-	jsonResponse(w, 200, map[string]any{"authenticated": true, "csrfToken": csrf})
+	writeSessionCookie(w, r, result.Token)
+	jsonResponse(w, 200, map[string]any{"authenticated": true, "csrfToken": result.CSRF})
 }
 
 func (srv *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if !srv.checkMutation(w, r) {
 		return
 	}
-	if c, err := r.Cookie("timeline_session"); err == nil {
+	if c, err := requestSessionCookie(r); err == nil {
 		if srv.store.persistent && srv.store.database != nil {
 			res, err := srv.store.database.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL`, tokenHash(c.Value))
 			if err != nil {
@@ -393,7 +335,7 @@ func (srv *Server) logout(w http.ResponseWriter, r *http.Request) {
 		}
 		srv.store.mu.Unlock()
 	}
-	http.SetCookie(w, &http.Cookie{Name: "timeline_session", MaxAge: -1, Path: "/", HttpOnly: true, Secure: os.Getenv("APP_ENV") == "production", SameSite: http.SameSiteLaxMode})
+	clearSessionCookies(w, r)
 	jsonResponse(w, 200, map[string]bool{"ok": true})
 }
 
@@ -408,7 +350,7 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 			problem(w, 401, "未登录")
 			return
 		}
-		c, _ := r.Cookie("timeline_session")
+		c, _ := requestSessionCookie(r)
 		csrf := csrfToken(srv.store.csrfKey, c.Value)
 		if _, err := srv.store.database.ExecContext(r.Context(), `UPDATE sessions SET csrf_token_hash=$1 WHERE token_hash=$2`, tokenHash(csrf), tokenHash(c.Value)); err != nil {
 			problem(w, 500, "CSRF token 同步失败")
@@ -426,7 +368,7 @@ func (srv *Server) authSession(w http.ResponseWriter, r *http.Request) {
 		problem(w, 401, "未登录")
 		return
 	}
-	c, _ := r.Cookie("timeline_session")
+	c, _ := requestSessionCookie(r)
 	srv.store.mu.RLock()
 	csrf := csrfToken(srv.store.csrfKey, c.Value)
 	session := srv.store.sessions[tokenHash(c.Value)]
@@ -449,7 +391,7 @@ func (srv *Server) authSessionStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	var cookie *http.Cookie
 	var err error
-	if cookie, err = r.Cookie("timeline_session"); err != nil || cookie.Value == "" {
+	if cookie, err = requestSessionCookie(r); err != nil || cookie.Value == "" {
 		problem(w, http.StatusUnauthorized, "未登录")
 		return
 	}
@@ -489,7 +431,7 @@ func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		currentHash := ""
-		if cookie, cookieErr := r.Cookie("timeline_session"); cookieErr == nil {
+		if cookie, cookieErr := requestSessionCookie(r); cookieErr == nil {
 			currentHash = tokenHash(cookie.Value)
 		}
 		rows, err := srv.store.database.QueryContext(r.Context(), `SELECT id::text,token_hash,created_at,last_seen FROM sessions
@@ -524,7 +466,7 @@ func (srv *Server) authSessions(w http.ResponseWriter, r *http.Request) {
 	srv.store.mu.RLock()
 	defer srv.store.mu.RUnlock()
 	currentHash := ""
-	if cookie, cookieErr := r.Cookie("timeline_session"); cookieErr == nil {
+	if cookie, cookieErr := requestSessionCookie(r); cookieErr == nil {
 		currentHash = tokenHash(cookie.Value)
 	}
 	now := time.Now()
@@ -552,7 +494,7 @@ func (srv *Server) authSessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "revoke-others" {
-		c, _ := r.Cookie("timeline_session")
+		c, _ := requestSessionCookie(r)
 		if srv.store.persistent && srv.store.database != nil {
 			if _, err := srv.store.database.ExecContext(r.Context(), `UPDATE sessions SET revoked_at=now() WHERE token_hash<>$1 AND revoked_at IS NULL`, tokenHash(c.Value)); err != nil {
 				problem(w, 500, "会话撤销失败")

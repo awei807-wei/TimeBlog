@@ -64,7 +64,7 @@ func (srv *Server) rotateRecoveryKeyPersistent(r *http.Request, in recoveryKeyRo
 	if err = updateTOTPReplayStep(r.Context(), tx, factors.ID, step); err != nil {
 		return err
 	}
-	currentCookie, cookieErr := r.Cookie("timeline_session")
+	currentCookie, cookieErr := requestSessionCookie(r)
 	if cookieErr != nil || currentCookie.Value == "" {
 		return errInvalidSecurityFactors
 	}
@@ -116,7 +116,7 @@ func (srv *Server) rotateRecoveryKeyMemory(r *http.Request, in recoveryKeyRotati
 		return nil
 	}
 	// Memory mode keeps the historical plaintext password representation.
-	if in.Password != srv.store.userPassword {
+	if !constantTimePasswordEqual(in.Password, srv.store.userPassword) {
 		return errInvalidSecurityFactors
 	}
 	step, valid, err := validateTOTPWithStep(in.Code, srv.store.userTOTP, now)
@@ -134,7 +134,7 @@ func (srv *Server) rotateRecoveryKeyMemory(r *http.Request, in recoveryKeyRotati
 	srv.store.totpLastUsedStep = step
 	srv.store.totpLastUsedSet = true
 	currentToken := ""
-	if cookie, cookieErr := r.Cookie("timeline_session"); cookieErr == nil {
+	if cookie, cookieErr := requestSessionCookie(r); cookieErr == nil {
 		currentToken = tokenHash(cookie.Value)
 	}
 	for tokenHashValue, session := range srv.store.sessions {

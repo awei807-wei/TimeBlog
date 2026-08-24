@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import DOMPurify from 'isomorphic-dompurify';
 import MediaResolver from './MediaResolver';
 import { decodeMermaidBase64 } from '../../lib/mermaid-utils';
 
@@ -25,7 +26,13 @@ export default function MermaidResolver({ html }: { html: string }) {
           if (!cancelled && placeholder.isConnected) {
             const wrapper = document.createElement('div');
             wrapper.className = 'mermaid-rendered';
-            wrapper.innerHTML = result.svg;
+            const safeSvg = DOMPurify.sanitize(result.svg, {
+              USE_PROFILES: { html: true, svg: true, svgFilters: true },
+              ADD_TAGS: ['foreignobject'],
+              ADD_ATTR: ['dominant-baseline'],
+              HTML_INTEGRATION_POINTS: { foreignobject: true },
+            });
+            wrapper.innerHTML = safeSvg;
             placeholder.replaceWith(wrapper);
           }
         } catch {
