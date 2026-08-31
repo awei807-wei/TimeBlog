@@ -68,3 +68,7 @@ test-results/
 .helloagents/
 
 # Keep deployment/docs assets and the blueprint document tracked.
+
+# Agent-generated analysis/report documents (created by Snow AI CLI team runs)
+docs/adr/ADR-011-webdav-mount-backup-feasibility.md
+docs/operations/unraid-nas-pull-backup.md
