@@ -16,7 +16,7 @@
   .writing-composer { padding: 14px; border-radius: 12px; }
   .writing-editor-heading small { max-width: 230px; }
   .writing-composer .novel-editor-shell { min-height: clamp(420px, 62vh, 760px); min-height: clamp(420px, 62dvh, 760px); }
-  .writing-composer .novel-editor-content { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); padding: 24px 18px 70px; font-size: 16px; }
+  .writing-composer .novel-editor-content { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); padding: 18px 14px 48px; font-size: 16px; }
   .writing-composer .novel-editor-content .ProseMirror { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); }
   .writing-composer .writing-media-button,
   .writing-composer .upload-browse-button,
