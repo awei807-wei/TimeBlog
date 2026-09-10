@@ -1,6 +1,5 @@
 import './globals.css';
 import './article-prose.css';
-import './mdx-editor-chrome.css';
 import './public-shell.css';
 import './public-pages.css';
 import './public-views.css';

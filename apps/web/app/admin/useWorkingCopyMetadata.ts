@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import type { MarkdownEditorHandle } from './editor-contract';
 import {
   applyWorkingCopyFields,
   EMPTY_WORKING_COPY_META,
@@ -15,13 +15,14 @@ type WorkingCopyMetadataOptions = {
   csrf: string;
   payload: Record<string, unknown>;
   applyMarkdown: (next: string) => void;
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   setMessage: Dispatch<SetStateAction<string>>;
   setDraftId: (id: string) => void;
   bindings: WorkingCopyEditorBindings;
+  editEntryID?: string | null;
 };
 
-export function useWorkingCopyMetadata({ csrf, payload, applyMarkdown, editorRef, setMessage, setDraftId, bindings }: WorkingCopyMetadataOptions) {
+export function useWorkingCopyMetadata({ csrf, payload, applyMarkdown, editorRef, setMessage, setDraftId, bindings, editEntryID }: WorkingCopyMetadataOptions) {
   const [editingEntryID, setEditingEntryID] = useState('');
   const [editingWorkingID, setEditingWorkingID] = useState('');
   const [editingBaseRevision, setEditingBaseRevision] = useState(0);
@@ -54,7 +55,7 @@ export function useWorkingCopyMetadata({ csrf, payload, applyMarkdown, editorRef
       editorRef.current?.focus();
     }, 0);
   }, [applyMarkdown, editorRef, setCategories, setDate, setDraftId, setJournalTime, setKind, setMessage, setSlug, setStatus, setSummary, setTags, setTitle]);
-  const { loadingEdit } = useEditWorkingCopyLoader({ csrf, setMessage, applyWorkingCopy });
+  const { loadingEdit } = useEditWorkingCopyLoader({ csrf, setMessage, applyWorkingCopy, editEntryID });
 
   useEffect(() => {
     if (!editingEntryID || !workingCopyReady.current) return;

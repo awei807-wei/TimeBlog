@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { API } from '@/lib/api';
-import type { MdxEditorViewMode } from './MdxMarkdownEditor';
 import type { MediaCapability } from './useMediaUploads';
 
 const INITIAL_MEDIA_CAPABILITY: MediaCapability = {
@@ -16,7 +15,6 @@ const INITIAL_MEDIA_CAPABILITY: MediaCapability = {
 export function useAdminMediaCapability(refreshSessionCSRF: () => Promise<string>) {
   const [online, setOnline] = useState(true);
   const [editorReady, setEditorReady] = useState(false);
-  const [editorViewMode, setEditorViewMode] = useState<MdxEditorViewMode>('rich-text');
   const [mediaCapability, setMediaCapability] = useState<MediaCapability>(INITIAL_MEDIA_CAPABILITY);
 
   useEffect(() => {
@@ -57,9 +55,7 @@ export function useAdminMediaCapability(refreshSessionCSRF: () => Promise<string
   return {
     online,
     editorReady,
-    editorViewMode,
     mediaCapability,
     setEditorReady,
-    setEditorViewMode,
   };
 }

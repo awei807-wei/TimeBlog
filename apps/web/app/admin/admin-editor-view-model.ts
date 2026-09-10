@@ -47,7 +47,6 @@ export function buildAdminEditorViewProps(message: string, infrastructure: Infra
     onEditorError: mediaState.setMessage,
     onEditorNotice: mediaState.setMessage,
     onEditorReady: media.setEditorReady,
-    onViewModeChange: media.handleEditorViewModeChange,
     onDragEnter: mediaState.interactions.onDragEnter,
     onDragOver: mediaState.interactions.onDragOver,
     onDragLeave: mediaState.interactions.onDragLeave,

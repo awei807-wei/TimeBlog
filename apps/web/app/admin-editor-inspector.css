@@ -231,8 +231,13 @@
   text-align: left;
 }
 
-.writing-drafts .draft-list button:hover {
+.writing-drafts .draft-list button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface));
+}
+
+.writing-drafts .draft-list button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
 }
 
 .draft-card-meta {
@@ -341,8 +346,4 @@
   border-color: var(--ink);
   background: var(--ink);
   color: var(--paper);
-}
-
-.dark .writing-composer .mdx-editor .mdxeditor-toolbar {
-  background: color-mix(in srgb, var(--surface) 94%, var(--paper));
 }

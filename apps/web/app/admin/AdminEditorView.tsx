@@ -1,7 +1,6 @@
 'use client';
 
 import type { DragEvent, RefObject } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
 import { AlertCircle, Check, Cloud, CloudOff, FileText, LoaderCircle, Paperclip, Settings2, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import type { UploadItem } from '@/lib/media-utils';
@@ -9,7 +8,8 @@ import AttachmentPreview from './AttachmentPreview';
 import DraftTray from './DraftTray';
 import EditingDraftNotice from './EditingDraftNotice';
 import JournalDatePicker from './JournalDatePicker';
-import MdxMarkdownEditor, { type MdxEditorViewMode } from './MdxMarkdownEditor';
+import NovelMarkdownEditor from './NovelMarkdownEditor';
+import type { MarkdownEditorHandle } from './editor-contract';
 import TagInput from './TagInput';
 import UploadPanel from './UploadPanel';
 import type { Draft } from './editor-storage';
@@ -42,7 +42,9 @@ export type AdminEditorViewProps = {
   discardingUnpublishedChanges: boolean;
   drafts: Draft[];
   uploads: UploadItem[];
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
+  presentation?: 'page' | 'dialog';
+  editorPortalRef?: RefObject<Element | null>;
   onToggleUploadPanel: () => void;
   onDiscardWorkingCopy: () => void;
   onTitleChange: (value: string) => void;
@@ -54,7 +56,6 @@ export type AdminEditorViewProps = {
   onEditorError: (message: string) => void;
   onEditorNotice: (message: string) => void;
   onEditorReady: (ready: boolean) => void;
-  onViewModeChange: (mode: MdxEditorViewMode) => void;
   onDragEnter: (event: DragEvent<HTMLDivElement>) => void;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
   onDragLeave: (event: DragEvent<HTMLDivElement>) => void;
@@ -79,10 +80,10 @@ function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, mediaAvailabilityM
         <span className="writing-section-label">正文</span>
         <small className={mediaInputDisabled ? 'is-unavailable' : ''}>{mediaAvailabilityMessage}</small>
       </div>
-      <div className="editor-toolbar editor-toolbar-actions" aria-label="编辑工具">
+      <div className="writing-media-actions" aria-label="媒体工具">
         <button
           type="button"
-          className={`tool upload-control${uploadPanelOpen ? ' active' : ''}${mediaInputDisabled ? ' upload-disabled' : ''}`}
+          className={`writing-media-button${uploadPanelOpen ? ' active' : ''}${mediaInputDisabled ? ' upload-disabled' : ''}`}
           aria-label="添加媒体"
           aria-disabled={mediaInputDisabled}
           aria-expanded={uploadPanelOpen}
@@ -181,11 +182,15 @@ function SaveActions({ markdown, saving, loadingEdit, mediaStillProcessing, edit
   );
 }
 
-function AdminSidebar({ drafts, onLoadDraft }: Pick<AdminEditorViewProps, 'drafts' | 'onLoadDraft'>) {
+function AdminSidebar({ drafts, onLoadDraft, mediaStillProcessing, saving }: Pick<AdminEditorViewProps, 'drafts' | 'onLoadDraft' | 'mediaStillProcessing' | 'saving'>) {
+  const navigationDisabled = mediaStillProcessing || saving;
+  const manageLinkContent = <><FileText aria-hidden="true" />管理全部内容</>;
   return (
     <aside className="writing-sidebar" aria-label="写作辅助">
-      <DraftTray drafts={drafts} onLoadDraft={onLoadDraft} />
-      <Link className="writing-manage-link" href="/admin/entries"><FileText aria-hidden="true" />管理全部内容</Link>
+      <DraftTray drafts={drafts} onLoadDraft={onLoadDraft} disabled={mediaStillProcessing} />
+      {navigationDisabled
+        ? <span className="writing-manage-link" aria-disabled="true">{manageLinkContent}</span>
+        : <Link className="writing-manage-link" href="/admin/entries">{manageLinkContent}</Link>}
     </aside>
   );
 }
@@ -193,18 +198,22 @@ function AdminSidebar({ drafts, onLoadDraft }: Pick<AdminEditorViewProps, 'draft
 export default function AdminEditorView(props: AdminEditorViewProps) {
   const showNotice = Boolean(props.editingEntryID && props.kind === 'article' && props.workingCopyMeta.publishedStatus === 'published' && props.workingCopyMeta.publishedVisibility === 'public');
   const pageTitle = props.editingEntryID ? '编辑内容' : props.kind === 'article' ? '新建文章' : '写一条随记';
-  return (
-    <main id="main-content" className="writing-shell">
-      <header className="writing-page-header">
-        <div className="writing-page-title">
-          <span className={`writing-connection ${props.online ? 'is-online' : 'is-offline'}`}>
-            {props.online ? <Cloud aria-hidden="true" /> : <CloudOff aria-hidden="true" />}
-            {props.online ? '在线' : '离线'}
-          </span>
+  const connection = (
+    <span className={`writing-connection ${props.online ? 'is-online' : 'is-offline'}`}>
+      {props.online ? <Cloud aria-hidden="true" /> : <CloudOff aria-hidden="true" />}
+      {props.online ? '在线' : '离线'}
+    </span>
+  );
+  const content = (
+    <>
+      <header className={`writing-page-header${props.presentation === 'dialog' ? ' is-dialog' : ''}`}>
+        {props.presentation !== 'dialog' && <div className="writing-page-title">
+          {connection}
           <h1>{pageTitle}</h1>
           <p>内容会自动保存在本机草稿中，准备好后再决定是否公开。</p>
-        </div>
+        </div>}
         <div className="writing-header-actions">
+          {props.presentation === 'dialog' && connection}
           <div className="writing-status" aria-live="polite">{props.message || (props.loadingEdit ? '正在载入内容…' : '所有更改会自动暂存')}</div>
           <SaveActions {...props} />
         </div>
@@ -216,7 +225,7 @@ export default function AdminEditorView(props: AdminEditorViewProps) {
             <EditingDraftNotice visible={showNotice} articleIdentifier={props.editingEntryID} meta={props.workingCopyMeta} discarding={props.discardingUnpublishedChanges} onDiscard={props.onDiscardWorkingCopy} />
             <ArticleMetadataFields {...props} />
             <EditorToolbar {...props} />
-            <MdxMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} onChange={props.onMarkdownChange} onFiles={props.onFiles} onImageUpload={props.onImageUpload} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} onViewModeChange={props.onViewModeChange} disabled={props.saving || props.loadingEdit} />
+            <NovelMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} editorPortalRef={props.editorPortalRef} onChange={props.onMarkdownChange} onFiles={props.mediaInputDisabled ? undefined : props.onFiles} onImageUpload={props.mediaInputDisabled ? undefined : props.onImageUpload} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} disabled={props.saving || props.loadingEdit} />
             <UploadPanel open={props.uploadPanelOpen} dragActive={props.dragActive} disabled={props.mediaInputDisabled} disabledMessage={props.mediaAvailabilityMessage} onDragEnter={props.onDragEnter} onDragOver={props.onDragOver} onDragLeave={props.onDragLeave} onDrop={props.onDrop} onFiles={files => props.onFiles(Array.from(files))} />
             <AttachmentPreview markdown={props.markdown} uploads={props.uploads} />
             <UploadQueue uploads={props.uploads} onCancelUpload={props.onCancelUpload} onRetryUpload={props.onRetryUpload} onRemoveUpload={props.onRemoveUpload} />
@@ -229,9 +238,11 @@ export default function AdminEditorView(props: AdminEditorViewProps) {
             <EntrySelectors {...props} />
             <p className="writing-inspector-note">私人内容不会出现在公开时间线、搜索和正文接口中。</p>
           </details>
-          <AdminSidebar drafts={props.drafts} onLoadDraft={props.onLoadDraft} />
+          <AdminSidebar drafts={props.drafts} onLoadDraft={props.onLoadDraft} mediaStillProcessing={props.mediaStillProcessing} saving={props.saving} />
         </div>
       </div>
-    </main>
+    </>
   );
+  if (props.presentation === 'dialog') return <div className="writing-shell writing-dialog-shell">{content}</div>;
+  return <main id="main-content" className="writing-shell">{content}</main>;
 }

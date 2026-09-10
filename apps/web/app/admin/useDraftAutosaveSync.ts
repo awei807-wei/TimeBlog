@@ -14,8 +14,12 @@ export function useDraftAutosaveSync(csrf: string, setMessage: Dispatch<SetState
   const epoch = useRef(0);
   const abort = useRef<AbortController | null>(null);
 
-  const syncDraft = useCallback(async (draft: Draft, expectedEpoch = epoch.current) => {
-    if (discardingRef.current || expectedEpoch !== epoch.current || !csrf || !navigator.onLine || Date.now() - lastSync.current < 2000) return;
+  const syncDraft = useCallback(async (draft: Draft, expectedEpoch = epoch.current, force = false) => {
+    if (discardingRef.current || expectedEpoch !== epoch.current) return;
+    if (!csrf || !navigator.onLine || (!force && Date.now() - lastSync.current < 2000)) {
+      await dbPut(QUEUE_STORE, { id: draft.id, draft, attempts: 0, nextTryAt: Date.now() + 1000 } satisfies QueueItem);
+      return;
+    }
     lastSync.current = Date.now();
     const controller = new AbortController();
     abort.current?.abort();
@@ -39,6 +43,7 @@ export function useDraftAutosaveSync(csrf: string, setMessage: Dispatch<SetState
         return;
       }
       if (!response.ok) throw new Error('sync');
+      await dbDelete(QUEUE_STORE, draft.id);
       setMessage('已同步工作草稿');
     } catch {
       if (discardingRef.current || controller.signal.aborted || expectedEpoch !== epoch.current) return;

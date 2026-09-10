@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import { API } from '@/lib/api';
 import { createUploadItem, isSupportedMedia, mediaMarkdownReference, mediaUploadUrl, removeMediaReferences, replaceMediaOccurrence, uploadResumable, MAX_MEDIA_BYTES, type UploadItem } from '@/lib/media-utils';
 import { dbDelete, dbGetAll, MEDIA_QUEUE_STORE, persistMediaQueueItem } from './editor-storage';
+import type { MarkdownEditorHandle } from './editor-contract';
 
 export type MediaCapability = {
   checked: boolean;
@@ -18,7 +18,7 @@ type EditorStatus = 'draft' | 'public' | 'private';
 type ResponseError = (response: Response, fallback: string) => Promise<Error>;
 
 type UseMediaUploadsOptions = {
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   markdownRef: MutableRefObject<string>;
   csrfRef: MutableRefObject<string>;
   csrf: string;
@@ -45,6 +45,43 @@ type UploadExecution = {
   onTicket: (mediaId: string) => void;
   onProgress: (progress: number) => void;
 };
+
+type MediaQueuePersistence = () => Promise<unknown>;
+
+// Keep queue writes ordered across hook instances too: a dialog can unmount
+// while an IndexedDB write is still pending and a new editor can recover the
+// same item before the old write settles.
+const mediaQueuePersistenceChains = new Map<string, Promise<void>>();
+const mediaQueueDeleteChains = new Map<string, Promise<void>>();
+
+function enqueueMediaQueuePersistence(itemID: string, operation: MediaQueuePersistence): Promise<void> {
+  const previous = mediaQueuePersistenceChains.get(itemID) || Promise.resolve();
+  let next: Promise<void>;
+  next = previous
+    .catch(() => undefined)
+    .then(operation)
+    .then(() => undefined)
+    .finally(() => {
+      if (mediaQueuePersistenceChains.get(itemID) === next) mediaQueuePersistenceChains.delete(itemID);
+    });
+  mediaQueuePersistenceChains.set(itemID, next);
+  return next;
+}
+
+function enqueueMediaQueueDelete(itemID: string): Promise<void> {
+  const next = enqueueMediaQueuePersistence(itemID, () => dbDelete(MEDIA_QUEUE_STORE, itemID));
+  mediaQueueDeleteChains.set(itemID, next);
+  void next.then(
+    () => { if (mediaQueueDeleteChains.get(itemID) === next) mediaQueueDeleteChains.delete(itemID); },
+    () => { if (mediaQueueDeleteChains.get(itemID) === next) mediaQueueDeleteChains.delete(itemID); },
+  );
+  return next;
+}
+
+async function waitForMediaQueuePersistenceChains() {
+  const pending = [...mediaQueuePersistenceChains.values()];
+  if (pending.length) await Promise.allSettled(pending);
+}
 
 async function executeUpload({ file, item, sessionCsrf, visibility, responseError, controller, onTicket, onProgress }: UploadExecution): Promise<{ mediaId: string; reference: string }> {
   const ticketResponse = await fetch(`${API}/admin/media/upload-ticket`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': sessionCsrf, 'Idempotency-Key': item.id }, body: JSON.stringify({ name: file.name, size: file.size, mime: file.type, visibility }), signal: controller.signal });
@@ -76,6 +113,17 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const cancelledUploads = useRef<Set<string>>(new Set());
   const uploadControllers = useRef<Map<string, AbortController>>(new Map());
+  const unmountedRef = useRef(false);
+
+  useEffect(() => {
+    unmountedRef.current = false;
+    const controllers = uploadControllers.current;
+    return () => {
+      unmountedRef.current = true;
+      for (const controller of controllers.values()) controller.abort();
+      controllers.clear();
+    };
+  }, []);
 
   const removeMediaToken = useCallback((source: string, item: UploadItem) => {
     let next = removeMediaReferences(source, item.id);
@@ -95,6 +143,7 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
   }, [csrf, csrfRef, onMessage]);
 
   const uploadMedia = useCallback(async (file: File, existingId?: string, existingReference?: string, options: UploadOptions = {}): Promise<string> => {
+    if (unmountedRef.current) return '';
     const insertReference = options.insertReference !== false;
     const rejectOnError = options.rejectOnError === true;
     const reject = (message: string) => {
@@ -108,6 +157,9 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
     if (!file.type.startsWith('image/') && !mediaCapability.nonImageUploadEnabled) return reject(mediaCapability.reason || '媒体上传暂不可用，请先配置可写的媒体存储');
 
     const item = createUploadItem(file, existingId);
+    // Recovery can rerun when capability/status state changes. Keep the first
+    // in-flight chain authoritative instead of replacing its abort controller.
+    if (uploadControllers.current.has(item.id) || mediaQueueDeleteChains.has(item.id)) return '';
     const reference = existingId && existingReference ? existingReference : mediaMarkdownReference(item.id, file.name, file.type);
     const itemWithReference: UploadItem = { ...item, markdownReference: reference };
     cancelledUploads.current.delete(item.id);
@@ -115,14 +167,14 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
     let serverMediaId = '';
     uploadControllers.current.set(item.id, controller);
     setUploads(current => current.some(value => value.id === item.id) ? current.map(value => value.id === item.id ? itemWithReference : value) : [...current, itemWithReference]);
-    void persistMediaQueueItem(itemWithReference, file);
+    void enqueueMediaQueuePersistence(item.id, () => persistMediaQueueItem(itemWithReference, file));
     let token = '';
 
     try {
-      const sessionCsrf = csrfRef.current || csrf || await refreshSessionCSRF();
       token = insertReference && existingId && markdownRef.current.includes(reference)
         ? reference
         : insertReference ? insertMediaReference(reference) : '';
+      const sessionCsrf = csrfRef.current || csrf || await refreshSessionCSRF();
       const result = await executeUpload({
         file,
         item,
@@ -131,27 +183,34 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
         responseError,
         controller,
         onTicket: mediaId => {
+          if (unmountedRef.current) return;
           serverMediaId = mediaId;
-          setUploads(current => current.map(value => value.id === item.id ? { ...value, status: 'uploading', progress: 0 } : value));
-          void persistMediaQueueItem({ ...itemWithReference, status: 'uploading' }, file);
+          const uploading: UploadItem = { ...itemWithReference, status: 'uploading', mediaId, progress: 0 };
+          setUploads(current => current.map(value => value.id === item.id ? uploading : value));
+          void enqueueMediaQueuePersistence(item.id, () => persistMediaQueueItem(uploading, file));
         },
-        onProgress: progress => setUploads(current => current.map(value => value.id === item.id ? { ...value, progress } : value)),
+        onProgress: progress => {
+          if (unmountedRef.current) return;
+          setUploads(current => current.map(value => value.id === item.id ? { ...value, progress } : value));
+        },
       });
+      if (unmountedRef.current) return '';
       if (cancelledUploads.current.has(item.id)) throw new Error('cancelled');
       if (token) applyMarkdown(replaceMediaOccurrence(markdownRef.current, token, result.reference));
       const ready: UploadItem = { ...itemWithReference, status: 'ready', mediaId: result.mediaId, markdownReference: result.reference };
       setUploads(current => current.map(value => value.id === item.id ? ready : value));
-      void persistMediaQueueItem(ready);
+      void enqueueMediaQueuePersistence(item.id, () => persistMediaQueueItem(ready));
       onMessage('媒体已上传并写入 Markdown');
       return `media://${result.mediaId}`;
     } catch (error) {
+      if (unmountedRef.current) return '';
       if (cancelledUploads.current.has(item.id) || (error instanceof Error && error.message === 'cancelled')) {
         setUploads(current => current.filter(value => value.id !== item.id));
         return '';
       }
       const failed: UploadItem = { ...itemWithReference, status: 'failed', mediaId: serverMediaId || undefined, error: '上传失败', progress: 0 };
       setUploads(current => current.map(value => value.id === item.id ? failed : value));
-      void persistMediaQueueItem(failed);
+      void enqueueMediaQueuePersistence(item.id, () => persistMediaQueueItem(failed));
       onMessage(error instanceof Error && error.message ? `媒体上传失败：${error.message}` : '媒体上传失败，保留引用占位符，可稍后重试');
       if (rejectOnError) throw error instanceof Error ? error : new Error('媒体上传失败');
       return '';
@@ -176,10 +235,9 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
   const cancelUpload = useCallback((item: UploadItem) => {
     cancelledUploads.current.add(item.id);
     uploadControllers.current.get(item.id)?.abort();
-    uploadControllers.current.delete(item.id);
     setUploads(current => current.filter(value => value.id !== item.id));
     applyMarkdown(removeMediaToken(editorRef.current?.getMarkdown() ?? markdownRef.current, item));
-    void dbDelete(MEDIA_QUEUE_STORE, item.id);
+    void enqueueMediaQueueDelete(item.id);
     if (item.mediaId) void deleteServerMedia(item.mediaId);
     onMessage(`已取消上传 ${item.fileName}`);
   }, [applyMarkdown, deleteServerMedia, editorRef, markdownRef, onMessage, removeMediaToken]);
@@ -191,14 +249,28 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
     }
     applyMarkdown(removeMediaToken(editorRef.current?.getMarkdown() ?? markdownRef.current, item));
     setUploads(current => current.filter(value => value.id !== item.id));
-    void dbDelete(MEDIA_QUEUE_STORE, item.id);
+    void enqueueMediaQueueDelete(item.id);
     if (item.status === 'failed' && item.mediaId) void deleteServerMedia(item.mediaId);
     onMessage('已从当前草稿移除附件；媒体文件仍保留在媒体库中');
   }, [applyMarkdown, cancelUpload, deleteServerMedia, editorRef, markdownRef, onMessage, removeMediaToken]);
 
   const recoverUploads = useCallback(async () => {
+    if (unmountedRef.current || uploadControllers.current.size) return;
+    await waitForMediaQueuePersistenceChains();
+    if (unmountedRef.current || uploadControllers.current.size) return;
     const values = await dbGetAll<UploadItem>(MEDIA_QUEUE_STORE);
-    const recovered = values.map(value => {
+    if (unmountedRef.current || uploadControllers.current.size) return;
+    const recovered = values.filter(value => !mediaQueueDeleteChains.has(value.id)).map(value => {
+      if (value.status === 'ready' && value.mediaId && value.id !== value.mediaId) {
+        const temporaryReference = `media://${value.id}`;
+        const finalReference = `media://${value.mediaId}`;
+        const repairedMarkdown = replaceMediaOccurrence(markdownRef.current, temporaryReference, finalReference);
+        if (repairedMarkdown !== markdownRef.current) applyMarkdown(repairedMarkdown);
+        return {
+          ...value,
+          markdownReference: value.markdownReference?.replace(temporaryReference, finalReference),
+        };
+      }
       if (value.status !== 'queued' && value.status !== 'uploading') return value;
       if (!value.file) return { ...value, status: 'failed' as const, needsReselect: true, error: '浏览器未保存此文件，需重新选择文件' };
       const mime = value.file.type || value.mime;
@@ -206,15 +278,18 @@ export function useMediaUploads({ editorRef, markdownRef, csrfRef, csrf, status,
       if (!enabled) return { ...value, status: 'failed' as const, progress: 0, error: mediaCapability.reason || '媒体存储不可用，请重新选择文件后重试' };
       return value;
     });
+    if (unmountedRef.current) return;
     setUploads(recovered);
     for (const value of recovered) {
-      void persistMediaQueueItem(value, value.file);
+      if (unmountedRef.current) return;
+      if (uploadControllers.current.has(value.id)) continue;
+      void enqueueMediaQueuePersistence(value.id, () => persistMediaQueueItem(value, value.file));
       if ((value.status === 'queued' || value.status === 'uploading') && value.file) void uploadMedia(new File([value.file], value.fileName, { type: value.mime }), value.id);
     }
-  }, [mediaCapability, uploadMedia]);
+  }, [applyMarkdown, markdownRef, mediaCapability, uploadMedia]);
 
   const mediaStillProcessing = useMemo(() => uploads.some(item => item.status === 'queued' || item.status === 'uploading'), [uploads]);
-  const uploadImageForEditor = useCallback((file: File) => uploadMedia(file, undefined, undefined, { insertReference: false, rejectOnError: true }), [uploadMedia]);
+  const uploadImageForEditor = useCallback((file: File) => uploadMedia(file, undefined, undefined, { insertReference: true, rejectOnError: true }), [uploadMedia]);
 
   return { uploads, mediaStillProcessing, uploadMedia, uploadImageForEditor, retryUpload, handleFiles, cancelUpload, removeUpload, recoverUploads };
 }

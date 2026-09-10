@@ -8,6 +8,12 @@ type EditWorkingCopyLoaderOptions = {
   csrf: string;
   setMessage: (message: string) => void;
   applyWorkingCopy: (working: WorkingCopyResponse, fallbackEntryID: string, notice: string) => void;
+  /**
+   * `undefined` keeps the admin page's URL-driven edit behavior.  An explicit
+   * empty string or `null` is an intentional "new entry" target; this is used
+   * by the home quick-writer so a stale `?edit=` can never leak into it.
+   */
+  editEntryID?: string | null;
 };
 
 async function requestWorkingCopy(entryID: string, csrf: string) {
@@ -23,17 +29,19 @@ async function requestWorkingCopy(entryID: string, csrf: string) {
   return response.json() as Promise<WorkingCopyResponse>;
 }
 
-export function useEditWorkingCopyLoader({ csrf, setMessage, applyWorkingCopy }: EditWorkingCopyLoaderOptions) {
+export function useEditWorkingCopyLoader({ csrf, setMessage, applyWorkingCopy, editEntryID }: EditWorkingCopyLoaderOptions) {
   const [requestedEditID, setRequestedEditID] = useState('');
   const [loadingEdit, setLoadingEdit] = useState(false);
   const editRequested = useRef(false);
 
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('edit') || '';
-    if (!id) return;
+    const id = editEntryID === undefined
+      ? new URLSearchParams(window.location.search).get('edit') || ''
+      : editEntryID?.trim() || '';
+    editRequested.current = false;
     const timer = window.setTimeout(() => setRequestedEditID(id), 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [editEntryID]);
 
   useEffect(() => {
     if (!requestedEditID || !csrf || editRequested.current) return;

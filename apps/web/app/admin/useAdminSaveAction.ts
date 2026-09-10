@@ -4,7 +4,6 @@ import { useCallback, useState, type Dispatch, type SetStateAction } from 'react
 import { useRouter } from 'next/navigation';
 import { invalidatePublicCaches } from '@/lib/cache-invalidation';
 import { AdminRequestError } from './admin-errors';
-import { prepareMarkdownForMdxEditor, restoreMarkdownFromMdxEditor } from './mdx-compat';
 import { persistAdminEntry } from './admin-entry-actions';
 import type { EntryActionOptions } from './useAdminEntryActions';
 
@@ -13,7 +12,7 @@ export function useAdminSaveAction(options: EntryActionOptions, setUndoToken: Di
   const [saving, setSaving] = useState(false);
   const save = useCallback(async () => {
     const editorMarkdown = options.editorRef.current?.getMarkdown() ?? options.markdown;
-    const effectiveMarkdown = restoreMarkdownFromMdxEditor(editorMarkdown, prepareMarkdownForMdxEditor(options.markdown).replacements);
+    const effectiveMarkdown = editorMarkdown;
     options.setMarkdownRef(effectiveMarkdown);
     const mediaBusy = options.uploads.some(item => item.status === 'queued' || item.status === 'uploading');
     const temporaryMedia = options.uploads.some(item => effectiveMarkdown.includes(`media://${item.id}`));

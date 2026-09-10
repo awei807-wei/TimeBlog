@@ -7,7 +7,13 @@ import { useAdminSession } from './useAdminSession';
 import { useDraftTray } from './DraftTray';
 import { useAdminWorkingCopy } from './useAdminWorkingCopy';
 
-export function useAdminEditorInfrastructure(setMessage: Dispatch<SetStateAction<string>>) {
+export type AdminEditorInfrastructureOptions = {
+  /** See useEditWorkingCopyLoader: undefined is URL-driven, null is new content. */
+  editEntryID?: string | null;
+  active?: boolean;
+};
+
+export function useAdminEditorInfrastructure(setMessage: Dispatch<SetStateAction<string>>, { editEntryID, active = true }: AdminEditorInfrastructureOptions = {}) {
   const session = useAdminSession();
   const editor = useAdminEditorState();
   const media = useAdminComposerMedia({
@@ -30,6 +36,8 @@ export function useAdminEditorInfrastructure(setMessage: Dispatch<SetStateAction
     editorRef: editor.editorRef,
     refreshDrafts: drafts.refreshDrafts,
     setMessage,
+    editEntryID,
+    active,
     bindings: {
       setTitle: editor.setTitle,
       setSummary: editor.setSummary,

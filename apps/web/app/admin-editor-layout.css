@@ -1,6 +1,4 @@
-/* Writing workbench
-   This file only styles /admin's editor view. Business hooks, the MDXEditor
-   contract and the shared public-site styles remain untouched. */
+/* Writing workbench. Keep the editor surface independent from public-site styles. */
 
 .writing-shell {
   width: min(100%, 1240px);
@@ -25,6 +23,17 @@
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--paper) 92%, transparent);
   backdrop-filter: blur(14px);
+}
+
+.writing-page-header.is-dialog {
+  min-height: 0;
+  margin-bottom: 16px;
+  padding: 12px 0;
+  align-items: center;
+}
+
+.writing-page-header.is-dialog .writing-header-actions {
+  width: 100%;
 }
 
 .writing-page-title {

@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, type RefObject, type SetStateAction, type Dispatch } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import type { MarkdownEditorHandle } from './editor-contract';
 import { readTaxonomy, type EditorStatusValue } from './editing-working-copy';
 import type { Draft } from './editor-storage';
 import { readJournalTimeField, type JournalTimeValue } from './journal-time-payload';
 
 type LoadDraftOptions = {
   applyMarkdown: (next: string) => void;
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   setDraftId: (id: string) => void;
   clearEntry: () => void;
   setTitle: (value: string) => void;

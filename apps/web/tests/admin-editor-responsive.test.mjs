@@ -14,8 +14,7 @@ test('admin writing view keeps the primary workbench reachable on narrow screens
   const editor = await read('../app/admin-editor-editor.css');
   const inspector = await read('../app/admin-editor-inspector.css');
   const responsive = await read('../app/admin-editor-responsive.css');
-  const chrome = await read('../app/mdx-editor-chrome.css');
-  const css = [layout, editor, inspector, responsive, chrome].join('\n');
+  const css = [layout, editor, inspector, responsive].join('\n');
 
   assert.match(view, /className="writing-layout"/);
   assert.match(view, /className="writing-main"/);
@@ -24,8 +23,8 @@ test('admin writing view keeps the primary workbench reachable on narrow screens
   assert.match(responsive, /@media \(max-width: 767px\)[\s\S]*\.writing-rail\s*\{[\s\S]*grid-template-columns:\s*1fr/);
   assert.match(responsive, /62dvh/);
   assert.match(responsive, /50dvh/);
-  assert.match(css, /\.mdxeditor-toolbar[\s\S]*overflow-x:\s*auto/);
-  assert.match(css, /\.writing-composer \.mdx-editor \.mdxeditor-toolbar[\s\S]*min-width:\s*44px[\s\S]*min-height:\s*44px/);
+  assert.match(css, /\.novel-editor-content[\s\S]*font-kerning/);
+  assert.match(css, /\.novel-command-menu[\s\S]*min-height:\s*44px/);
   assert.match(inspector, /\.writing-selector-row select[\s\S]*min-height:\s*44px/);
   assert.match(responsive, /\.writing-inspector \.taxonomy-tag-remove[\s\S]*width:\s*44px[\s\S]*height:\s*44px/);
   assert.match(layout, /max\(72px, calc\(72px \+ env\(safe-area-inset-bottom\)\)\)/);

@@ -1,13 +1,17 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { LogIn, PenLine, Rows3, StretchHorizontal, X } from 'lucide-react';
 import { getTimeline, type TimelineDay } from '@/lib/api';
 import { mergeTimelineDays } from '@/lib/timeline';
 import { PUBLIC_CACHE_INVALIDATED_EVENT } from '@/lib/cache-invalidation';
 import { useSession } from './SessionContext';
 import PublicEntryCard from './public/PublicEntryCard';
+
+const QuickWriteDialog = dynamic(() => import('./admin/QuickWriteDialog'), { ssr: false });
 
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', { month: 'long', weekday: 'short', timeZone: 'Asia/Shanghai' });
 
@@ -20,17 +24,60 @@ function DateRail({ date }: { date: string }) {
 }
 
 function MobileWritingFab() {
-  const { state } = useSession();
+  const { state, refreshSession } = useSession();
+  const router = useRouter();
+  const [quickWriteOpen, setQuickWriteOpen] = useState(false);
+  const [quickWriteMounted, setQuickWriteMounted] = useState(false);
+  const [sessionChecking, setSessionChecking] = useState(false);
+  const quickWriteFabRef = useRef<HTMLButtonElement>(null);
   if (state === 'loading') return null;
 
   const authenticated = state === 'authenticated';
   const label = authenticated ? '开始写作' : '登录';
   const Icon = authenticated ? PenLine : LogIn;
 
-  return <Link className="public-mobile-fab" href={authenticated ? '/admin' : '/login'} aria-label={label} title={label}>
-    <Icon aria-hidden="true" />
-    <span className="sr-only">{label}</span>
-  </Link>;
+  const openWriting = async () => {
+    if (sessionChecking) return;
+    setSessionChecking(true);
+    try {
+      const session = await refreshSession();
+      if (!session.authenticated) {
+        router.push('/login');
+        return;
+      }
+      setQuickWriteMounted(true);
+      setQuickWriteOpen(true);
+    } catch {
+      router.push('/login');
+    } finally {
+      setSessionChecking(false);
+    }
+  };
+
+  const handleSessionInvalid = () => {
+    setQuickWriteOpen(false);
+    setQuickWriteMounted(false);
+    router.push('/login');
+  };
+
+  return <>
+    <button
+      type="button"
+      ref={quickWriteFabRef}
+      className="public-mobile-fab"
+      aria-label={label}
+      aria-haspopup="dialog"
+      aria-expanded={quickWriteOpen}
+      aria-busy={sessionChecking}
+      title={label}
+      disabled={sessionChecking}
+      onClick={() => void openWriting()}
+    >
+      <Icon aria-hidden="true" />
+      <span className="sr-only">{sessionChecking ? '正在复核登录状态' : label}</span>
+    </button>
+    {quickWriteMounted && <QuickWriteDialog open={quickWriteOpen} onOpenChange={setQuickWriteOpen} returnFocusRef={quickWriteFabRef} onSessionInvalid={handleSessionInvalid} />}
+  </>;
 }
 
 export default function HomeTimeline({ initialDays, initialCursor }: { initialDays: TimelineDay[]; initialCursor?: string }) {

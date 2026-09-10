@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import type { MarkdownEditorHandle } from './editor-contract';
 import { EMPTY_WORKING_COPY_META, type WorkingCopyMeta, type WorkingCopyResponse } from './editing-working-copy';
 import type { Draft } from './editor-storage';
 import { useLoadDraft } from './useLoadDraft';
@@ -13,7 +13,7 @@ type WorkingCopyActionsOptions = {
   csrfRef: MutableRefObject<string>;
   refreshSessionCSRF: () => Promise<string>;
   applyMarkdown: (next: string) => void;
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   setMessage: Dispatch<SetStateAction<string>>;
   bindings: WorkingCopyEditorBindings;
   editingEntryID: string;

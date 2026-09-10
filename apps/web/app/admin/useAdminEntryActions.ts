@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import type { MarkdownEditorHandle } from './editor-contract';
 import type { UploadItem } from '@/lib/media-utils';
 import type { JournalTimeValue } from './journal-time-payload';
 import { useAdminSaveAction } from './useAdminSaveAction';
 import { useAdminUndoAction } from './useAdminUndoAction';
 
 export type EntryActionOptions = {
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   setMarkdownRef: (value: string) => void;
   markdown: string;
   payload: Record<string, unknown>;

@@ -1,226 +1,60 @@
-
 @media (max-width: 1180px) {
-  .writing-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .writing-rail {
-    position: static;
-    grid-template-columns: minmax(260px, .78fr) minmax(0, 1.22fr);
-    max-height: none;
-    overflow: visible;
-  }
-
-  .writing-sidebar {
-    grid-template-columns: 1fr;
-  }
-
-  .writing-drafts .draft-list {
-    max-height: 430px;
-  }
+  .writing-layout { grid-template-columns: minmax(0, 1fr); }
+  .writing-rail { position: static; grid-template-columns: minmax(260px, .78fr) minmax(0, 1.22fr); max-height: none; overflow: visible; }
+  .writing-sidebar { grid-template-columns: 1fr; }
+  .writing-drafts .draft-list { max-height: 430px; }
 }
 
 @media (max-width: 767px) {
-  .writing-shell {
-    width: 100%;
-    padding: 0 14px max(64px, calc(64px + env(safe-area-inset-bottom)));
-  }
-
-  .app-content > .writing-shell {
-    padding-top: 0;
-  }
-
-  .writing-page-header {
-    position: relative;
-    top: auto;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    min-height: 0;
-    align-items: flex-start;
-    margin-bottom: 16px;
-    padding: 22px 0 15px;
-    background: transparent;
-    backdrop-filter: none;
-  }
-
-  .writing-header-actions {
-    width: 100%;
-    min-width: 0;
-    justify-content: space-between;
-  }
-
-  .writing-page-title p {
-    display: none;
-  }
-
-  .writing-status {
-    display: none;
-  }
-
-  .writing-save-button,
-  .writing-undo-button {
-    min-height: 44px;
-    padding-inline: 12px;
-  }
-
-  .writing-composer {
-    padding: 14px;
-    border-radius: 12px;
-  }
-
-  .writing-editor-heading small {
-    max-width: 230px;
-  }
-
-  .writing-composer .mdx-editor-shell {
-    min-height: clamp(420px, 62vh, 760px);
-    min-height: clamp(420px, 62dvh, 760px);
-  }
-
-  .writing-composer .mdxeditor-diff-source-wrapper,
-  .writing-composer .mdxeditor-source-editor,
-  .writing-composer .mdxeditor-diff-editor {
-    height: clamp(360px, 54vh, 680px);
-    height: clamp(360px, 54dvh, 680px);
-    min-height: 0;
-  }
-
-  .writing-composer .mdx-editor-content {
-    min-height: clamp(360px, 54vh, 680px);
-    min-height: clamp(360px, 54dvh, 680px);
-    padding: 24px 18px 70px;
-    font-size: 16px;
-  }
-
-  .writing-composer .mdx-editor .mdxeditor-toolbar button,
-  .writing-composer .mdx-editor .mdxeditor-toolbar [role="button"],
+  .writing-shell { width: 100%; padding: 0 14px max(64px, calc(64px + env(safe-area-inset-bottom))); }
+  .writing-dialog-shell { padding: 0 12px max(72px, calc(72px + env(safe-area-inset-bottom))); }
+  .app-content > .writing-shell { padding-top: 0; }
+  .writing-page-header { position: relative; top: auto; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; align-items: flex-start; margin-bottom: 16px; padding: 22px 0 15px; background: transparent; backdrop-filter: none; }
+  .writing-header-actions { width: 100%; min-width: 0; justify-content: space-between; }
+  .writing-page-title p, .writing-status { display: none; }
+  .writing-save-button, .writing-undo-button { min-height: 44px; padding-inline: 12px; }
+  .writing-composer { padding: 14px; border-radius: 12px; }
+  .writing-editor-heading small { max-width: 230px; }
+  .writing-composer .novel-editor-shell { min-height: clamp(420px, 62vh, 760px); min-height: clamp(420px, 62dvh, 760px); }
+  .writing-composer .novel-editor-content { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); padding: 24px 18px 70px; font-size: 16px; }
+  .writing-composer .novel-editor-content .ProseMirror { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); }
+  .writing-composer .writing-media-button,
   .writing-composer .upload-browse-button,
-  .writing-composer .inline-action {
-    min-width: 44px;
-    min-height: 44px;
-  }
-
+  .writing-composer .inline-action { min-width: 44px; min-height: 44px; }
   .writing-inspector > summary,
   .writing-selector-row select,
-  .writing-inspector .journal-date-group {
-    min-height: 44px;
-  }
-
-  .writing-rail {
-    grid-template-columns: 1fr;
-  }
-
-  .writing-inspector {
-    order: 1;
-  }
-
-  .writing-sidebar {
-    order: 2;
-  }
-
-  .writing-drafts .draft-list {
-    max-height: 420px;
-  }
+  .writing-inspector .journal-date-group { min-height: 44px; }
+  .writing-rail { grid-template-columns: 1fr; }
+  .writing-inspector { order: 1; }
+  .writing-sidebar { order: 2; }
+  .writing-drafts .draft-list { max-height: 420px; }
 }
 
 @media (max-width: 520px) {
-  .writing-page-header {
-    gap: 12px;
-  }
-
-  .writing-page-title h1 {
-    font-size: 24px;
-  }
-
-  .writing-header-actions {
-    align-items: stretch;
-  }
-
-  .writing-save-actions {
-    margin-left: auto;
-  }
-
-  .writing-undo-button {
-    display: none;
-  }
-
-  .writing-save-button {
-    min-width: 72px;
-  }
-
-  .writing-editor-heading {
-    align-items: flex-start;
-  }
-
-  .writing-editor-heading small {
-    display: none;
-  }
-
-  .writing-composer .mdx-editor .mdxeditor-toolbar {
-    overflow-x: auto;
-    scrollbar-width: thin;
-    overscroll-behavior-inline: contain;
-  }
-
-  .writing-composer .mdxeditor-diff-source-wrapper,
-  .writing-composer .mdxeditor-source-editor,
-  .writing-composer .mdxeditor-diff-editor {
-    height: clamp(340px, 50vh, 620px);
-    height: clamp(340px, 50dvh, 620px);
-    min-height: 0;
-  }
-
-  .writing-composer .mdx-view-mode-toggle {
-    margin-left: 4px;
-  }
-
-  .writing-composer .mdx-editor .mdx-view-mode-toggle button {
-    padding-inline: 7px;
-  }
-
-  .writing-composer .mdx-editor .mdxeditor-toolbar button,
-  .writing-composer .mdx-editor .mdxeditor-toolbar [role="button"] {
-    min-width: 44px;
-    min-height: 44px;
-  }
+  .writing-page-header { gap: 12px; }
+  .writing-page-title h1 { font-size: 24px; }
+  .writing-header-actions { align-items: stretch; }
+  .writing-save-actions { margin-left: auto; }
+  .writing-undo-button { display: none; }
+  .writing-save-button { min-width: 72px; }
+  .writing-editor-heading { align-items: flex-start; }
+  .writing-editor-heading small { display: none; }
+  .writing-composer .novel-command-menu { width: min(320px, calc(100vw - 24px)); max-height: min(420px, 50dvh); }
 }
 
 @media (pointer: coarse) {
-  .writing-inspector .tag-input {
-    min-height: 44px;
-    padding-block: 4px;
-  }
-
-  .writing-inspector .tag-input-list {
-    min-height: 34px;
-  }
-
-  .writing-inspector .taxonomy-tag {
-    position: relative;
-    padding-right: 43px;
-  }
-
-  .writing-inspector .taxonomy-tag-remove {
-    position: absolute;
-    right: -1px;
-    width: 44px;
-    height: 44px;
-    min-width: 44px;
-  }
-
+  .writing-inspector .tag-input { min-height: 44px; padding-block: 4px; }
+  .writing-inspector .tag-input-list { min-height: 34px; }
+  .writing-inspector .taxonomy-tag { position: relative; padding-right: 43px; }
+  .writing-inspector .taxonomy-tag-remove { position: absolute; right: -1px; width: 44px; height: 44px; min-width: 44px; }
   .writing-inspector .tag-input-editor,
-  .writing-inspector .taxonomy-tag-edit {
-    min-height: 44px;
-    height: 44px;
-  }
+  .writing-inspector .taxonomy-tag-edit { min-height: 44px; height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .writing-save-button,
   .writing-undo-button,
   .writing-drafts .draft-list button,
-  .writing-composer .mdx-editor .mdxeditor-toolbar,
-  .writing-composer .mdx-view-mode-toggle button {
-    transition: none;
-  }
+  .novel-bubble-menu,
+  .novel-command-menu { transition: none; }
 }

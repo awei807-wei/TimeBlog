@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import { useCallback, useRef, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from 'react';
+import type { MarkdownEditorHandle } from './editor-contract';
 import { useDraftAutosave } from './useDraftAutosave';
 import { useWorkingCopyActions } from './useWorkingCopyActions';
 import { useWorkingCopyMetadata } from './useWorkingCopyMetadata';
@@ -15,16 +15,19 @@ type UseAdminWorkingCopyOptions = {
   refreshSessionCSRF: () => Promise<string>;
   payload: Record<string, unknown>;
   applyMarkdown: (next: string) => void;
-  editorRef: RefObject<MDXEditorMethods | null>;
+  editorRef: RefObject<MarkdownEditorHandle | null>;
   refreshDrafts: () => Promise<void>;
   setMessage: Dispatch<SetStateAction<string>>;
   bindings: WorkingCopyEditorBindings;
+  editEntryID?: string | null;
+  active: boolean;
 };
 
-export function useAdminWorkingCopy({ csrf, csrfRef, refreshSessionCSRF, payload, applyMarkdown, editorRef, refreshDrafts, setMessage, bindings }: UseAdminWorkingCopyOptions) {
+export function useAdminWorkingCopy({ csrf, csrfRef, refreshSessionCSRF, payload, applyMarkdown, editorRef, refreshDrafts, setMessage, bindings, editEntryID, active }: UseAdminWorkingCopyOptions) {
   const discardingRef = useRef(false);
-  const autosave = useDraftAutosave({ csrf, payload, refreshDrafts, setMessage, discardingRef });
-  const metadata = useWorkingCopyMetadata({ csrf, payload, applyMarkdown, editorRef, setMessage, setDraftId: autosave.setDraftId, bindings });
+  const readMarkdown = useCallback(() => editorRef.current?.getMarkdown(), [editorRef]);
+  const autosave = useDraftAutosave({ csrf, payload, refreshDrafts, setMessage, discardingRef, readMarkdown, active });
+  const metadata = useWorkingCopyMetadata({ csrf, payload, applyMarkdown, editorRef, setMessage, setDraftId: autosave.setDraftId, bindings, editEntryID });
   const actions = useWorkingCopyActions({
     csrf,
     csrfRef,
@@ -50,6 +53,8 @@ export function useAdminWorkingCopy({ csrf, csrfRef, refreshSessionCSRF, payload
 
   return {
     currentDraftId: autosave.currentDraftId,
+    persistNow: autosave.persistNow,
+    flushNow: autosave.flushNow,
     editingEntryID: metadata.editingEntryID,
     editingWorkingID: metadata.editingWorkingID,
     editingBaseRevision: metadata.editingBaseRevision,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { dbDelete, DRAFT_STORE, QUEUE_STORE } from './editor-storage';
 import { useDraftAutosaveSync } from './useDraftAutosaveSync';
 import { useDraftFlush } from './useDraftFlush';
@@ -13,9 +13,11 @@ type DraftAutosaveOptions = {
   refreshDrafts: () => Promise<void>;
   setMessage: Dispatch<SetStateAction<string>>;
   discardingRef: MutableRefObject<boolean>;
+  readMarkdown?: () => string | undefined;
+  active: boolean;
 };
 
-export function useDraftAutosave({ csrf, payload, refreshDrafts, setMessage, discardingRef }: DraftAutosaveOptions) {
+export function useDraftAutosave({ csrf, payload, refreshDrafts, setMessage, discardingRef, readMarkdown, active }: DraftAutosaveOptions) {
   const draftID = useRef<string | null>(null);
   const { runtime, syncDraft, abortPending } = useDraftAutosaveSync(csrf, setMessage, discardingRef);
 
@@ -28,12 +30,9 @@ export function useDraftAutosave({ csrf, payload, refreshDrafts, setMessage, dis
   }, []);
   const getDraftId = useCallback(() => draftID.current, []);
 
-  useEffect(() => {
-    draftID.current = crypto.randomUUID();
-  }, []);
-  useDraftPersistence({ currentDraftId, payload, refreshDrafts, setMessage, epoch: runtime.epoch, syncDraft });
-  useDraftOutbox({ csrf, setMessage, discardingRef, runtime });
-  useDraftFlush({ currentDraftId, payload, syncDraft, discardingRef, epoch: runtime.epoch });
+  const { persistNow, flushNow } = useDraftPersistence({ currentDraftId, getDraftId, payload, refreshDrafts, setMessage, epoch: runtime.epoch, syncDraft, readMarkdown, active });
+  useDraftOutbox({ csrf, setMessage, discardingRef, runtime, active });
+  useDraftFlush({ currentDraftId, payload, syncDraft, discardingRef, epoch: runtime.epoch, flushNow, active });
 
   const finalizeSavedDraft = useCallback(async (savedDraftID: string) => {
     abortPending();
@@ -44,5 +43,5 @@ export function useDraftAutosave({ csrf, payload, refreshDrafts, setMessage, dis
     draftID.current = crypto.randomUUID();
   }, [abortPending]);
 
-  return { currentDraftId, setDraftId, getDraftId, abortPending, finalizeSavedDraft };
+  return { currentDraftId, setDraftId, getDraftId, abortPending, finalizeSavedDraft, persistNow, flushNow };
 }

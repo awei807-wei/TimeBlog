@@ -2,7 +2,7 @@
 
 > 用途：供新的开发窗口快速恢复项目背景。代码、运行时状态和 Git 历史优先于本文；本文通常不保存密码、Token、私钥或完整环境变量，NAS 专用集成测试库连接信息按明确授权记录于对应小节。
 >
-> 最近核验：2026-08-20（Asia/Shanghai）
+> 最近核验：2026-09-10（Asia/Shanghai）
 
 ## 概述
 
@@ -12,8 +12,8 @@ TimeBlog（站点名“菜鸟手记”）是个人时间线与博客系统。公
 
 ## 技术栈
 
-- **前端**：Next.js 16.3.1、React 19.1.1、TypeScript 5.9、Tailwind CSS 4、React Aria Components、Radix UI、Lucide React。
-- **编辑器与内容**：MDXEditor 4.2、Lexical、Markdown 持久化、Goldmark 服务端渲染、DOMPurify/BlueMonday 清洗、Mermaid。
+- **前端**：Next.js 16.3.4、React 19.1.1、TypeScript 5.9、Tailwind CSS 4、React Aria Components、Radix UI、Lucide React。
+- **编辑器与内容**：Novel 1.0.2、Tiptap 2.27.3、tiptap-markdown 0.8.10、Markdown 持久化、Goldmark 服务端渲染、DOMPurify/BlueMonday 清洗、Mermaid。
 - **后端**：Go 1.26 单模块；API 与后台 Worker 共用核心代码和同一个 Core 镜像。
 - **数据层**：PostgreSQL 16；`pgx/v5`；SQL 迁移位于 `services/core/db/migrations/`。
 - **认证**：管理员密码 + TOTP；HttpOnly Session Cookie；写操作使用 CSRF Token；敏感配置使用独立加密密钥。
@@ -58,6 +58,7 @@ GitHub main push
 
 - **Entry / 内容条目**：统一内容实体；`kind=note` 为随手记，`kind=article` 为有独立详情地址的文章。
 - **工作草稿**：编辑中的本地 IndexedDB/服务端 working copy，不等于已发布 Entry。
+- **快速写作窗口**：已登录用户从手机首页悬浮按钮原地打开的 Novel Dialog，与 `/admin` 复用同一草稿、working copy、媒体和保存链；隐藏时暂停自动保存。
 - **状态**：主要包括 `draft`、`published`、`trashed`；回收站内容不应出现在公开时间线。
 - **可见性**：`public` 或 `private`；私有媒体和内容需要有效 Session。
 - **媒体引用**：持久化 Markdown 中的 `media://<uuid>`；实际内容由 `/api/v1/media/<id>/content` 提供。
@@ -66,7 +67,7 @@ GitHub main push
 
 ## 目录结构
 
-- `apps/web/`：Next.js 前端、公开页面、管理端、MDXEditor、前端测试。
+- `apps/web/`：Next.js 前端、公开页面、管理端、Novel/Tiptap 写作器、前端测试。
 - `services/core/`：Go API、领域模型、认证、写作、媒体、集成设置与数据库访问。
 - `services/core/cmd/worker/`：后台 Worker。
 - `services/core/db/migrations/`：PostgreSQL 迁移。
@@ -194,4 +195,5 @@ node --test deploy/github-runner.test.mjs
 
 ## 最近变更
 
-仓库当前未维护 `.helloagents/CHANGELOG.md`；最近演进以 `git log --oneline`、GitHub Actions 记录和 `docs/operations/cicd.md` 为准。
+- 2026-09-10：写作器从 MDXEditor/Lexical 迁移到 Novel/Tiptap，改用选区气泡菜单和 `/` 命令；手机首页写作入口改为原地 Dialog，并复用现有草稿与媒体机制。
+- 2026-08-24：完成认证、导入、媒体、平台输入和 Web 防御纵深安全加固；详见 `.helloagents/CHANGELOG.md`。

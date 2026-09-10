@@ -11,6 +11,7 @@ type DraftOutboxOptions = {
   setMessage: Dispatch<SetStateAction<string>>;
   discardingRef: MutableRefObject<boolean>;
   runtime: DraftAutosaveRuntime;
+  active: boolean;
 };
 
 async function retryQueueItem(item: QueueItem, csrf: string, expectedEpoch: number, runtime: DraftAutosaveRuntime, discardingRef: MutableRefObject<boolean>, setMessage: DraftOutboxOptions['setMessage']) {
@@ -52,8 +53,9 @@ async function retryQueueItem(item: QueueItem, csrf: string, expectedEpoch: numb
   }
 }
 
-export function useDraftOutbox({ csrf, setMessage, discardingRef, runtime }: DraftOutboxOptions) {
+export function useDraftOutbox({ csrf, setMessage, discardingRef, runtime, active }: DraftOutboxOptions) {
   useEffect(() => {
+    if (!active) return undefined;
     const consumeOutbox = async () => {
       if (discardingRef.current || !navigator.onLine || !csrf) return;
       const expectedEpoch = runtime.epoch.current;
@@ -72,5 +74,5 @@ export function useDraftOutbox({ csrf, setMessage, discardingRef, runtime }: Dra
       window.removeEventListener('focus', consumeOutbox);
       window.clearInterval(interval);
     };
-  }, [csrf, discardingRef, runtime, setMessage]);
+  }, [active, csrf, discardingRef, runtime, setMessage]);
 }

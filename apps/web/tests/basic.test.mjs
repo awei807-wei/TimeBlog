@@ -279,7 +279,8 @@ test('edit working copy autosave follows the server generation through load, dis
   assert.match(flush, /syncDraft\([\s\S]*expectedEpoch\)/);
   assert.match(sync, /clientDraftId: draft\.clientDraftId/);
   assert.match(sync, /response\.status === 409/);
-  assert.ok(sync.indexOf('response.status === 409') < sync.indexOf('await dbPut(QUEUE_STORE'));
+  assert.match(sync, /!csrf \|\| !navigator\.onLine[\s\S]*await dbPut\(QUEUE_STORE/);
+  assert.match(sync, /response\.status === 409[\s\S]*await dbDelete\(QUEUE_STORE, draft\.id\)[\s\S]*return;/);
   assert.match(sync, /await dbPut\(QUEUE_STORE, item\);[\s\S]*expectedEpoch !== epoch\.current[\s\S]*await dbDelete\(QUEUE_STORE, draft\.id\)/);
   assert.match(outbox, /response\.status === 409/);
   assert.ok(outbox.indexOf('response.status === 409') < outbox.indexOf('await dbPut(QUEUE_STORE'));
@@ -341,29 +342,29 @@ test('admin sidebar has a mobile trigger and maps theme tokens for desktop and m
   assert.match(css, /\[data-sidebar="sidebar"\]\[data-mobile="true"\]\[data-state="closed"\]\s*\{\s*transform:\s*translateX\(-100%\)/);
 });
 
-test('MDXEditor is the sole Markdown source of truth and supports rich/source modes', async () => {
+test('Novel editor is the sole Markdown source of truth with a vendor-neutral handle', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const actions = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const contract = await fs.readFile(new URL('../app/admin/editor-contract.ts', import.meta.url), 'utf8');
   const attachment = await fs.readFile(new URL('../app/admin/AttachmentPreview.tsx', import.meta.url), 'utf8');
-  assert.match(source, /<MdxMarkdownEditor/);
+  assert.match(source, /<NovelMarkdownEditor/);
   assert.doesNotMatch(source, /<textarea/);
   assert.match(source, /AttachmentPreview/);
   assert.match(attachment, /!\/\^image/);
   assert.doesNotMatch(source, /renderMarkdown\(markdown\)/);
-  assert.match(editor, /<MDXEditor/);
-  assert.match(editor, /diffSourcePlugin/);
-  assert.match(editor, /usePublisher/);
-  assert.match(editor, /所见即所得/);
-  assert.match(editor, /Markdown 源码/);
-  assert.match(editor, /<ViewModeToggle \/>/);
-  assert.doesNotMatch(editor, /DiffSourceToggleWrapper/);
-  assert.match(editor, /markdown !== markdownRef\.current/);
-  assert.match(editor, /markdownRef\.current = markdown/);
-  assert.match(editor, /editor\.setMarkdown\(prepared\.markdown\)/);
-  assert.match(editor, /trim=\{false\}/);
-  assert.match(editor, /onError=\{\(\{ error \}\)/);
+  assert.match(editor, /<EditorRoot>/);
+  assert.match(editor, /<EditorContent/);
+  assert.match(editor, /<EditorBubbleMenu/);
+  assert.match(editor, /<EditorSlashMenu/);
+  assert.match(editor, /getMarkdown/);
+  assert.match(editor, /setMarkdown/);
+  assert.match(editor, /insertMarkdown/);
+  assert.match(contract, /focus/);
+  assert.match(contract, /getMarkdown/);
+  assert.match(contract, /setMarkdown/);
+  assert.match(contract, /insertMarkdown/);
   assert.match(actions, /editorRef\.current\?\.getMarkdown/);
   assert.match(actions, /options\.applyMarkdown\(''\)/);
 });
@@ -371,17 +372,19 @@ test('MDXEditor is the sole Markdown source of truth and supports rich/source mo
 test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes bounded tag drafts', async () => {
   const fs = await import('node:fs/promises');
   const page = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
-  const compat = await fs.readFile(new URL('../app/admin/mdx-compat.ts', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const extensions = await fs.readFile(new URL('../app/admin/novel-editor-extensions.ts', import.meta.url), 'utf8');
+  const compat = await fs.readFile(new URL('../app/admin/markdown-compat.ts', import.meta.url), 'utf8');
   const tags = await fs.readFile(new URL('../app/admin/TagInput.tsx', import.meta.url), 'utf8');
   const draftTray = await fs.readFile(new URL('../app/admin/DraftTray.tsx', import.meta.url), 'utf8');
   const datePicker = await fs.readFile(new URL('../app/admin/JournalDatePicker.tsx', import.meta.url), 'utf8');
   const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  const editorCss = await fs.readFile(new URL('../app/admin-editor-editor.css', import.meta.url), 'utf8');
   const inspectorCss = await fs.readFile(new URL('../app/admin-editor-inspector.css', import.meta.url), 'utf8');
-  assert.match(compat, /prepareMarkdownForMdxEditor/);
-  assert.match(compat, /restoreMarkdownFromMdxEditor/);
-  assert.match(editor, /mdx-compat-notice/);
-  assert.match(editor, /placeholder="从一句话开始。支持 Markdown、图片和附件。"/);
+  assert.match(compat, /prepareMarkdownForNovel/);
+  assert.match(compat, /restoreMarkdownFromNovel/);
+  assert.match(editor, /novel-compat-notice/);
+  assert.match(extensions, /从一句话开始。输入 \/ 插入格式、图片或表格/);
   assert.match(draftTray, /const MAX_DRAFTS = 20/);
   assert.match(draftTray, /ordered\.slice\(0, MAX_DRAFTS\)/);
   assert.match(draftTray, /仍有 \$\{failed\} 条旧草稿待清理/);
@@ -423,8 +426,9 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(inspectorCss, /\.writing-inspector \.taxonomy-tag \{[^}]*min-height: 29px;[^}]*border: 1px solid/);
   assert.match(inspectorCss, /\.writing-inspector \.taxonomy-tag-value \{[^}]*text-overflow: ellipsis/);
   assert.match(inspectorCss, /\.writing-inspector \.taxonomy-tag-remove \{[^}]*width: 27px;[^}]*height: 27px;[^}]*min-width: 27px/);
-  assert.match(css, /\.mdx-editor-content\[class\*="placeholder"\]/);
-  assert.match(css, /\.mdx-editor \.mdxeditor-toolbar\{[^}]*scrollbar-width:none/);
+  assert.match(editorCss, /\.novel-editor-content/);
+  assert.match(editorCss, /font-kerning/);
+  assert.match(editorCss, /text-autospace/);
 });
 
 test('tag input commits mobile Enter in its boundary and preserves IME, empty, and duplicate guards', async () => {
@@ -461,9 +465,8 @@ test('writing workbench keeps focus visible and bounds responsive editor scrolli
     assert.ok(part.split('\n').length < 400, `${cssFiles[index]} must stay below the CSS split threshold`);
   }
   assert.match(css, /\.writing-composer \.title-input:focus-visible,[\s\S]*outline: 3px solid/);
-  assert.match(css, /\.writing-composer \.mdx-editor-content:focus-visible[\s\S]*outline: 3px solid/);
-  assert.match(css, /\.writing-composer \.mdxeditor-source-editor \.cm-scroller,[\s\S]*overflow: auto/);
-  assert.match(css, /\.writing-composer \.mdxeditor-diff-editor[\s\S]*height: clamp/);
+  assert.match(css, /\.novel-editor-content \.ProseMirror:focus-visible[\s\S]*outline: 3px solid/);
+  assert.match(css, /\.novel-command-menu[\s\S]*min-height: 44px/);
   assert.match(css, /\.writing-rail[\s\S]*align-self: start[\s\S]*overflow: visible/);
   assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
   assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.writing-save-actions[\s\S]*margin-left: auto/);
@@ -473,23 +476,19 @@ test('writing workbench keeps focus visible and bounds responsive editor scrolli
 test('article-prose is the shared Markdown typography contract without card pollution', async () => {
   const fs = await import('node:fs/promises');
   const prose = await fs.readFile(new URL('../app/article-prose.css', import.meta.url), 'utf8');
-  const chrome = await fs.readFile(new URL('../app/mdx-editor-chrome.css', import.meta.url), 'utf8');
   const layout = await fs.readFile(new URL('../app/layout.tsx', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const article = await fs.readFile(new URL('../app/article/[slug]/page.tsx', import.meta.url), 'utf8');
   for (const selector of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'blockquote', 'code', 'pre', 'a', 'table', 'img', 'video', 'audio', 'hr']) {
     assert.match(prose, new RegExp(`\\.article-prose ${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`));
   }
   assert.match(layout, /import ['"]\.\/article-prose\.css['"]/);
-  assert.match(layout, /import ['"]\.\/mdx-editor-chrome\.css['"]/);
-  assert.match(editor, /contentEditableClassName="mdx-editor-content article-prose"/);
+  assert.match(editor, /className="novel-editor-content article-prose"/);
   assert.match(article, /className="markdown article-prose"/);
   assert.match(prose, /\.article-prose \.tok-keyword/);
   assert.match(prose, /\.article-prose \.chroma/);
-  assert.doesNotMatch(prose, /\.mdx-view-mode-toggle|\.mdx-editor-mode-title|\.mdx-editor-content\.article-prose\[class\*="placeholder"\]/);
-  assert.match(chrome, /\.mdx-view-mode-toggle/);
-  assert.match(chrome, /\.mdx-editor-mode-title/);
-  assert.match(chrome, /\.mdx-editor-content\.article-prose\[class\*="placeholder"\]/);
+  assert.doesNotMatch(prose, /\.mdx-view-mode-toggle|\.mdx-editor-mode-title/);
+  assert.doesNotMatch(layout, /mdx-editor-chrome/);
   const timeline = await fs.readFile(new URL('../app/HomeTimeline.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(timeline, /article-prose/);
 });
@@ -689,35 +688,33 @@ test('article identifiers normalize encoded and decoded routes before one API es
   }
 });
 
-test('legacy MDX compatibility skips code, handles quoted attributes, and restores paired custom tags', async () => {
+test('Novel compatibility protects unsupported HTML, footnotes and project directives', async () => {
   const fs = await import('node:fs/promises');
   const ts = await import('typescript');
-  const { fromMarkdown } = await import('mdast-util-from-markdown');
-  const { mdxjs } = await import('micromark-extension-mdxjs');
-  const { mdxFromMarkdown } = await import('mdast-util-mdx');
-  const source = await fs.readFile(new URL('../app/admin/mdx-compat.ts', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/markdown-compat.ts', import.meta.url), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2020 } }).outputText;
   const compat = await import(`data:text/javascript,${encodeURIComponent(compiled)}`);
-  const sourceMarkdown = '`<Sub>inline</Sub>`\n\n```md\n<Sub>fenced</Sub>\n```\n\n<Sub title="a > b">body</Sub>\n\n<span title="a > b">ok</span>';
-  const prepared = compat.prepareMarkdownForMdxEditor(sourceMarkdown);
+  const sourceMarkdown = '`<Sub>inline</Sub>`\n\n```md\n<Sub>fenced</Sub>\n```\n\n<Sub title="a > b">body</Sub>\n\n脚注[^note]\n\n[^note]: 定义\n\n:::media{#id}\nproject\n:::';
+  const prepared = compat.prepareMarkdownForNovel(sourceMarkdown);
   assert.match(prepared.markdown, /`<Sub>inline<\/Sub>`/);
+  assert.ok(!prepared.replacements.some(replacement => replacement.source === '`<Sub>inline</Sub>`'));
   assert.match(prepared.markdown, /```md\n<Sub>fenced<\/Sub>\n```/);
-  assert.match(prepared.markdown, /&lt;Sub title="a &gt; b"&gt;body&lt;\/Sub&gt;/);
-  assert.match(prepared.markdown, /<span title="a > b">ok<\/span>/);
-  assert.doesNotThrow(() => fromMarkdown(prepared.markdown, { extensions: [mdxjs()], mdastExtensions: [mdxFromMarkdown()] }));
-  assert.equal(compat.restoreMarkdownFromMdxEditor(prepared.markdown, prepared.replacements), sourceMarkdown);
+  assert.ok(prepared.replacements.length >= 3);
+  assert.match(prepared.markdown, /⟦timeblog-protected-\d+-\d+⟧/);
+  assert.equal(compat.restoreMarkdownFromNovel(prepared.markdown, prepared.replacements), sourceMarkdown);
+  assert.equal(compat.isSafeMediaReference('media://abc_1'), true);
+  assert.equal(compat.isSafeMediaReference('media://bad\/id'), false);
 });
 
-test('MDXEditor captures media paste/drop and keeps media controls available', async () => {
+test('Novel captures media paste/drop and keeps page-level attachment controls', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   assert.match(editor, /onPasteCapture/);
   assert.match(editor, /onDropCapture/);
-  assert.match(editor, /files\.every\(file => file\.type\.startsWith/);
   assert.match(editor, /event\.stopPropagation\(\)/);
-  assert.match(editor, /onFilesRef\.current\(files\)/);
+  assert.match(editor, /onFiles\(files\)/);
   assert.match(source, /Paperclip/);
   assert.match(source, /Trash2/);
   assert.match(capability, /admin\/media\/capability/);
@@ -725,52 +722,41 @@ test('MDXEditor captures media paste/drop and keeps media controls available', a
   assert.match(source, /aria-disabled=\{mediaInputDisabled\}/);
 });
 
-test('source and diff modes block media insertion and bridge the current editor view mode', async () => {
+test('Novel media insertion stays available without a fixed format toolbar', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
   const pageMedia = await fs.readFile(new URL('../app/admin/useAdminPageMediaState.ts', import.meta.url), 'utf8');
   const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
   const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
-  const wrapper = await fs.readFile(new URL('../app/admin/MdxMarkdownEditor.tsx', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
-  assert.match(wrapper, /onViewModeChange\?\:/);
-  assert.match(wrapper, /onReady\?\:/);
-  assert.match(editor, /useCellValue/);
-  assert.match(editor, /viewMode\$/);
-  assert.match(editor, /function ViewModeBridge/);
-  assert.match(editor, /<ViewModeBridge onChange=\{onViewModeChange\}/);
-  assert.match(editor, /function ViewModeToggle/);
-  assert.match(editor, /<ViewModeToggle \/>/);
-  assert.ok(editor.indexOf('<ViewModeBridge') < editor.indexOf('<ViewModeToggle />'));
-  assert.doesNotMatch(editor, /DiffSourceToggleWrapper/);
-  assert.match(editor, /viewModeRef\.current !== 'rich-text'/);
-  assert.match(editor, /onErrorRef\.current\?\.\(MEDIA_MODE_HINT\)/);
-  assert.match(editor, /const setEditorRef/);
-  assert.match(editor, /onReadyRef\.current\?\.\(methods !== null\)/);
-  assert.match(source, /const \{ online, editorReady, editorViewMode/);
-  assert.match(source, /const canInsertMedia = editorViewMode === 'rich-text'/);
+  const wrapper = await fs.readFile(new URL('../app/admin/NovelMarkdownEditor.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(wrapper, /Mdx|MDX|ViewMode/);
+  assert.doesNotMatch(editor, /mdx|MDX|viewMode/);
+  assert.doesNotMatch(view, /editor-toolbar/);
+  assert.match(editor, /requestImage/);
+  assert.match(editor, /onImageUploadRef/);
+  assert.doesNotMatch(source, /editorViewMode|canInsertMedia/);
   assert.match(pageMedia, /const mediaInputDisabled =/);
+  assert.match(pageMedia, /!media\.editorReady/);
   assert.match(capability, /const \[editorReady, setEditorReady\]/);
   assert.match(pageMedia, /!media\.editorReady/);
   assert.match(view, /onReady=\{props\.onEditorReady\}/);
-  assert.match(source, /rich-text/);
   assert.match(view, /disabled=\{props\.mediaInputDisabled\}/);
-  assert.match(view, /onViewModeChange=\{props\.onViewModeChange\}/);
 });
 
-test('media uploads insert canonical Markdown while MDXEditor resolves image previews', async () => {
+test('media uploads insert canonical Markdown while Novel resolves image previews', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
   const saveAction = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
   const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const extensions = await fs.readFile(new URL('../app/admin/novel-editor-extensions.ts', import.meta.url), 'utf8');
   const uploads = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
   const resolver = await fs.readFile(new URL('../app/article/MediaResolver.tsx', import.meta.url), 'utf8');
   assert.match(uploads, /mediaMarkdownReference/);
   assert.match(source, /insertMarkdown\(`\\n\$\{reference\}\\n`\)/);
-  assert.match(editor, /imagePlugin/);
-  assert.match(editor, /imageUploadHandler/);
-  assert.match(editor, /imagePreviewHandler/);
+  assert.match(extensions, /MediaImage/);
+  assert.match(extensions, /MediaLink/);
   assert.match(editor, /mediaContentUrl/);
   assert.match(uploads, /return `media:\/\/\$\{result\.mediaId\}`/);
   assert.match(uploads, /removeMediaReferences/);
@@ -784,21 +770,13 @@ test('media uploads insert canonical Markdown while MDXEditor resolves image pre
   assert.match(resolver, /打开 \/ 下载/);
 });
 
-test('media links keep safe hrefs while standard links retain Lexical sanitization', async () => {
+test('media links keep safe hrefs while standard links retain strict activation', async () => {
   const fs = await import('node:fs/promises');
-  const plugin = await fs.readFile(new URL('../app/admin/media-link-plugin.ts', import.meta.url), 'utf8');
-  const editor = await fs.readFile(new URL('../app/admin/MdxMarkdownEditorClient.tsx', import.meta.url), 'utf8');
-  assert.match(plugin, /class MediaLinkNode extends LinkNode/);
-  assert.match(plugin, /const MEDIA_LINK_URL = \/\^media:/);
-  assert.match(plugin, /A-Za-z0-9\._~-/);
-  assert.match(plugin, /\+\$\//);
-  assert.match(plugin, /isMediaLinkUrl\(url\) \? url : super\.sanitizeUrl\(url\)/);
-  assert.match(plugin, /addImportVisitor\$/);
-  assert.match(plugin, /addExportVisitor\$/);
-  assert.match(plugin, /addLexicalNode\$/);
-  assert.match(plugin, /priority: 100/);
-  assert.match(plugin, /actions\.addAndStepInto\('link'/);
-  assert.match(editor, /mediaLinkPlugin\(\)/);
+  const extensions = await fs.readFile(new URL('../app/admin/novel-editor-extensions.ts', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  assert.match(extensions, /isSafeMediaReference/);
+  assert.match(extensions, /data-media-source/);
+  assert.match(editor, /window\.open\(mediaContentUrl/);
   assert.match(editor, /mediaContentUrl\(source\.slice\('media:\/\/'\.length\), API\)/);
 });
 
@@ -847,9 +825,11 @@ test('upload action labels stay on one line', async () => {
 
 test('writing surface has responsive touch-safe controls and bounded editor height', async () => {
   const fs = await import('node:fs/promises');
-  const css = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  const globals = await fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8');
+  const editor = await fs.readFile(new URL('../app/admin-editor-editor.css', import.meta.url), 'utf8');
+  const css = `${globals}\n${editor}`;
   assert.match(css, /\.composer textarea\{min-height:clamp\(/);
-  assert.match(css, /\.editor-toolbar \.tool\{min-height:44px/);
+  assert.match(css, /\.writing-media-button\s*\{[\s\S]*min-height:\s*44px/);
   assert.match(css, /@media\(max-width:760px\)/);
   assert.match(css, /\.composer-footer \.primary,.composer-footer \.secondary\{width:100%/);
 });

@@ -7,6 +7,18 @@
 
 ---
 
+## 2026-09-10 补充审查 — Novel / Tiptap 迁移
+
+本节记录当前写作器专项审查。下方 2026-08-24 原始报告作为历史证据保留，其中的文件名和依赖版本描述的是迁移前实现。
+
+1. **编辑器边界：** 已移除 MDXEditor/Lexical；当前使用 `novel@1.0.2`、精确锁定的 Tiptap `2.27.3`、`tiptap-markdown@0.8.10` 和项目自有 `MarkdownEditorHandle`，Markdown 仍是唯一持久化表示。
+2. **不可信标记：** 已关闭 Tiptap Markdown 的 HTML 解析。raw HTML、注释、声明、处理指令、CDATA、脚注、对齐表格、扩展 fence 与项目指令使用文档级无碰撞、单次恢复 token 保护，并由运行时往返测试覆盖；未编辑文档直接返回原始文本。
+3. **链接与媒体：** 渲染阶段再次校验 URI，拒绝危险 scheme、丢弃外来 class，并强制外部链接使用 `target="_blank"` 与 `rel="noopener noreferrer nofollow"`。图片保留显式空 alt；持久化 Markdown 只保存 `media://` 标识，不保存鉴权预览 URL。
+4. **快速写作边界：** 首页 FAB 在动态挂载 Dialog 前复核 Session。关闭前验证 IndexedDB 写入，落盘失败时保持窗口与正文可见；隐藏 controller 暂停 debounce、blur、interval 和 outbox，避免覆盖其他标签页。上传中禁止关闭、导航和切换草稿；卸载 abort 与队列恢复共同保证临时媒体引用可修复为最终引用。
+5. **供应链：** 生产与完整 `npm audit` 均报告 42 个 moderate，全部来自 `GHSA-cp6q-959q-f8rh`。锁定的官方 `@tiptap/core@2.27.3` 制品包含 `__proto__` 回补，并通过恶意 `mergeAttributes` + `DOMSerializer` PoC。完整 integrity、例外边界与复核触发条件见 `docs/operations/dependency-security.md`；当前依赖树无 critical/high。
+
+---
+
 ## Part A — Good Practices Verified (no action needed)
 
 1. **Auth token storage is correct.** No `localStorage`/`sessionStorage` storage of any auth token. The session is a server-managed **httpOnly same-origin cookie**; the client only holds a short-lived CSRF token fetched from `/auth/session`. Token refresh is server-driven via `/auth/session/status` (`apps/web/app/SessionContext.tsx:25-37`, `apps/web/app/admin/useAdminSession.ts:15-30`). Logout POSTs to `/auth/logout` with the CSRF token and does **not** rely on client-side cookie deletion (`apps/web/app/SessionContext.tsx:77-105`, `apps/web/app/AuthNav.tsx:48-75`).
