@@ -37,7 +37,7 @@ function hasAuthoredContent(controller: ReturnType<typeof useAdminPageController
 export default function QuickWriteDialog({ open, onOpenChange, returnFocusRef, onSessionInvalid }: QuickWriteDialogProps) {
   const controller = useAdminPageController({ editEntryID: null, active: open });
   const { state } = useSession();
-  const editorPortalRef = useRef<HTMLDivElement>(null);
+  const [editorPortalElement, setEditorPortalElement] = useState<HTMLDivElement | null>(null);
   const sessionCloseAttemptedRef = useRef(false);
   const [closing, setClosing] = useState(false);
   const [closeMessage, setCloseMessage] = useState('');
@@ -118,7 +118,7 @@ export default function QuickWriteDialog({ open, onOpenChange, returnFocusRef, o
       <Dialog.Portal>
         <Dialog.Overlay className="quick-write-dialog-overlay" />
         <Dialog.Content
-          ref={editorPortalRef}
+          ref={setEditorPortalElement}
           className="quick-write-dialog-content"
           onCloseAutoFocus={event => {
             event.preventDefault();
@@ -148,7 +148,7 @@ export default function QuickWriteDialog({ open, onOpenChange, returnFocusRef, o
           </header>
           {closeMessage && <p className="quick-write-dialog-status" role="status">{closeMessage}</p>}
           <div className="quick-write-dialog-scroll" inert={closing || undefined} aria-busy={closing || undefined}>
-            <AdminEditorView {...controller} saving={controller.saving || closing} presentation="dialog" editorPortalRef={editorPortalRef} onEditorReady={handleEditorReady} />
+            <AdminEditorView {...controller} saving={controller.saving || closing} presentation="dialog" editorPortalElement={editorPortalElement} onEditorReady={handleEditorReady} />
           </div>
         </Dialog.Content>
       </Dialog.Portal>

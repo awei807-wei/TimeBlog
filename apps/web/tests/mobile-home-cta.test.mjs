@@ -27,7 +27,7 @@ test('home exposes an authenticated mobile writing button with active session re
   assert.match(dialog, /Dialog\.Content/);
   assert.match(dialog, /Dialog\.Title/);
   assert.match(dialog, /Dialog\.Description/);
-  assert.match(dialog, /editorPortalRef/);
+  assert.match(dialog, /editorPortalElement/);
   assert.match(dialog, /onCloseAutoFocus=\{event => \{[\s\S]*event\.preventDefault\(\)[\s\S]*returnFocusRef\?\.current\?\.focus\(\)/);
   assert.match(dialog, /persistNow/);
   assert.match(dialog, /mediaStillProcessing/);

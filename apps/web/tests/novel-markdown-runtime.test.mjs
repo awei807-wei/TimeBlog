@@ -299,3 +299,19 @@ test('canonical media links remain marks while unsafe media protocols are reject
   editor.destroy();
   dom.window.close();
 });
+
+test('external image commands serialize a public URL and accessible alternative text', async () => {
+  const dom = installDOM();
+  const editor = await createEditor('正文');
+  editor.commands.setTextSelection(editor.state.doc.content.size);
+  assert.equal(editor.commands.setImage({ src: 'https://image.cainiao.me/library/sunset.webp?width=1280', alt: '湖边日落' }), true);
+
+  const markdown = editor.storage.markdown.getMarkdown();
+  assert.match(markdown, /!\[湖边日落\]\(https:\/\/image\.cainiao\.me\/library\/sunset\.webp\?width=1280\)/);
+  const image = editor.view.dom.querySelector('img');
+  assert.equal(image?.getAttribute('src'), 'https://image.cainiao.me/library/sunset.webp?width=1280');
+  assert.equal(image?.getAttribute('alt'), '湖边日落');
+
+  editor.destroy();
+  dom.window.close();
+});

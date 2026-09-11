@@ -17,6 +17,18 @@ function safeUrl(value) {
   return '#';
 }
 
+function safeImageUrl(value) {
+  const decoded = value.replaceAll('&amp;', '&').trim();
+  if (decoded.startsWith('/') && !decoded.startsWith('//')) return escapeHtml(decoded);
+  try {
+    const parsed = new URL(decoded);
+    if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password) return '';
+    return escapeHtml(parsed.toString());
+  } catch {
+    return '';
+  }
+}
+
 function mediaIdFromUrl(value) {
   const match = /^media:\/\/([A-Za-z0-9._~-]+)$/.exec(value.trim());
   return match?.[1] || '';
@@ -52,6 +64,8 @@ export function renderInline(value) {
     const label = alt || '未命名媒体';
     const mediaId = mediaIdFromUrl(url);
     if (mediaId) return holdMedia(`<span class="media-reference" data-media-id="${escapeHtml(mediaId)}" data-media-kind="image" data-media-label="${escapeHtml(label)}">媒体：${escapeHtml(label)}</span>`);
+    const source = safeImageUrl(url);
+    if (source) return holdMedia(`<img src="${source}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`);
     return `<span class="media-reference" data-media-ref="${safeUrl(url)}">媒体：${escapeHtml(label)}</span>`;
   });
   output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {

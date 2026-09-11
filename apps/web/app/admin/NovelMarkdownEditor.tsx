@@ -4,15 +4,16 @@ import dynamic from 'next/dynamic';
 import type { RefObject } from 'react';
 import type { MarkdownEditorHandle } from './editor-contract';
 
-export const MEDIA_MODE_HINT = '图片和附件可直接粘贴、拖放或从 / 菜单插入';
+export const MEDIA_MODE_HINT = '图片可从工具栏或 / 菜单插入，附件支持粘贴和拖放';
 
 export type NovelMarkdownEditorProps = {
   markdown: string;
   editorRef: RefObject<MarkdownEditorHandle | null>;
-  editorPortalRef?: RefObject<Element | null>;
+  editorPortalElement?: Element | null;
   onChange: (markdown: string) => void;
   onFiles?: (files: File[]) => void;
   onImageUpload?: (file: File) => Promise<string>;
+  imageUploadUnavailableMessage?: string;
   onError?: (message: string) => void;
   onNotice?: (message: string) => void;
   onReady?: (ready: boolean) => void;

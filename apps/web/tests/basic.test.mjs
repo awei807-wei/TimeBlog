@@ -347,6 +347,7 @@ test('Novel editor is the sole Markdown source of truth with a vendor-neutral ha
   const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const actions = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const menus = await fs.readFile(new URL('../app/admin/NovelEditorMenus.tsx', import.meta.url), 'utf8');
   const contract = await fs.readFile(new URL('../app/admin/editor-contract.ts', import.meta.url), 'utf8');
   const attachment = await fs.readFile(new URL('../app/admin/AttachmentPreview.tsx', import.meta.url), 'utf8');
   assert.match(source, /<NovelMarkdownEditor/);
@@ -356,8 +357,10 @@ test('Novel editor is the sole Markdown source of truth with a vendor-neutral ha
   assert.doesNotMatch(source, /renderMarkdown\(markdown\)/);
   assert.match(editor, /<EditorRoot>/);
   assert.match(editor, /<EditorContent/);
-  assert.match(editor, /<EditorBubbleMenu/);
-  assert.match(editor, /<EditorSlashMenu/);
+  assert.match(editor, /<NovelEditorBubbleMenu/);
+  assert.match(editor, /<NovelEditorSlashMenu/);
+  assert.match(menus, /<EditorBubble/);
+  assert.match(menus, /<EditorCommand/);
   assert.match(editor, /getMarkdown/);
   assert.match(editor, /setMarkdown/);
   assert.match(editor, /insertMarkdown/);
@@ -384,7 +387,7 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(compat, /prepareMarkdownForNovel/);
   assert.match(compat, /restoreMarkdownFromNovel/);
   assert.match(editor, /novel-compat-notice/);
-  assert.match(extensions, /从一句话开始。输入 \/ 插入格式、图片或表格/);
+  assert.match(extensions, /从一句话开始。使用工具栏排版，输入 \/ 打开更多格式/);
   assert.match(draftTray, /const MAX_DRAFTS = 20/);
   assert.match(draftTray, /ordered\.slice\(0, MAX_DRAFTS\)/);
   assert.match(draftTray, /仍有 \$\{failed\} 条旧草稿待清理/);
@@ -483,7 +486,7 @@ test('article-prose is the shared Markdown typography contract without card poll
     assert.match(prose, new RegExp(`\\.article-prose ${selector.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}`));
   }
   assert.match(layout, /import ['"]\.\/article-prose\.css['"]/);
-  assert.match(editor, /className="novel-editor-content article-prose"/);
+  assert.match(editor, /novel-editor-content article-prose/);
   assert.match(article, /className="markdown article-prose"/);
   assert.match(prose, /\.article-prose \.tok-keyword/);
   assert.match(prose, /\.article-prose \.chroma/);
@@ -722,7 +725,7 @@ test('Novel captures media paste/drop and keeps page-level attachment controls',
   assert.match(source, /aria-disabled=\{mediaInputDisabled\}/);
 });
 
-test('Novel media insertion stays available without a fixed format toolbar', async () => {
+test('Novel media insertion stays visible in the responsive format toolbar', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
   const pageMedia = await fs.readFile(new URL('../app/admin/useAdminPageMediaState.ts', import.meta.url), 'utf8');
@@ -730,18 +733,30 @@ test('Novel media insertion stays available without a fixed format toolbar', asy
   const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const wrapper = await fs.readFile(new URL('../app/admin/NovelMarkdownEditor.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const toolbar = await fs.readFile(new URL('../app/admin/NovelEditorToolbar.tsx', import.meta.url), 'utf8');
+  const imageDialog = await fs.readFile(new URL('../app/admin/NovelImageDialog.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(wrapper, /Mdx|MDX|ViewMode/);
   assert.doesNotMatch(editor, /mdx|MDX|viewMode/);
   assert.doesNotMatch(view, /editor-toolbar/);
-  assert.match(editor, /requestImage/);
+  assert.match(editor, /slotBefore=\{<NovelEditorToolbar/);
+  assert.match(editor, /openImageDialog/);
   assert.match(editor, /onImageUploadRef/);
+  assert.match(toolbar, /role="toolbar"/);
+  assert.match(toolbar, /插入图片/);
+  assert.match(imageDialog, /上传到站点媒体库/);
+  assert.match(imageDialog, /validateExternalImageURL/);
+  assert.match(imageDialog, /\.setImage\(/);
   assert.doesNotMatch(source, /editorViewMode|canInsertMedia/);
   assert.match(pageMedia, /const mediaInputDisabled =/);
+  assert.match(pageMedia, /const imageUploadDisabled =/);
+  assert.match(pageMedia, /media\.mediaCapability\.imageUploadEnabled && media\.mediaCapability\.nonImageUploadEnabled/);
   assert.match(pageMedia, /!media\.editorReady/);
   assert.match(capability, /const \[editorReady, setEditorReady\]/);
   assert.match(pageMedia, /!media\.editorReady/);
   assert.match(view, /onReady=\{props\.onEditorReady\}/);
   assert.match(view, /disabled=\{props\.mediaInputDisabled\}/);
+  assert.match(view, /onImageUpload=\{props\.imageUploadDisabled \? undefined : props\.onImageUpload\}/);
+  assert.match(view, /图片仍可使用 HTTPS 链接/);
 });
 
 test('media uploads insert canonical Markdown while Novel resolves image previews', async () => {
@@ -880,6 +895,12 @@ test('GFM renderer escapes raw HTML and unsafe URLs while producing TOC', () => 
   assert.doesNotMatch(renderMarkdown('[link media://abc](https://example.test)').html, /data-media-id="abc"/);
   assert.match(decorateMediaReferences('<p>media://pdf-1</p>'), /data-media-id="pdf-1"/);
   assert.deepEqual(rendered.toc[0], { level: 1, title: 'Title', id: 'title' });
+});
+
+test('fallback Markdown rendering keeps HTTPS image links and blocks active image URLs', () => {
+  const rendered = renderMarkdown('![湖边日落](https://image.cainiao.me/library/sunset.webp?width=1280)\n\n![危险图片](javascript:alert(1))').html;
+  assert.match(rendered, /<img src="https:\/\/image\.cainiao\.me\/library\/sunset\.webp\?width=1280" alt="湖边日落" loading="lazy" decoding="async" referrerpolicy="no-referrer">/);
+  assert.doesNotMatch(rendered, /javascript:/i);
 });
 
 test('preview code highlighting uses backend-compatible token classes', () => {

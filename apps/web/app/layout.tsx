@@ -5,6 +5,8 @@ import './public-pages.css';
 import './public-views.css';
 import './admin-editor-layout.css';
 import './admin-editor-editor.css';
+import './admin-editor-tools.css';
+import './admin-editor-dialogs.css';
 import './admin-editor-inspector.css';
 import './admin-editor-responsive.css';
 import type { Metadata } from 'next';

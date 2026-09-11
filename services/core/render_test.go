@@ -44,3 +44,13 @@ func TestRenderKnownCodeLanguageHighlightsAndUnknownStaysText(t *testing.T) {
 		t.Fatalf("unknown code was not safely escaped: %s", html)
 	}
 }
+
+func TestRenderExternalImageKeepsHTTPSAndRemovesUnsafeProtocols(t *testing.T) {
+	html, _ := renderMarkdown("![湖边日落](https://image.cainiao.me/library/sunset.webp?width=1280)\n\n![危险图片](javascript:alert(1))")
+	if !strings.Contains(html, `src="https://image.cainiao.me/library/sunset.webp?width=1280"`) || !strings.Contains(html, `alt="湖边日落"`) {
+		t.Fatalf("safe external image was not preserved: %s", html)
+	}
+	if strings.Contains(strings.ToLower(html), "javascript:") {
+		t.Fatalf("unsafe image protocol survived sanitization: %s", html)
+	}
+}

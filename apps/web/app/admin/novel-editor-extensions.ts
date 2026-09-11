@@ -19,9 +19,6 @@ import TableHeader from '@tiptap/extension-table-header';
 import TableRow from '@tiptap/extension-table-row';
 import { isAllowedUri as isTiptapAllowedUri } from '@tiptap/extension-link';
 import { Markdown, type MarkdownNodeSpec } from 'tiptap-markdown';
-import type { RefObject } from 'react';
-
-type PortalRef = RefObject<Element | null>;
 
 /** Keep media:// as the persisted image source while showing an authenticated URL in the DOM. */
 export const MediaImage = TiptapImage.extend({
@@ -98,7 +95,7 @@ export const MediaLink = TiptapLink.extend({
 });
 
 export type NovelExtensionOptions = {
-  editorPortalRef?: PortalRef;
+  editorPortalElement?: Element | null;
   suggestions: SuggestionItem[];
 };
 
@@ -107,12 +104,12 @@ export type NovelExtensionOptions = {
  * Keeping this list in one module prevents business hooks from depending on
  * Tiptap types and makes the editor's supported Markdown surface explicit.
  */
-export function createNovelExtensions({ editorPortalRef, suggestions }: NovelExtensionOptions): any[] {
+export function createNovelExtensions({ editorPortalElement, suggestions }: NovelExtensionOptions): any[] {
   const slashCommand = Command.configure({
     suggestion: {
       char: '/',
       items: () => createSuggestionItems(suggestions),
-      render: () => renderItems((editorPortalRef || null) as RefObject<Element> | null),
+      render: () => renderItems(editorPortalElement ? { current: editorPortalElement } : null),
     },
   });
 
@@ -143,7 +140,7 @@ export function createNovelExtensions({ editorPortalRef, suggestions }: NovelExt
       transformPastedText: false,
       transformCopiedText: false,
     }),
-    Placeholder.configure({ placeholder: '从一句话开始。输入 / 插入格式、图片或表格。', includeChildren: true }),
+    Placeholder.configure({ placeholder: '从一句话开始。使用工具栏排版，输入 / 打开更多格式。', includeChildren: true }),
     slashCommand,
   ];
 }

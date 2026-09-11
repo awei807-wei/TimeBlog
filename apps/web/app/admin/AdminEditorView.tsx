@@ -36,7 +36,9 @@ export type AdminEditorViewProps = {
   uploadPanelOpen: boolean;
   dragActive: boolean;
   mediaInputDisabled: boolean;
+  imageUploadDisabled: boolean;
   mediaAvailabilityMessage: string;
+  imageUploadAvailabilityMessage: string;
   mediaStillProcessing: boolean;
   workingCopyMeta: WorkingCopyMeta;
   discardingUnpublishedChanges: boolean;
@@ -44,7 +46,7 @@ export type AdminEditorViewProps = {
   uploads: UploadItem[];
   editorRef: RefObject<MarkdownEditorHandle | null>;
   presentation?: 'page' | 'dialog';
-  editorPortalRef?: RefObject<Element | null>;
+  editorPortalElement?: Element | null;
   onToggleUploadPanel: () => void;
   onDiscardWorkingCopy: () => void;
   onTitleChange: (value: string) => void;
@@ -73,12 +75,17 @@ export type AdminEditorViewProps = {
   onLoadDraft: (draft: Draft) => void;
 };
 
-function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, mediaAvailabilityMessage, onToggleUploadPanel }: AdminEditorViewProps) {
+function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, imageUploadDisabled, mediaAvailabilityMessage, onToggleUploadPanel }: AdminEditorViewProps) {
+  const mediaHint = mediaInputDisabled
+    ? '本地上传暂不可用 · 仍可插入 HTTPS 图片链接'
+    : imageUploadDisabled
+      ? `${mediaAvailabilityMessage} · 图片仍可使用 HTTPS 链接`
+      : `${mediaAvailabilityMessage} · 图片支持上传或 HTTPS 链接`;
   return (
     <div className="writing-editor-heading">
       <div>
         <span className="writing-section-label">正文</span>
-        <small className={mediaInputDisabled ? 'is-unavailable' : ''}>{mediaAvailabilityMessage}</small>
+        <small className={mediaInputDisabled ? 'is-unavailable' : ''}>{mediaHint}</small>
       </div>
       <div className="writing-media-actions" aria-label="媒体工具">
         <button
@@ -225,7 +232,7 @@ export default function AdminEditorView(props: AdminEditorViewProps) {
             <EditingDraftNotice visible={showNotice} articleIdentifier={props.editingEntryID} meta={props.workingCopyMeta} discarding={props.discardingUnpublishedChanges} onDiscard={props.onDiscardWorkingCopy} />
             <ArticleMetadataFields {...props} />
             <EditorToolbar {...props} />
-            <NovelMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} editorPortalRef={props.editorPortalRef} onChange={props.onMarkdownChange} onFiles={props.mediaInputDisabled ? undefined : props.onFiles} onImageUpload={props.mediaInputDisabled ? undefined : props.onImageUpload} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} disabled={props.saving || props.loadingEdit} />
+            <NovelMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} editorPortalElement={props.editorPortalElement} onChange={props.onMarkdownChange} onFiles={props.mediaInputDisabled ? undefined : props.onFiles} onImageUpload={props.imageUploadDisabled ? undefined : props.onImageUpload} imageUploadUnavailableMessage={props.imageUploadAvailabilityMessage} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} disabled={props.saving || props.loadingEdit} />
             <UploadPanel open={props.uploadPanelOpen} dragActive={props.dragActive} disabled={props.mediaInputDisabled} disabledMessage={props.mediaAvailabilityMessage} onDragEnter={props.onDragEnter} onDragOver={props.onDragOver} onDragLeave={props.onDragLeave} onDrop={props.onDrop} onFiles={files => props.onFiles(Array.from(files))} />
             <AttachmentPreview markdown={props.markdown} uploads={props.uploads} />
             <UploadQueue uploads={props.uploads} onCancelUpload={props.onCancelUpload} onRetryUpload={props.onRetryUpload} onRemoveUpload={props.onRemoveUpload} />
