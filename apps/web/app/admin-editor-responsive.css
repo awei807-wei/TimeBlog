@@ -1,3 +1,93 @@
+/* Keep the two-column writing desk inside the viewport. Narrow layouts retain
+   document scrolling so publishing controls stacked below remain reachable. */
+@media (min-width: 1181px) {
+  html:has(.app-content > .writing-shell),
+  body:has(.app-content > .writing-shell) {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .app-main:has(> .app-content > .writing-shell) {
+    display: flex;
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app-main:has(> .app-content > .writing-shell) > .app-content {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .app-content > .writing-shell {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+    padding-bottom: 24px;
+  }
+
+  .app-content > .writing-shell > .writing-page-header {
+    flex: 0 0 auto;
+  }
+
+  .app-content > .writing-shell > .writing-layout {
+    min-height: 0;
+    flex: 1 1 auto;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  .app-content > .writing-shell .writing-main,
+  .app-content > .writing-shell .writing-composer {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .app-content > .writing-shell .writing-composer {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app-content > .writing-shell .novel-editor-shell {
+    height: auto;
+    min-height: 0;
+    flex: 1 1 0;
+  }
+
+  .app-content > .writing-shell .writing-rail {
+    position: static;
+    min-height: 0;
+    max-height: 100%;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-self: stretch;
+    overflow: hidden;
+  }
+
+  .app-content > .writing-shell .writing-sidebar {
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .app-content > .writing-shell .writing-drafts {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .app-content > .writing-shell .writing-drafts .draft-list {
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 auto;
+  }
+}
+
 @media (max-width: 1180px) {
   .writing-layout { grid-template-columns: minmax(0, 1fr); }
   .writing-rail { position: static; grid-template-columns: minmax(260px, .78fr) minmax(0, 1.22fr); max-height: none; overflow: visible; }
@@ -15,9 +105,8 @@
   .writing-save-button, .writing-undo-button { min-height: 44px; padding-inline: 12px; }
   .writing-composer { padding: 14px; border-radius: 12px; }
   .writing-editor-heading small { max-width: 230px; }
-  .writing-composer .novel-editor-shell { min-height: clamp(420px, 62vh, 760px); min-height: clamp(420px, 62dvh, 760px); }
-  .writing-composer .novel-editor-content { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); padding: 0; font-size: 16px; }
-  .writing-composer .novel-editor-content .ProseMirror { min-height: clamp(360px, 54vh, 680px); min-height: clamp(360px, 54dvh, 680px); }
+  .writing-composer .novel-editor-shell { height: clamp(420px, 62vh, 760px); height: clamp(420px, 62dvh, 760px); }
+  .writing-composer .novel-editor-content { padding: 0; font-size: 16px; }
   .writing-composer .writing-media-button,
   .writing-composer .upload-browse-button,
   .writing-composer .inline-action { min-width: 44px; min-height: 44px; }

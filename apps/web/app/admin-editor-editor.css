@@ -39,15 +39,28 @@
 
 .writing-composer .novel-editor-shell {
   position: relative;
-  min-height: clamp(460px, 63vh, 820px);
+  display: flex;
+  height: clamp(460px, 63vh, 820px);
+  height: clamp(460px, 63dvh, 820px);
+  min-height: 0;
   min-width: 0;
   max-width: 100%;
+  flex-direction: column;
   margin: 0;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
   box-shadow: none;
+}
+
+.novel-editor-provider {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .writing-composer .novel-editor-shell:has(.ProseMirror:focus-visible) {
@@ -74,12 +87,17 @@
 }
 
 .writing-composer .novel-editor-content {
-  min-height: clamp(400px, 56vh, 740px);
   width: 100%;
-  max-width: 780px;
+  max-width: none;
+  min-height: 0;
   min-width: 0;
+  flex: 1 1 auto;
   margin: 0;
   padding: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   color: var(--ink);
   font-family: ui-serif, "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", serif;
   font-size: 17px;
@@ -89,8 +107,12 @@
   text-wrap: pretty;
 }
 
+.novel-editor-content::-webkit-scrollbar {
+  display: none;
+}
+
 .novel-editor-content .ProseMirror {
-  min-height: clamp(400px, 56vh, 740px);
+  min-height: 100%;
   outline: none;
   overflow-wrap: anywhere;
 }

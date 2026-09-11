@@ -50,3 +50,17 @@ test('admin mobile shell delegates drawer behavior to the existing Sheet state',
   assert.match(css, /safe-area-inset-top/);
   assert.match(css, /@media \(min-width: 768px\)[\s\S]*\.app-main \{ padding-left: 32px; \}/);
 });
+
+test('desktop writing desk locks document scrolling and delegates it to the full-width editor pane', async () => {
+  const responsive = await read('../app/admin-editor-responsive.css');
+  const editor = await read('../app/admin-editor-editor.css');
+
+  assert.match(responsive, /@media \(min-width: 1181px\)[\s\S]*html:has\(\.app-content > \.writing-shell\),\s*body:has\(\.app-content > \.writing-shell\)\s*\{[^}]*overflow:\s*hidden;/);
+  assert.match(responsive, /\.app-content > \.writing-shell \.writing-composer\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/);
+  assert.match(responsive, /\.app-content > \.writing-shell \.novel-editor-shell\s*\{[^}]*flex:\s*1 1 0;/);
+  assert.match(editor, /\.novel-editor-provider\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/);
+  assert.match(editor, /\.writing-composer \.novel-editor-content\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior-y:\s*contain;[^}]*scrollbar-width:\s*none;/);
+  assert.match(editor, /\.novel-editor-content::-webkit-scrollbar\s*\{[^}]*display:\s*none;/);
+  assert.match(editor, /\.novel-editor-content \.ProseMirror\s*\{[^}]*min-height:\s*100%;/);
+  assert.doesNotMatch(editor, /max-width:\s*780px/);
+});
