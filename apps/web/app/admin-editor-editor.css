@@ -50,6 +50,11 @@
   box-shadow: none;
 }
 
+.writing-composer .novel-editor-shell:has(.ProseMirror:focus-visible) {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .novel-editor-loading {
   display: grid;
   min-height: clamp(340px, 52vh, 680px);
@@ -88,11 +93,6 @@
   min-height: clamp(400px, 56vh, 740px);
   outline: none;
   overflow-wrap: anywhere;
-}
-
-.novel-editor-content .ProseMirror:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: -4px;
 }
 
 .novel-editor-content .ProseMirror [data-placeholder]::before {

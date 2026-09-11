@@ -483,7 +483,8 @@ test('writing workbench keeps focus visible and bounds responsive editor scrolli
     assert.ok(part.split('\n').length < 400, `${cssFiles[index]} must stay below the CSS split threshold`);
   }
   assert.match(css, /\.writing-composer \.title-input:focus-visible,[\s\S]*outline: 3px solid/);
-  assert.match(css, /\.novel-editor-content \.ProseMirror:focus-visible[\s\S]*outline: 3px solid/);
+  assert.match(css, /\.writing-composer \.novel-editor-shell:has\(\.ProseMirror:focus-visible\)\s*\{[^}]*border-color:[^;]+;[^}]*box-shadow:\s*0 0 0 3px/);
+  assert.doesNotMatch(css, /\.novel-editor-content \.ProseMirror:focus-visible/);
   assert.match(css, /\.novel-command-menu[\s\S]*min-height: 44px/);
   assert.match(css, /\.writing-rail[\s\S]*align-self: start[\s\S]*overflow: visible/);
   assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
