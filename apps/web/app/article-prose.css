@@ -85,6 +85,38 @@
   padding-inline-start: 1.55em;
 }
 
+.article-prose ul {
+  list-style-type: disc;
+}
+
+.article-prose ol {
+  list-style-type: decimal;
+}
+
+.article-prose ul ul {
+  list-style-type: circle;
+}
+
+.article-prose ul ul ul {
+  list-style-type: square;
+}
+
+.article-prose ol ol {
+  list-style-type: lower-alpha;
+}
+
+.article-prose ol ol ol {
+  list-style-type: lower-roman;
+}
+
+.article-prose ul[data-type="taskList"] {
+  list-style-type: none;
+}
+
+.article-prose li:has(> input[type="checkbox"]) {
+  list-style-type: none;
+}
+
 .article-prose li + li {
   margin-top: 0.3em;
 }

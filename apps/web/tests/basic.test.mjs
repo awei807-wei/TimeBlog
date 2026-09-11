@@ -505,6 +505,11 @@ test('article-prose is the shared Markdown typography contract without card poll
   assert.match(article, /className="markdown article-prose"/);
   assert.match(prose, /\.article-prose \.tok-keyword/);
   assert.match(prose, /\.article-prose \.chroma/);
+  for (const [selector, marker] of [['ul', 'disc'], ['ol', 'decimal'], ['ul ul', 'circle'], ['ul ul ul', 'square'], ['ol ol', 'lower-alpha'], ['ol ol ol', 'lower-roman']]) {
+    assert.match(prose, new RegExp(`\\.article-prose ${selector}\\s*\\{[^}]*list-style-type:\\s*${marker};`));
+  }
+  assert.match(prose, /\.article-prose ul\[data-type="taskList"\]\s*\{[^}]*list-style-type:\s*none;/);
+  assert.match(prose, /\.article-prose li:has\(> input\[type="checkbox"\]\)\s*\{[^}]*list-style-type:\s*none;/);
   assert.doesNotMatch(prose, /\.mdx-view-mode-toggle|\.mdx-editor-mode-title/);
   assert.doesNotMatch(layout, /mdx-editor-chrome/);
   const timeline = await fs.readFile(new URL('../app/HomeTimeline.tsx', import.meta.url), 'utf8');
