@@ -73,7 +73,7 @@
   width: 100%;
   max-width: 780px;
   min-width: 0;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
   color: var(--ink);
   font-family: ui-serif, "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", serif;
