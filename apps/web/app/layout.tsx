@@ -13,6 +13,8 @@ import type { Metadata } from 'next';
 import ServiceWorkerRegister from './ServiceWorkerRegister';
 import AppShell from './AppShell';
 
+const SITE_VERSION = '2026@09·4';
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || 'http://localhost:3000'),
   title: { default: '菜鸟手记', template: '%s · 菜鸟手记' },
@@ -36,5 +38,5 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const themeScript = `(function(){try{var saved=localStorage.getItem('timeblog-theme');var dark=saved?saved==='dark':matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',dark)}catch(e){}})()`;
-  return <html lang="zh-CN" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body><a className="skip-link" href="#main-content">跳到主要内容</a><AppShell>{children}</AppShell><ServiceWorkerRegister /></body></html>;
+  return <html lang="zh-CN" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head><body><a className="skip-link" href="#main-content">跳到主要内容</a><AppShell>{children}</AppShell><span className="site-version" aria-label={`站点版本 ${SITE_VERSION}`}>{SITE_VERSION}</span><ServiceWorkerRegister /></body></html>;
 }

@@ -24,8 +24,8 @@ test('admin writing view keeps the primary workbench reachable on narrow screens
   assert.match(responsive, /62dvh/);
   assert.match(responsive, /50dvh/);
   assert.match(css, /\.novel-editor-content[\s\S]*font-kerning/);
-  assert.match(editor, /\.writing-composer \.novel-editor-content\s*\{[^}]*padding:\s*24px 24px 64px;/);
-  assert.match(responsive, /@media \(max-width: 767px\)[\s\S]*\.writing-composer \.novel-editor-content\s*\{[^}]*padding:\s*18px 14px 48px;/);
+  assert.match(editor, /\.writing-composer \.novel-editor-content\s*\{[^}]*padding:\s*0;/);
+  assert.match(responsive, /@media \(max-width: 767px\)[\s\S]*\.writing-composer \.novel-editor-content\s*\{[^}]*padding:\s*0;/);
   assert.match(css, /\.novel-command-menu[\s\S]*min-height:\s*44px/);
   assert.match(inspector, /\.writing-selector-row select[\s\S]*min-height:\s*44px/);
   assert.match(responsive, /\.writing-inspector \.taxonomy-tag-remove[\s\S]*width:\s*44px[\s\S]*height:\s*44px/);

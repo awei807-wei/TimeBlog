@@ -11,6 +11,21 @@ import { runEndpointProbe } from '../lib/integration-probe.js';
 import { entryHasPreviewMedia } from '../lib/public-entry-preview.js';
 test('local draft storage key is stable',()=>assert.equal('timeline-local-drafts','timeline-local-drafts'));
 
+test('site version is visible in the lower-right corner and matches AGENTS.md', async () => {
+  const fs = await import('node:fs/promises');
+  const [layout, css, agents] = await Promise.all([
+    fs.readFile(new URL('../app/layout.tsx', import.meta.url), 'utf8'),
+    fs.readFile(new URL('../app/globals.css', import.meta.url), 'utf8'),
+    fs.readFile(new URL('../../../AGENTS.md', import.meta.url), 'utf8'),
+  ]);
+  const version = layout.match(/const SITE_VERSION = '([^']+)'/)?.[1];
+  assert.ok(version);
+  assert.match(version, /^\d{4}@(0[1-9]|1[0-2])·[1-9]\d*$/u);
+  assert.match(layout, /className="site-version"/);
+  assert.match(css, /\.site-version\s*\{[^}]*position:\s*fixed;[^}]*right:[^;]+;[^}]*bottom:/);
+  assert.ok(agents.includes(`当前站点版本：\`${version}\``));
+});
+
 test('brand assets keep the logo-derived icon and mascot contract', async () => {
   const fs = await import('node:fs/promises');
   const path = await import('node:path');
