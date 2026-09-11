@@ -5,20 +5,16 @@
 }
 
 .novel-toolbar {
-  position: sticky;
-  top: 112px;
+  position: relative;
   z-index: 15;
   display: flex;
   min-width: 0;
+  flex: 0 0 auto;
   align-items: stretch;
   border-bottom: 1px solid var(--line);
   border-radius: 10px 10px 0 0;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(12px);
-}
-
-.writing-dialog-shell .novel-toolbar {
-  top: 68px;
 }
 
 .novel-toolbar-scroll {
@@ -120,11 +116,6 @@
 }
 
 @media (max-width: 767px) {
-  .novel-toolbar,
-  .writing-dialog-shell .novel-toolbar {
-    top: 0;
-  }
-
   .novel-toolbar-scroll {
     padding-block: 6px;
     padding-left: 7px;

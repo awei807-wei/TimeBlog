@@ -77,7 +77,8 @@ test('visible toolbar and image dialog expose touch-safe local and external inse
   assert.match(imageDialog, /setImage\(\{ src: result\.value, alt: alt\.trim\(\) \}\)/);
   assert.doesNotMatch(imageDialog, /chain\(\)\.focus\(\)\.setImage/);
   assert.match(linkDialog, /validateEditorLinkURL/);
-  assert.match(toolsCSS, /\.novel-toolbar[\s\S]*position:\s*sticky/);
+  assert.match(toolsCSS, /\.novel-toolbar\s*\{[^}]*position:\s*relative;[^}]*flex:\s*0 0 auto;/);
+  assert.doesNotMatch(toolsCSS, /\.writing-dialog-shell \.novel-toolbar|position:\s*sticky|top:\s*(?:112|68)px/);
   assert.match(toolsCSS, /\.novel-toolbar-button[\s\S]*min-width:\s*44px[\s\S]*min-height:\s*44px/);
   assert.match(toolsCSS, /overflow-x:\s*auto/);
   assert.match(dialogsCSS, /@media \(max-width: 520px\)[\s\S]*bottom:\s*0/);
