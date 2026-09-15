@@ -102,6 +102,23 @@ case "$command_name" in
     if [[ "\${FAKE_RCLONE_WRONG_SIZE:-0}" == 1 ]]; then ((bytes += 1)); fi
     printf '{"count":%d,"bytes":%d,"sizeless":0}\n' "\${#files[@]}" "$bytes"
     ;;
+  lsf)
+    source_path="$(map_remote "$1")"
+    if [[ " $* " == *" --recursive "* ]]; then
+      find "$source_path" -mindepth 2 -maxdepth 2 -type f -name _SUCCESS -printf '%P\n'
+    else
+      find "$source_path" -mindepth 1 -maxdepth 1 -type f -printf '%f\n'
+      find "$source_path" -mindepth 1 -maxdepth 1 -type d -printf '%f/\n'
+    fi
+    ;;
+  deletefile)
+    source_path="$(map_remote "$1")"
+    rm -f -- "$source_path"
+    ;;
+  rmdir)
+    source_path="$(map_remote "$1")"
+    rmdir "$source_path"
+    ;;
   touch)
     destination="$(map_remote "$1")"
     mkdir -p "$(dirname "$destination")"
@@ -288,8 +305,12 @@ test('systemd and environment examples keep scheduling explicit and secrets exte
   const ci = await readFile(join(deployDir, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
   assert.doesNotMatch(envExample, /(?:PASSWORD|TOKEN|SECRET)=/);
   assert.match(envExample, /^WEBDAV_REMOTE=/m);
+  assert.match(envExample, /^LOCAL_RETENTION_COUNT=7$/m);
+  assert.match(envExample, /^REMOTE_RETENTION_COUNT=90$/m);
+  assert.match(envExample, /^BACKUP_RETENTION_DRY_RUN=0$/m);
   assert.match(service, /^EnvironmentFile=\/etc\/timeblog\/webdav-backup\.env$/m);
   assert.match(service, /\$\{TIMEBLOG_PROJECT_DIR\}\/deploy\/webdav-backup\.sh/);
   assert.match(timer, /^OnCalendar=\*-\*-\* 03:30:00 Asia\/Shanghai$/m);
   assert.match(ci, /deploy\/webdav-backup\.test\.mjs/);
+  assert.match(ci, /deploy\/webdav-retention\.test\.mjs/);
 });

@@ -46,7 +46,19 @@ journalctl -u timeline-webdav-backup.service -n 100 --no-pager
 rclone lsf webdav:Google1/TimeBlog/backups --dirs-only
 ```
 
-timer 固定按 `03:30 Asia/Shanghai` 每日运行，即使 VPS 使用其他系统时区也不会偏移。脚本当前不会自动删除本地或远端快照；应监控 VPS 和 WebDAV 容量，在制定并验证保留策略前不得手工批量删除。
+timer 固定按 `03:30 Asia/Shanghai` 每日运行，即使 VPS 使用其他系统时区也不会偏移。
+
+### 自动淘汰
+
+每次新快照完成远端回读、发布并写入 `_SUCCESS` 后，脚本才执行计数淘汰：
+
+- `LOCAL_RETENTION_COUNT=7`：VPS 本地默认保留最近 7 份完整五件套。
+- `REMOTE_RETENTION_COUNT=90`：WebDAV 默认保留最近 90 份成功快照，且不得小于本地保留数。
+- `BACKUP_RETENTION_DRY_RUN=0`：设为 `1` 时只记录候选，不执行删除。
+
+两项保留数允许范围为 2–3650。排序只使用严格的 UTC 时间戳名称，不依赖 WebDAV mtime。本地旧快照只有在远端存在完全受管的对应成功快照时才能删除；远端目录必须恰好包含该时间戳的五件套和 `_SUCCESS` 才能淘汰。远端只逐个删除这六个固定文件，最后用只能删除空目录的 `rclone rmdir` 收尾，不执行宽泛 purge。未知目录、`.incomplete-*`、无成功标记、缺件、符号链接或含额外内容的快照一律保留并写入 journal。淘汰不会触碰在线 PostgreSQL、media 或 exports 卷。
+
+调整策略时，先设置 `BACKUP_RETENTION_DRY_RUN=1` 手动运行 service 并审查 journal，再恢复为 `0`。即使已有淘汰保护，仍应监控 VPS 与 WebDAV 容量。
 
 如只需手动生成本地快照，可设置 `COMPOSE_FILE`、`COMPOSE_ENV_FILE` 和 `BACKUP_DIR` 后执行 `./deploy/backup.sh`，并在输出目录运行 `sha256sum -c SHA256SUMS-<stamp>`。
 

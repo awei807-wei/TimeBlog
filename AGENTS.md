@@ -145,6 +145,7 @@ systemd timer
 - 生产完整快照包含 PostgreSQL custom dump、media 卷、exports 卷、SHA-256 和 manifest，不是仅导出 Markdown。
 - WebDAV 目标为 `webdav:Google1/TimeBlog/backups`；挂载视图 `/mnt/mydav/Google1` 只用于人工浏览，自动备份直接使用 rclone remote。
 - `timeline-webdav-backup.timer` 固定按 `03:30 Asia/Shanghai` 每日执行；只有完成远端回读校验并含 `_SUCCESS` 的时间戳目录才算有效快照。
+- 自动淘汰默认在成功后保留 VPS 本地最近 7 份、WebDAV 最近 90 份；只删除严格受管快照，未知、失败或内容不符的目录保留。
 - NAS 备份配置入口位于管理端“内容管理 → 设置”；仓库不保存 NAS 私钥或 `known_hosts`。
 - NAS 拉取备份使用 `deploy/nas-pull-backup.sh` 和独立 `0600` 配置文件，当前保留为可选第二层。
 - 外部图床服务：`https://image.cainiao.me`，适配器标识 `ou_image_hosting_v1`。
@@ -185,6 +186,7 @@ node --test deploy/compose.test.mjs
 node --test deploy/release.test.mjs
 node --test deploy/github-runner.test.mjs
 node --test deploy/webdav-backup.test.mjs
+node --test deploy/webdav-retention.test.mjs
 ```
 
 构建与 typecheck 不要并行执行，因为 Next.js 会重建 `.next/types`，并发时可能产生瞬时假失败。
@@ -208,6 +210,7 @@ node --test deploy/webdav-backup.test.mjs
 
 ## 最近变更
 
+- 2026-09-15：为每日 WebDAV 备份增加安全计数淘汰，本地默认保留 7 份、远端保留 90 份，并保护未知和未完成目录。
 - 2026-09-15：新增 PostgreSQL、媒体和导出卷的每日 WebDAV 完整备份；远端回读校验通过后才发布 `_SUCCESS`，并显式使用上海时区调度。
 - 2026-09-11：移除 Novel 工具栏遗留的页面级 sticky 偏移，使其固定回编辑框顶部且不再覆盖正文；站点版本更新为 `2026@09·9`。
 - 2026-09-11：桌面写作页改为固定工作台，正文编辑区独立滚动并隐藏滚动条，同时移除 `780px` 宽度上限以填满父盒子；站点版本更新为 `2026@09·8`。

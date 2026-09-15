@@ -61,7 +61,7 @@ Go 使用 Goldmark 生成 Markdown HTML，并用 bluemonday 清洗 HTML；媒体
 - `deploy/backup.sh` 生成 `timeline.dump-<stamp>`、`media.tar.gz-<stamp>`、`exports.tar.gz-<stamp>`、`SHA256SUMS-<stamp>` 和 `manifest.json-<stamp>`。
 - 数据库文件是 PostgreSQL custom dump，包含 `timeline` 数据库结构和全部业务数据；它与 media、exports 卷共同构成可恢复快照，不是 Markdown-only 导出。
 - `deploy/webdav-backup.sh` 先验证本地五件套，再上传到远端临时目录并使用 `rclone check --download` 回读比较；发布后再次检查，最后创建 `_SUCCESS`。systemd timer 固定按 `03:30 Asia/Shanghai` 每日执行。
-- WebDAV 写入直接使用 rclone backend，不经带缓存的 FUSE 挂载。任务默认不删除本地或远端历史，也不备份生产 `.env`、加密密钥或 rclone 凭据。
+- WebDAV 写入直接使用 rclone backend，不经带缓存的 FUSE 挂载。成功后按计数淘汰严格受管快照，默认本地保留 7 份、远端保留 90 份；未知、失败或内容不符的目录不删除。生产 `.env`、加密密钥和 rclone 凭据不进入快照。
 - NAS 可在自身运行 `deploy/nas-pull-backup.sh` 形成独立第二层快照；源主机只读 SSH/rsync，源端校验、本地再次校验、manifest 校验和原子快照改名均在拉取流程中完成，不执行远端删除或改名。
 - API `/health/ready` 检查数据库迁移版本、任务表和媒体/导出目录可写；Worker healthcheck 检查数据库、迁移和 jobs 表。
 
