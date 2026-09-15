@@ -7,6 +7,16 @@ COMPOSE_FILE="${COMPOSE_FILE:-$SCRIPT_DIR/compose.yaml}"
 if [[ "$COMPOSE_FILE" != /* ]]; then
   COMPOSE_FILE="$(cd "$(dirname "$COMPOSE_FILE")" && pwd)/$(basename "$COMPOSE_FILE")"
 fi
+COMPOSE_ENV_FILE="${COMPOSE_ENV_FILE:-}"
+if [[ -n "$COMPOSE_ENV_FILE" ]]; then
+  [[ -f "$COMPOSE_ENV_FILE" && ! -L "$COMPOSE_ENV_FILE" ]] || {
+    printf 'COMPOSE_ENV_FILE must be a regular, non-symlink file\n' >&2
+    exit 2
+  }
+  if [[ "$COMPOSE_ENV_FILE" != /* ]]; then
+    COMPOSE_ENV_FILE="$(cd "$(dirname "$COMPOSE_ENV_FILE")" && pwd)/$(basename "$COMPOSE_ENV_FILE")"
+  fi
+fi
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 BACKUP_STAMP="${BACKUP_STAMP:-}"
 if [[ "${1:-}" != "--confirm" ]]; then
@@ -14,6 +24,10 @@ if [[ "${1:-}" != "--confirm" ]]; then
   exit 2
 fi
 : "${BACKUP_STAMP:?BACKUP_STAMP is required}"
+[[ "$BACKUP_STAMP" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || {
+  printf 'BACKUP_STAMP must use YYYYMMDDTHHMMSSZ format\n' >&2
+  exit 2
+}
 BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
 for name in timeline.dump media.tar.gz exports.tar.gz SHA256SUMS manifest.json; do
   test -f "$BACKUP_DIR/$name-$BACKUP_STAMP"
@@ -32,8 +46,15 @@ assert m.get('media') == f'media.tar.gz-{stamp}'
 assert m.get('exports') == f'exports.tar.gz-{stamp}'
 assert m.get('checksums') == f'SHA256SUMS-{stamp}'
 PY
-compose=(docker compose -f "$COMPOSE_FILE" --profile tools)
+tar -tzf "$BACKUP_DIR/media.tar.gz-$BACKUP_STAMP" >/dev/null
+tar -tzf "$BACKUP_DIR/exports.tar.gz-$BACKUP_STAMP" >/dev/null
+compose=(docker compose)
+if [[ -n "$COMPOSE_ENV_FILE" ]]; then
+  compose+=(--env-file "$COMPOSE_ENV_FILE")
+fi
+compose+=(-f "$COMPOSE_FILE" --profile tools)
 "${compose[@]}" config >/dev/null
+cat "$BACKUP_DIR/timeline.dump-$BACKUP_STAMP" | "${compose[@]}" exec -T postgres pg_restore --list >/dev/null
 was_running=0
 if "${compose[@]}" ps --status running api worker >/dev/null 2>&1; then was_running=1; fi
 restart() { if [[ "$was_running" == 1 ]]; then "${compose[@]}" up -d api worker >/dev/null; fi; }

@@ -2,7 +2,7 @@
 
 > 用途：供新的开发窗口快速恢复项目背景。代码、运行时状态和 Git 历史优先于本文；本文通常不保存密码、Token、私钥或完整环境变量，NAS 专用集成测试库连接信息按明确授权记录于对应小节。
 >
-> 最近核验：2026-09-11（Asia/Shanghai）
+> 最近核验：2026-09-15（Asia/Shanghai）
 
 ## 概述
 
@@ -47,6 +47,10 @@ GitHub main push
        └─ Release（Kubernetes self-hosted Runner）
             ├─ 构建并推送 GHCR core/web 镜像
             └─ VPS Docker Compose 自动部署（受显式变量门控）
+
+systemd timer
+  └─ PostgreSQL + media + exports 完整快照
+       └─ rclone WebDAV 上传、远端回读校验与 _SUCCESS
 ```
 
 - `api` 与 `worker` 使用 `CORE_IMAGE`，入口分别为 `/app/api`、`/app/worker`。
@@ -77,6 +81,7 @@ GitHub main push
 - `deploy/compose.proxy.yaml`：可选 Caddy 代理，不用于当前外置 Caddy 的常规部署。
 - `deploy/release.sh`：基于不可变镜像 digest 的 VPS 发布、健康检查与回滚。
 - `deploy/backup.sh`、`deploy/restore.sh`：数据库与媒体卷备份/恢复。
+- `deploy/webdav-backup.sh`、`deploy/systemd/timeline-webdav-backup.*`：完整快照的 WebDAV 校验上传与每日调度。
 - `deploy/k8s/github-runner/`：Kubernetes self-hosted GitHub Actions Runner 清单。
 - `.github/workflows/ci.yml`：主分支快速质量检查，以及 PR/tag/非主分支的完整构建检查。
 - `.github/workflows/release.yml`：构建、推送 GHCR；生产部署受变量门控。
@@ -89,6 +94,8 @@ GitHub main push
 - 依赖安全：[docs/operations/dependency-security.md](../docs/operations/dependency-security.md)
 - 外部图床：[docs/integrations/ou-image-hosting-api.md](../docs/integrations/ou-image-hosting-api.md)
 - 媒体存储 ADR：[docs/adr/ADR-008-media-storage.md](../docs/adr/ADR-008-media-storage.md)
+- 备份恢复：[docs/operations/backup-restore-runbook.md](../docs/operations/backup-restore-runbook.md)
+- WebDAV 备份 ADR：[docs/adr/ADR-015-verified-webdav-backups.md](../docs/adr/ADR-015-verified-webdav-backups.md)
 
 ## 可调用资源
 
@@ -133,10 +140,13 @@ GitHub main push
 - 健康检查：`/health/live`、`/health/ready`、站点首页。
 - 默认不要在 VPS 执行源码构建、`docker compose down -v`、卷清理或无审计的 Docker prune。
 
-### NAS 与外部服务
+### 备份、NAS 与外部服务
 
+- 生产完整快照包含 PostgreSQL custom dump、media 卷、exports 卷、SHA-256 和 manifest，不是仅导出 Markdown。
+- WebDAV 目标为 `webdav:Google1/TimeBlog/backups`；挂载视图 `/mnt/mydav/Google1` 只用于人工浏览，自动备份直接使用 rclone remote。
+- `timeline-webdav-backup.timer` 固定按 `03:30 Asia/Shanghai` 每日执行；只有完成远端回读校验并含 `_SUCCESS` 的时间戳目录才算有效快照。
 - NAS 备份配置入口位于管理端“内容管理 → 设置”；仓库不保存 NAS 私钥或 `known_hosts`。
-- NAS 拉取备份使用 `deploy/nas-pull-backup.sh` 和独立 `0600` 配置文件。
+- NAS 拉取备份使用 `deploy/nas-pull-backup.sh` 和独立 `0600` 配置文件，当前保留为可选第二层。
 - 外部图床服务：`https://image.cainiao.me`，适配器标识 `ou_image_hosting_v1`。
 - 未经用户明确要求，不执行真实图片上传、删除或带副作用的图床调用。
 
@@ -174,6 +184,7 @@ go vet ./...
 node --test deploy/compose.test.mjs
 node --test deploy/release.test.mjs
 node --test deploy/github-runner.test.mjs
+node --test deploy/webdav-backup.test.mjs
 ```
 
 构建与 typecheck 不要并行执行，因为 Next.js 会重建 `.next/types`，并发时可能产生瞬时假失败。
@@ -197,6 +208,7 @@ node --test deploy/github-runner.test.mjs
 
 ## 最近变更
 
+- 2026-09-15：新增 PostgreSQL、媒体和导出卷的每日 WebDAV 完整备份；远端回读校验通过后才发布 `_SUCCESS`，并显式使用上海时区调度。
 - 2026-09-11：移除 Novel 工具栏遗留的页面级 sticky 偏移，使其固定回编辑框顶部且不再覆盖正文；站点版本更新为 `2026@09·9`。
 - 2026-09-11：桌面写作页改为固定工作台，正文编辑区独立滚动并隐藏滚动条，同时移除 `780px` 宽度上限以填满父盒子；站点版本更新为 `2026@09·8`。
 - 2026-09-11：将 Novel 正文焦点提示移至编辑器外框，消除零内边距下与文本光标重叠的“双光标”错觉；站点版本更新为 `2026@09·7`。

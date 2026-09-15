@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily TimeBlog verified WebDAV backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Shanghai
+Persistent=true
+AccuracySec=1m
+Unit=timeline-webdav-backup.service
+
+[Install]
+WantedBy=timers.target

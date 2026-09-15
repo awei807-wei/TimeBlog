@@ -2,7 +2,7 @@
 
 ## 1. 范围与约束
 
-本项目以 `Personal_Timeline_Blog_Final_Blueprint_v1.0.docx` 为需求基线，目标是单作者、长期可迁移的个人时间线博客。数据长期可读性、隐私与可恢复性优先于极限吞吐；生产拓扑是单 VPS + PostgreSQL + NAS 拉取备份，第二 VPS 只保留手动接管路径。
+本项目以 `Personal_Timeline_Blog_Final_Blueprint_v1.0.docx` 为需求基线，目标是单作者、长期可迁移的个人时间线博客。数据长期可读性、隐私与可恢复性优先于极限吞吐；生产拓扑是单 VPS + PostgreSQL + 每日 WebDAV 完整备份，NAS 拉取保留为可选第二层，第二 VPS 只保留手动接管路径。
 
 ## 2. 当前组件
 
@@ -17,7 +17,8 @@ Caddy（TLS、HSTS、路由）
           └── media/export 卷（私有原件、公开副本、导出包）
 
 Go Worker ── PostgreSQL jobs（SKIP LOCKED）── 导出、媒体清理、重试
-NAS ──只读 SSH/rsync 拉取── VPS 备份暂存目录
+systemd timer ──完整快照── VPS 本地暂存 ──rclone 回读校验── WebDAV
+NAS（可选）──只读 SSH/rsync 拉取── VPS 备份暂存目录
 ```
 
 Go API 与 Worker 共用 `services/core` 领域代码，分别以 API/Worker 入口运行；Worker 不接受互联网请求，也不保存登录状态。数据库不映射公网端口，Web/API 只通过宿主机反向代理暴露。
@@ -58,7 +59,10 @@ Go 使用 Goldmark 生成 Markdown HTML，并用 bluemonday 清洗 HTML；媒体
 - `deploy/compose.yaml` 固定 PostgreSQL 16.4、API、Worker、Web 镜像构建上下文，并为 API/Worker 提供可覆盖的 `CORE_IMAGE`、Web 提供可覆盖的 `WEB_IMAGE`；Caddy 位于独立的 `deploy/compose.proxy.yaml`，只有显式加载该文件并启用 `proxy` profile 时才解析 `SITE_HOST`。
 - Compose 为 API 与 Worker 显式绑定各自的二进制入口（`/app/api`、`/app/worker`），避免共享镜像默认入口误启动错误进程；Web 通过 `HOSTNAME=0.0.0.0` 监听容器全部接口，健康检查使用容器内 `127.0.0.1:3000`。
 - `deploy/backup.sh` 生成 `timeline.dump-<stamp>`、`media.tar.gz-<stamp>`、`exports.tar.gz-<stamp>`、`SHA256SUMS-<stamp>` 和 `manifest.json-<stamp>`。
-- NAS 在自身运行 `deploy/nas-pull-backup.sh`，源主机只读 SSH/rsync；源端校验、本地再次校验、manifest 校验和原子快照改名均在拉取流程中完成，不执行远端删除或改名。
+- 数据库文件是 PostgreSQL custom dump，包含 `timeline` 数据库结构和全部业务数据；它与 media、exports 卷共同构成可恢复快照，不是 Markdown-only 导出。
+- `deploy/webdav-backup.sh` 先验证本地五件套，再上传到远端临时目录并使用 `rclone check --download` 回读比较；发布后再次检查，最后创建 `_SUCCESS`。systemd timer 固定按 `03:30 Asia/Shanghai` 每日执行。
+- WebDAV 写入直接使用 rclone backend，不经带缓存的 FUSE 挂载。任务默认不删除本地或远端历史，也不备份生产 `.env`、加密密钥或 rclone 凭据。
+- NAS 可在自身运行 `deploy/nas-pull-backup.sh` 形成独立第二层快照；源主机只读 SSH/rsync，源端校验、本地再次校验、manifest 校验和原子快照改名均在拉取流程中完成，不执行远端删除或改名。
 - API `/health/ready` 检查数据库迁移版本、任务表和媒体/导出目录可写；Worker healthcheck 检查数据库、迁移和 jobs 表。
 
 ## 7. 代码与文档入口
@@ -77,4 +81,4 @@ Go 使用 Goldmark 生成 Markdown HTML，并用 bluemonday 清洗 HTML；媒体
 
 ## 8. 验证边界
 
-当前仓库已验证 Go `test ./...`、`go vet ./...`、NAS 脚本 `bash -n` 与本地 mock 拉取夹具。完整 PWA 离线同步、Playwright 浏览器 E2E、真实 NAS 空环境恢复、生产数据规模压测和真实 Mermaid SVG 仍需独立验收，不在本地单元测试通过结论中冒充完成。
+当前仓库已验证 Go `test ./...`、`go vet ./...`、备份脚本 `bash -n`、WebDAV 编排 mock 契约和 NAS 本地 mock 拉取夹具。WebDAV 快照只有在生产远端回读比较和 `_SUCCESS` 检查通过后才视为上线；完整 PWA 离线同步、Playwright 浏览器 E2E、隔离环境完整恢复、生产数据规模压测和真实 Mermaid SVG 仍需独立验收，不在本地单元测试通过结论中冒充完成。

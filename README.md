@@ -11,7 +11,16 @@ npm --workspace apps/web run dev
 
 ## 备份与恢复
 
-在任意目录执行 `./deploy/backup.sh`（或从 `deploy/` 执行 `./backup.sh`）会以动态 Compose 卷名导出 PostgreSQL custom dump、媒体卷和导出卷，并生成带 SHA-256 校验和的 manifest。恢复是破坏性操作，必须显式提供 `BACKUP_STAMP=... ./deploy/restore.sh --confirm`；脚本会先验证 manifest/校验和，再停止 API/worker，使用事务 `pg_restore` 恢复数据库和两个文件卷，失败时自动恢复原服务状态。备份目录应放在受控 NAS/离线存储，定期执行恢复演练。
+在任意目录执行 `./deploy/backup.sh`（或从 `deploy/` 执行 `./backup.sh`）会以动态 Compose 卷名生成一份完整快照：
+
+- `timeline.dump-<stamp>`：PostgreSQL custom dump，包含 `timeline` 数据库结构和全部业务数据，不是只导出 Markdown。
+- `media.tar.gz-<stamp>`：本地媒体规范原件。
+- `exports.tar.gz-<stamp>`：已生成的导出包。
+- `SHA256SUMS-<stamp>` 与 `manifest.json-<stamp>`：完整性校验和快照清单。
+
+`deploy/webdav-backup.sh` 在本地完成上述五件套及归档结构校验后，通过 rclone 上传至 WebDAV 临时目录，再使用 `rclone check --download` 回读比较；只有通过校验的时间戳目录才会创建 `_SUCCESS`。生产调度由 `timeline-webdav-backup.service` 与每日 `03:30 Asia/Shanghai` 的 timer 执行，安装、检查和故障处理见[备份恢复手册](docs/operations/backup-restore-runbook.md)。
+
+快照不包含 PostgreSQL 集群角色、`deploy/.env`、TOTP/配置加密密钥或 rclone 凭据，这些恢复必需项必须独立离线保管。恢复是破坏性操作，必须显式提供 `BACKUP_STAMP=... ./deploy/restore.sh --confirm`；脚本会先验证 manifest、SHA-256、两个 tar 和数据库 dump，再停止 API/worker，使用事务 `pg_restore` 恢复数据库和两个文件卷。应定期在隔离环境执行完整恢复演练。
 
 生产反向代理可按需加载独立的 Caddy Compose 文件：设置 `SITE_HOST=example.com` 后运行 `docker compose -f deploy/compose.yaml -f deploy/compose.proxy.yaml --profile proxy up -d`。Caddy 负责 TLS/HSTS 和路由，API 的 `APP_ORIGIN` 与前端 `SITE_URL` 必须使用同一个 HTTPS 站点；核心 Compose 和本地开发不会解析 `SITE_HOST`。
 

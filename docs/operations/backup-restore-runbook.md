@@ -1,11 +1,54 @@
 # 备份、恢复与月度演练
 
-## 每日备份
+## 备份内容
 
-1. 在受控运维主机设置 `BACKUP_ROOT`，并执行 `./deploy/backup.sh`。
-2. 检查输出目录中的 `SHA256SUMS-<stamp>` 与 `manifest.json-<stamp>`，在对应目录执行 `sha256sum -c SHA256SUMS-<stamp>`。
-3. 将完整备份目录复制到 NAS/离线存储；复制后再次校验清单。
-4. 不把 `.env`、密码或恢复码写入备份目录。
+每个时间戳是一份完整应用数据快照，不是 Markdown-only 导出：
+
+- `timeline.dump-<stamp>`：PostgreSQL custom dump，包含 `timeline` 数据库的 schema、迁移记录及全部业务表数据，包括内容、草稿、工作副本、版本、回收站状态、分类、标签、用户、任务和集成设置。
+- `media.tar.gz-<stamp>`：media Docker 卷中的本地媒体规范原件。
+- `exports.tar.gz-<stamp>`：exports Docker 卷中的导出文件。
+- `SHA256SUMS-<stamp>`：上述文件和 manifest 的 SHA-256。
+- `manifest.json-<stamp>`：快照版本和文件对应关系。
+
+快照不包含 PostgreSQL 集群角色、生产 `deploy/.env`、TOTP/配置加密密钥、账户恢复码或 rclone/WebDAV 凭据。这些项目必须通过独立且离线的凭据备份恢复。
+
+## 每日 WebDAV 备份
+
+`deploy/webdav-backup.sh` 执行以下固定流程：
+
+1. 通过 `flock` 拒绝同一主机上的并发任务。
+2. 调用 `deploy/backup.sh` 在本地生成五件套；数据库 dump 在离开 PostgreSQL 容器前先通过 `pg_restore --list`。
+3. 复核 SHA-256、manifest、两个 tar 归档，再上传到 `.incomplete-<stamp>`。
+4. 使用 `rclone check --download` 从 WebDAV 回读并逐文件比较。
+5. 发布为 `<stamp>` 目录，复核尺寸后创建空文件 `_SUCCESS`。只有含该标记的目录才是完成快照。
+
+生产配置保存在 root-owned 的 `/etc/timeblog/webdav-backup.env`，权限必须为 `0600`；rclone 凭据仍保存在单独的 `RCLONE_CONFIG` 中。可从 `deploy/webdav-backup.env.example` 创建配置，然后安装 systemd 单元：
+
+```sh
+install -d -o root -g root -m 0700 /etc/timeblog
+install -o root -g root -m 0600 deploy/webdav-backup.env.example /etc/timeblog/webdav-backup.env
+install -o root -g root -m 0644 deploy/systemd/timeline-webdav-backup.service /etc/systemd/system/
+install -o root -g root -m 0644 deploy/systemd/timeline-webdav-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemd-analyze verify timeline-webdav-backup.service timeline-webdav-backup.timer
+systemctl start timeline-webdav-backup.service
+systemctl enable --now timeline-webdav-backup.timer
+```
+
+示例值必须按实际部署路径修改。当前生产目标为 `webdav:Google1/TimeBlog/backups`；`/mnt/mydav/Google1` 只是带目录缓存的人工浏览视图，自动任务直接使用 rclone remote，不向 FUSE 挂载写入。
+
+验收时检查：
+
+```sh
+systemctl status timeline-webdav-backup.service --no-pager
+systemctl list-timers timeline-webdav-backup.timer --no-pager
+journalctl -u timeline-webdav-backup.service -n 100 --no-pager
+rclone lsf webdav:Google1/TimeBlog/backups --dirs-only
+```
+
+timer 固定按 `03:30 Asia/Shanghai` 每日运行，即使 VPS 使用其他系统时区也不会偏移。脚本当前不会自动删除本地或远端快照；应监控 VPS 和 WebDAV 容量，在制定并验证保留策略前不得手工批量删除。
+
+如只需手动生成本地快照，可设置 `COMPOSE_FILE`、`COMPOSE_ENV_FILE` 和 `BACKUP_DIR` 后执行 `./deploy/backup.sh`，并在输出目录运行 `sha256sum -c SHA256SUMS-<stamp>`。
 
 ## 恢复
 
@@ -24,9 +67,9 @@
 - [ ] 验证公开/私人占位、登录、媒体 Range、导出 ZIP 校验和
 - [ ] 记录耗时、失败点、数据时间点和改进项
 
-## NAS 拉取与快照
+## 可选的 NAS 拉取与快照
 
-在 NAS 端运行 `deploy/nas-pull-backup.sh`。脚本只通过受控 SSH/rsync 账号读取源主机，不在源主机执行删除或改名：
+NAS 能主动访问 VPS 时，仍可在 NAS 端运行 `deploy/nas-pull-backup.sh` 形成第二份独立快照。它不是当前 WebDAV 定时任务的前置条件；脚本只通过受控 SSH/rsync 账号读取源主机，不在源主机执行删除或改名：
 
 可从 [`deploy/nas-backup.env.example`](../../deploy/nas-backup.env.example) 创建 `/etc/timeblog/nas-backup.env`，权限设为 `0600`。
 
