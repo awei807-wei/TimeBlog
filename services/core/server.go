@@ -28,7 +28,11 @@ func NewServer(store *Store) *Server {
 func (srv *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	admin := func(handler http.HandlerFunc) http.HandlerFunc {
-		return srv.adminAuth(handler)
+		protected := srv.adminAuth(handler)
+		return func(w http.ResponseWriter, r *http.Request) {
+			setNoStore(w)
+			protected(w, r)
+		}
 	}
 	// Public representations are derived from mutable entries.  They must not
 	// be retained by an intermediary after a recycle/restore/publish mutation;
@@ -88,6 +92,8 @@ func (srv *Server) routes() http.Handler {
 	mux.HandleFunc("/api/v1/admin/working-copies/", admin(srv.workingCopy))
 	mux.HandleFunc("/api/v1/admin/entries", admin(srv.entries))
 	mux.HandleFunc("/api/v1/admin/entries/", admin(srv.entry))
+	mux.HandleFunc("/api/v1/admin/digital-assets", admin(srv.digitalAssets))
+	mux.HandleFunc("/api/v1/admin/digital-assets/", admin(srv.digitalAsset))
 	mux.HandleFunc("/api/v1/admin/undo/", admin(srv.undoEntry))
 	mux.HandleFunc("/api/v1/admin/media/upload-ticket", admin(srv.mediaTicket))
 	mux.HandleFunc("/api/v1/admin/media/capability", admin(srv.mediaCapability))

@@ -55,7 +55,7 @@ func TestPostgresMigrationSmoke(t *testing.T) {
 		t.Fatalf("owner count=%d", n)
 	}
 	if err := applyMigrations(context.Background(), db); err != nil {
-		t.Fatalf("reapplying migrations after the 009 transaction: %v", err)
+		t.Fatalf("reapplying migrations after the 010 transaction: %v", err)
 	}
 	var purposeColumn bool
 	if err := db.QueryRow(`SELECT EXISTS (
@@ -86,6 +86,73 @@ func TestPostgresMigrationSmoke(t *testing.T) {
 		if !exists {
 			t.Fatalf("migration 009 table %s is missing", table)
 		}
+	}
+
+	var digitalAssetsTable bool
+	if err := db.QueryRow(`SELECT to_regclass(current_schema() || '.digital_assets') IS NOT NULL`).Scan(&digitalAssetsTable); err != nil {
+		t.Fatalf("migration 010 digital_assets table: %v", err)
+	}
+	if !digitalAssetsTable {
+		t.Fatal("migration 010 digital_assets table is missing")
+	}
+	var digitalAssetsColumns int
+	if err := db.QueryRow(`SELECT count(*)
+		FROM information_schema.columns
+		WHERE table_schema=current_schema() AND table_name='digital_assets'
+		  AND column_name IN ('id','owner_id','name','start_date','end_date','renewal_price','renewal_url','created_at','updated_at')`).Scan(&digitalAssetsColumns); err != nil {
+		t.Fatalf("migration 010 digital_assets columns: %v", err)
+	}
+	if digitalAssetsColumns != 9 {
+		t.Fatalf("migration 010 digital_assets column count=%d", digitalAssetsColumns)
+	}
+	var priceShape bool
+	if err := db.QueryRow(`SELECT EXISTS (
+		SELECT 1 FROM information_schema.columns
+		WHERE table_schema=current_schema() AND table_name='digital_assets' AND column_name='renewal_price'
+		  AND data_type='numeric' AND numeric_precision=12 AND numeric_scale=2 AND is_nullable='NO'
+	)`).Scan(&priceShape); err != nil {
+		t.Fatalf("migration 010 renewal_price shape: %v", err)
+	}
+	if !priceShape {
+		t.Fatal("migration 010 renewal_price is not numeric(12,2) NOT NULL")
+	}
+	var ownerConstraint string
+	if err := db.QueryRow(`SELECT pg_get_constraintdef(oid)
+		FROM pg_constraint
+		WHERE conrelid='digital_assets'::regclass AND conname='digital_assets_owner_id_fkey'`).Scan(&ownerConstraint); err != nil {
+		t.Fatalf("migration 010 owner constraint: %v", err)
+	}
+	ownerDefinition := strings.ToLower(ownerConstraint)
+	if !strings.Contains(ownerDefinition, "foreign key (owner_id)") || !strings.Contains(ownerDefinition, "references users(id) on delete cascade") {
+		t.Fatalf("migration 010 owner constraint=%q", ownerConstraint)
+	}
+	for constraintName, fragments := range map[string][]string{
+		"digital_assets_name_length_check":        {"char_length(name)", "160"},
+		"digital_assets_date_range_check":         {"end_date", "start_date", ">="},
+		"digital_assets_renewal_price_check":      {"renewal_price", ">="},
+		"digital_assets_renewal_url_length_check": {"char_length(renewal_url)", "2048"},
+	} {
+		var definition string
+		if err := db.QueryRow(`SELECT pg_get_constraintdef(oid)
+			FROM pg_constraint
+			WHERE conrelid='digital_assets'::regclass AND conname=$1`, constraintName).Scan(&definition); err != nil {
+			t.Fatalf("migration 010 constraint %s: %v", constraintName, err)
+		}
+		lowerDefinition := strings.ToLower(definition)
+		for _, fragment := range fragments {
+			if !strings.Contains(lowerDefinition, fragment) {
+				t.Fatalf("migration 010 constraint %s=%q, missing %q", constraintName, definition, fragment)
+			}
+		}
+	}
+	var ownerOrderIndex string
+	if err := db.QueryRow(`SELECT indexdef FROM pg_indexes
+		WHERE schemaname=current_schema() AND tablename='digital_assets' AND indexname='digital_assets_owner_end_date_name_idx'`).Scan(&ownerOrderIndex); err != nil {
+		t.Fatalf("migration 010 owner/end_date index: %v", err)
+	}
+	indexDefinition := strings.ToLower(ownerOrderIndex)
+	if !strings.Contains(indexDefinition, "(owner_id, end_date, name, id)") {
+		t.Fatalf("migration 010 owner/end_date index=%q", ownerOrderIndex)
 	}
 }
 

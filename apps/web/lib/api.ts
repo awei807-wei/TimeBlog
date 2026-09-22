@@ -1,3 +1,5 @@
+import type { DigitalAsset, DigitalAssetPayload } from './digital-assets';
+
 export type PublicEntry = {
   id?: string;
   kind?: 'note' | 'article';
@@ -83,6 +85,79 @@ async function getJSON<T>(path: string, init?: RequestInit & { next?: { revalida
   });
   if (!response.ok) throw new Error(`API ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+async function digitalAssetRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  fetcher: typeof fetch = fetch,
+): Promise<T> {
+  const { headers, ...request } = init;
+  const response = await fetcher(`${API}${path}`, {
+    ...request,
+    cache: 'no-store',
+    credentials: 'include',
+    headers: { Accept: 'application/json', ...(headers || {}) },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { detail?: unknown; title?: unknown };
+    const detail = typeof body.detail === 'string' && body.detail.trim()
+      ? body.detail.trim()
+      : typeof body.title === 'string' && body.title.trim()
+        ? body.title.trim()
+        : `API ${response.status}`;
+    throw new Error(detail);
+  }
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
+export async function getDigitalAssets(
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<DigitalAsset[]> {
+  const response = await digitalAssetRequest<{ digitalAssets: DigitalAsset[] }>(
+    '/admin/digital-assets',
+    { method: 'GET', signal },
+    fetcher,
+  );
+  return Array.isArray(response.digitalAssets) ? response.digitalAssets : [];
+}
+
+export function createDigitalAsset(
+  payload: DigitalAssetPayload,
+  csrfToken: string,
+  fetcher: typeof fetch = fetch,
+): Promise<DigitalAsset> {
+  return digitalAssetRequest('/admin/digital-assets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify(payload),
+  }, fetcher);
+}
+
+export function updateDigitalAsset(
+  id: string,
+  payload: DigitalAssetPayload,
+  csrfToken: string,
+  fetcher: typeof fetch = fetch,
+): Promise<DigitalAsset> {
+  return digitalAssetRequest(`/admin/digital-assets/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+    body: JSON.stringify(payload),
+  }, fetcher);
+}
+
+export async function deleteDigitalAsset(
+  id: string,
+  csrfToken: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  await digitalAssetRequest<void>(`/admin/digital-assets/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { 'X-CSRF-Token': csrfToken },
+  }, fetcher);
 }
 
 export async function getTimeline(limit = 20, cursor = ''): Promise<{ days: TimelineDay[]; actualCount: number; nextCursor?: string }> {

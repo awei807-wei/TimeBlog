@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getCalendar, getDay, type PublicEntry } from '@/lib/api';
+import DigitalAssetGantt from './DigitalAssetGantt';
 import SectionIntro from '../public/SectionIntro';
 import { articleHref, entryExcerpt } from '../public/public-entry';
 
@@ -129,5 +130,6 @@ export default function CalendarView({ initialMonth }: { initialMonth: string })
       </div>
       <DayPreview date={selectedDate} entries={selectedEntries} loading={previewLoading} />
     </section>
+    <DigitalAssetGantt />
   </>;
 }
