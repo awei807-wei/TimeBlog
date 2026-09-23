@@ -46,7 +46,10 @@ function errorMessage(error: unknown, fallback: string): string {
 function DigitalAssetChart({ assets, today }: { assets: DigitalAsset[]; today: string }) {
   const range = useMemo(() => buildDigitalAssetRange(assets, today), [assets, today]);
   const trackWidth = useMemo(() => digitalAssetTimelineWidth(range), [range]);
-  const ticks = useMemo(() => buildDigitalAssetTimelineTicks(range), [range]);
+  const ticks = useMemo(
+    () => buildDigitalAssetTimelineTicks(range, trackWidth),
+    [range, trackWidth],
+  );
   const todayLeft = useMemo(
     () => digitalAssetDateCenter(today, range, trackWidth),
     [range, today, trackWidth],
@@ -65,7 +68,7 @@ function DigitalAssetChart({ assets, today }: { assets: DigitalAsset[]; today: s
           <div className="digital-assets-axis-title">资产与状态</div>
           <div className="digital-assets-axis-track">
             {ticks.map((tick, index) => <span
-              className={`digital-assets-tick${index === 0 ? ' is-first' : ''}${index === ticks.length - 1 ? ' is-last' : ''}`}
+              className={`digital-assets-tick${index === 0 ? ' is-first' : index === ticks.length - 1 ? ' is-last' : ''}`}
               style={{ left: `${tick.position * trackWidth}px` }}
               key={`${tick.date}-${tick.label}`}
             >{tick.label}</span>)}

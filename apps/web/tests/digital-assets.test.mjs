@@ -108,12 +108,32 @@ test('cross-year ranges use UTC day counts and expose the new-year timeline tick
   const range = digitalAssets.buildDigitalAssetRange([
     asset({ startDate: '2025-12-31', endDate: '2026-01-02' }),
   ], '2025-12-31');
-  const ticks = digitalAssets.buildDigitalAssetTimelineTicks(range);
+  const trackWidth = digitalAssets.digitalAssetTimelineWidth(range);
+  const ticks = digitalAssets.buildDigitalAssetTimelineTicks(range, trackWidth);
 
   assert.equal(range.totalDays, 3);
   assert.equal(range.startDate, '2025-12-31');
   assert.equal(range.endDate, '2026-01-02');
   assert.ok(ticks.some(tick => tick.date === '2026-01-01' && tick.label === '2026年1月'));
+});
+
+test('timeline ticks reserve space around endpoint dates near month boundaries', () => {
+  const range = digitalAssets.buildDigitalAssetRange([
+    asset({ startDate: '2025-10-25', endDate: '2026-10-05' }),
+  ], '2026-09-23');
+  const trackWidth = digitalAssets.digitalAssetTimelineWidth(range);
+  const ticks = digitalAssets.buildDigitalAssetTimelineTicks(range, trackWidth);
+  const positions = ticks.map(tick => tick.position * trackWidth);
+
+  assert.equal(ticks[0].date, '2025-10-25');
+  assert.equal(ticks.at(-1).date, '2026-10-05');
+  assert.equal(ticks.some(tick => tick.date === '2025-11-01'), false);
+  assert.equal(ticks.some(tick => tick.date === '2026-10-01'), false);
+  assert.ok(positions[1] - positions[0] >= digitalAssets.DIGITAL_ASSET_EDGE_TICK_MIN_GAP);
+  assert.ok(positions.at(-1) - positions.at(-2) >= digitalAssets.DIGITAL_ASSET_EDGE_TICK_MIN_GAP);
+  for (let index = 2; index < positions.length - 1; index += 1) {
+    assert.ok(positions[index] - positions[index - 1] >= digitalAssets.DIGITAL_ASSET_TICK_MIN_GAP);
+  }
 });
 
 test('single-day assets keep a minimum visible bar without leaving the track', () => {

@@ -1,6 +1,8 @@
 export const DIGITAL_ASSET_MAX_PRICE = 9_999_999_999.99;
 export const DIGITAL_ASSET_MIN_BAR_WIDTH = 8;
 export const DIGITAL_ASSET_MIN_TRACK_WIDTH = 640;
+export const DIGITAL_ASSET_TICK_MIN_GAP = 64;
+export const DIGITAL_ASSET_EDGE_TICK_MIN_GAP = 88;
 
 const MILLISECONDS_PER_DAY = 86_400_000;
 const STRICT_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -237,7 +239,14 @@ export function digitalAssetDateCenter(
   return Number(Math.min(Math.max(position, 0), trackWidth).toFixed(2));
 }
 
-export function buildDigitalAssetTimelineTicks(range: DigitalAssetRange): DigitalAssetTimelineTick[] {
+export function buildDigitalAssetTimelineTicks(
+  range: DigitalAssetRange,
+  trackWidth: number,
+): DigitalAssetTimelineTick[] {
+  if (!Number.isFinite(trackWidth) || trackWidth <= 0) {
+    throw new RangeError('Digital asset track width must be positive.');
+  }
+
   const approximateMonths = Math.max(1, Math.ceil(range.totalDays / 30));
   const monthStep = approximateMonths > 120 ? 12 : approximateMonths > 60 ? 6 : approximateMonths > 30 ? 3 : 1;
   const ticks = new Map<number, string>();
@@ -257,13 +266,40 @@ export function buildDigitalAssetTimelineTicks(range: DigitalAssetRange): Digita
   }
   ticks.set(range.endDay, range.endDate);
 
-  return [...ticks.entries()]
+  const timelineTicks = [...ticks.entries()]
     .sort(([left], [right]) => left - right)
     .map(([day, label]) => ({
       date: formatUTCDate(day),
       label,
       position: range.totalDays === 1 ? 0 : day === range.endDay ? 1 : (day - range.startDay) / range.totalDays,
     }));
+  if (timelineTicks.length <= 2) return timelineTicks;
+
+  // Endpoint labels show full dates and are anchored inward, while month labels
+  // are centered. Reserve extra pixels near both edges so a nearby month boundary
+  // cannot paint over the first or last date, then keep regular ticks separated.
+  const firstTick = timelineTicks[0];
+  const lastTick = timelineTicks[timelineTicks.length - 1];
+  const firstPosition = firstTick.position * trackWidth;
+  const lastPosition = lastTick.position * trackWidth;
+  const visibleTicks: DigitalAssetTimelineTick[] = [firstTick];
+  let previousPosition = firstPosition;
+
+  for (const tick of timelineTicks.slice(1, -1)) {
+    const position = tick.position * trackWidth;
+    if (
+      position - firstPosition < DIGITAL_ASSET_EDGE_TICK_MIN_GAP ||
+      lastPosition - position < DIGITAL_ASSET_EDGE_TICK_MIN_GAP ||
+      position - previousPosition < DIGITAL_ASSET_TICK_MIN_GAP
+    ) {
+      continue;
+    }
+    visibleTicks.push(tick);
+    previousPosition = position;
+  }
+
+  visibleTicks.push(lastTick);
+  return visibleTicks;
 }
 
 export function sortDigitalAssets(assets: DigitalAsset[]): DigitalAsset[] {
