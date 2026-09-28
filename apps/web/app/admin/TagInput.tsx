@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 type TagInputProps = {
   label: string;
   values: string[];
+  suggestions?: string[];
   onChange: (values: string[]) => void;
   placeholder: string;
   ariaLabel: string;
@@ -38,17 +39,29 @@ function dedupeTags(values: string[]) {
  * The composition guard is important for Chinese IME input: pressing Enter to
  * confirm a composed character must not create a tag prematurely.
  */
-export default function TagInput({ label, values, onChange, placeholder, ariaLabel, prefix = '' }: TagInputProps) {
+export default function TagInput({ label, values, suggestions = [], onChange, placeholder, ariaLabel, prefix = '' }: TagInputProps) {
   const [draft, setDraft] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const composingRef = useRef(false);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputId = useId();
+  const suggestionListId = `${inputId}-suggestions`;
 
   useEffect(() => {
     if (editingIndex !== null) editingInputRef.current?.focus();
   }, [editingIndex]);
+
+  useEffect(() => () => {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+  }, []);
 
   const commitDraft = () => {
     const value = cleanTag(draft, prefix);
@@ -76,6 +89,28 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
     setEditingValue('');
   };
 
+  const selectedKeys = new Set(values.map(value => cleanTag(value, prefix).toLocaleLowerCase()));
+  const suggestionValues = dedupeTags(suggestions.map(value => cleanTag(value, prefix)))
+    .filter(value => !selectedKeys.has(value.toLocaleLowerCase()));
+  const filteredSuggestions = suggestionValues.filter(value => {
+    const query = cleanTag(draft, prefix).toLocaleLowerCase();
+    return !query || value.toLocaleLowerCase().includes(query);
+  }).slice(0, 12);
+
+  const commitSuggestion = (suggestion: string) => {
+    const value = cleanTag(suggestion, prefix);
+    if (!value) return;
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    onChange(dedupeTags([...values, value]));
+    setDraft('');
+    setSuggestionsOpen(false);
+    setActiveSuggestionIndex(-1);
+    inputRef.current?.focus();
+  };
+
   const removeTag = (index: number) => {
     onChange(values.filter((_, current) => current !== index));
     if (editingIndex === index) cancelEdit();
@@ -95,6 +130,30 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (isComposingKey(event)) return;
+    if (event.key === 'Escape' && suggestionsOpen) {
+      event.preventDefault();
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
+      return;
+    }
+    if (event.key === 'ArrowDown' && filteredSuggestions.length > 0) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
+      setActiveSuggestionIndex(index => index < filteredSuggestions.length - 1 ? index + 1 : 0);
+      return;
+    }
+    if (event.key === 'ArrowUp' && filteredSuggestions.length > 0) {
+      event.preventDefault();
+      setSuggestionsOpen(true);
+      setActiveSuggestionIndex(index => index <= 0 ? filteredSuggestions.length - 1 : index - 1);
+      return;
+    }
+    if (isEnterKey(event) && suggestionsOpen && activeSuggestionIndex >= 0 && filteredSuggestions[activeSuggestionIndex]) {
+      event.preventDefault();
+      event.stopPropagation();
+      commitSuggestion(filteredSuggestions[activeSuggestionIndex]);
+      return;
+    }
     if (event.key === 'Backspace' && !draft && values.length > 0) {
       removeTag(values.length - 1);
     }
@@ -109,6 +168,7 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
   };
 
   const handleTagInputKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) return;
     if (!isEnterKey(event) || isComposingKey(event)) return;
     const target = event.target as HTMLInputElement;
     if (target?.tagName !== 'INPUT') return;
@@ -129,6 +189,24 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
 
   const handleCompositionEnd = () => {
     composingRef.current = false;
+  };
+
+  const openSuggestions = () => {
+    if (blurTimerRef.current !== null) {
+      clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    setSuggestionsOpen(true);
+    setActiveSuggestionIndex(-1);
+  };
+
+  const closeSuggestionsSoon = () => {
+    if (blurTimerRef.current !== null) clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = setTimeout(() => {
+      setSuggestionsOpen(false);
+      setActiveSuggestionIndex(-1);
+      blurTimerRef.current = null;
+    }, 0);
   };
 
   return (
@@ -174,18 +252,48 @@ export default function TagInput({ label, values, onChange, placeholder, ariaLab
             </span>
           ))}
           <input
+            ref={inputRef}
             className="tag-input-editor"
             id={inputId}
             value={draft}
-            onChange={event => setDraft(event.target.value)}
+            onChange={event => {
+              setDraft(event.target.value);
+              setSuggestionsOpen(true);
+              setActiveSuggestionIndex(-1);
+            }}
             onKeyDown={handleInputKeyDown}
+            onFocus={openSuggestions}
+            onBlur={closeSuggestionsSoon}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             placeholder={placeholder}
             aria-label={ariaLabel}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls={suggestionsOpen && filteredSuggestions.length > 0 ? suggestionListId : undefined}
+            aria-expanded={suggestionsOpen && filteredSuggestions.length > 0}
+            aria-activedescendant={suggestionsOpen && activeSuggestionIndex >= 0 ? `${suggestionListId}-${activeSuggestionIndex}` : undefined}
             enterKeyHint="done"
           />
         </div>
+        {suggestionsOpen && filteredSuggestions.length > 0 && (
+          <div id={suggestionListId} className="taxonomy-suggestions" role="listbox" aria-label={`${label}历史值`}>
+            {filteredSuggestions.map((suggestion, index) => (
+              <button
+                key={suggestion}
+                type="button"
+                role="option"
+                id={`${suggestionListId}-${index}`}
+                aria-selected={index === activeSuggestionIndex}
+                className={`taxonomy-suggestion${index === activeSuggestionIndex ? ' is-active' : ''}`}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => commitSuggestion(suggestion)}
+              >
+                {prefix}{suggestion}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

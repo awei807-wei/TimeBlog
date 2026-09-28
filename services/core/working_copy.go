@@ -326,3 +326,12 @@ func commitTags(in commitWorkingRequest) []string {
 	}
 	return mergeTags(in.Tags, in.Markdown)
 }
+
+// normalizeEntryKind 将文章设为显式选项，其余值（包括缺省值和历史工作副本
+// 中的旧值）统一按随记处理，避免旧草稿状态创建不受支持的内容类型。
+func normalizeEntryKind(kind string) string {
+	if kind == "article" {
+		return "article"
+	}
+	return "note"
+}

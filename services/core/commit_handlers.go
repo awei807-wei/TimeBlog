@@ -55,6 +55,7 @@ func (srv *Server) commitWorking(w http.ResponseWriter, r *http.Request, wc *Wor
 	if in.Kind == "" {
 		in.Kind = "note"
 	}
+	in.Kind = normalizeEntryKind(in.Kind)
 	if in.Status == "" {
 		in.Status = "draft"
 	}

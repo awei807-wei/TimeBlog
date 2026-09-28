@@ -23,6 +23,8 @@ export type TimelineDay = { date: string; untimed: PublicEntry[]; timed: PublicE
 export type CalendarResponse = { month: string; days: Record<string, number> };
 export type SearchResponse = { query: string; entries: PublicEntry[]; nextCursor?: string };
 export type AdminEntry = Omit<PublicEntry, 'id' | 'visibility'> & { id: string; status: 'draft' | 'published' | 'trashed'; visibility: 'public' | 'private'; updatedAt: string };
+export type AdminCategory = { id?: string; name: string; slug?: string };
+export type AdminTag = { id?: string; displayName: string; normalizedName?: string; slug?: string };
 export type Version = { version: number; createdAt: string; snapshot: Record<string, unknown> };
 export type Media = { id: string; originalName: string; mimeType: string; sizeBytes: number; visibility: 'public' | 'private'; status: 'uploading' | 'ready' | 'failed' | 'deleting' | 'deleted'; provider?: 'local_private' | 'custom_public'; providerKey?: string; publicUrl?: string; externalPublishStatus?: 'not_requested' | 'pending' | 'publishing' | 'published' | 'failed' | 'trash_pending'; externalPublishError?: string; createdAt?: string };
 export type ExportJob = { id: string; type: 'public' | 'full'; status: 'queued' | 'running' | 'ready' | 'failed'; downloadUrl?: string; sha256?: string };
@@ -201,6 +203,24 @@ export async function searchPublic(query: string, cursor = ''): Promise<SearchRe
 
 export async function getAdminEntries(status = ''): Promise<{ entries: AdminEntry[]; nextCursor?: string }> {
   return getJSON(`/admin/entries${status ? `?status=${encodeURIComponent(status)}` : ''}`);
+}
+
+/**
+ * 读取当前登录作者可用的分类和标签。持久化 API 返回记录数组，内存开发存储返回频次映射，
+ * 这里统一成编辑器使用的数组结构。
+ */
+export async function getAdminTaxonomy(): Promise<{ categories: AdminCategory[]; tags: AdminTag[] }> {
+  const [categoryResponse, tagResponse] = await Promise.all([
+    getJSON<{ categories?: AdminCategory[] | Record<string, number> }>('/admin/categories', { cache: 'no-store' }),
+    getJSON<{ tags?: AdminTag[] | Record<string, number> }>('/admin/tags', { cache: 'no-store' }),
+  ]);
+  const categories = Array.isArray(categoryResponse.categories)
+    ? categoryResponse.categories.filter(item => item && typeof item.name === 'string' && item.name.trim())
+    : Object.keys(categoryResponse.categories || {}).map(name => ({ name }));
+  const tags = Array.isArray(tagResponse.tags)
+    ? tagResponse.tags.filter(item => item && typeof item.displayName === 'string' && item.displayName.trim())
+    : Object.keys(tagResponse.tags || {}).map(displayName => ({ displayName }));
+  return { categories, tags };
 }
 
 export async function getVersions(id: string): Promise<{ versions: Version[] }> {

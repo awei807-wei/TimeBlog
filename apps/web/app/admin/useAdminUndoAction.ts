@@ -4,7 +4,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { useRouter } from 'next/navigation';
 import { API } from '@/lib/api';
 import { invalidatePublicCaches } from '@/lib/cache-invalidation';
-import { readTaxonomy } from './editing-working-copy';
+import { normalizeEditorKind, readTaxonomy } from './editing-working-copy';
 import type { EntryActionOptions } from './useAdminEntryActions';
 
 export function useAdminUndoAction(options: EntryActionOptions, undoToken: string, setUndoToken: Dispatch<SetStateAction<string>>) {
@@ -23,7 +23,7 @@ export function useAdminUndoAction(options: EntryActionOptions, undoToken: strin
     options.setTags(readTaxonomy(body.entry?.tags, /[,\s]+/, true));
     options.setDate(body.entry?.journalDate || options.date);
     options.setJournalTime(typeof body.entry?.journalTime === 'string' ? body.entry.journalTime : null);
-    options.setKind(body.entry?.kind || 'note');
+    options.setKind(normalizeEditorKind(body.entry?.kind));
     options.setStatus('draft');
     options.clearWorkingCopyState();
     setUndoToken('');

@@ -44,7 +44,7 @@ const requireStub = specifier => {
 vm.compileFunction(compiled.outputText, ['require', 'module', 'exports'], { filename: sourceURL.pathname })(requireStub, loadedModule, loadedModule.exports);
 const TagInput = loadedModule.exports.default;
 
-function createHarness(values) {
+function createHarness(values, suggestions = []) {
   const state = [];
   const refs = [];
   const changes = [];
@@ -54,6 +54,7 @@ function createHarness(values) {
     props: {
       label: '标签',
       values,
+      suggestions,
       onChange: nextValues => {
         changes.push(nextValues);
         harness.props = { ...harness.props, values: nextValues };
@@ -190,4 +191,55 @@ test('TagInput commits Enter in the inline editor and keeps its edited value nor
   assert.deepEqual(harness.changes, [['New']]);
   assert.equal(event.defaultPrevented, true);
   assert.equal(event.propagationStopped, true);
+});
+
+test('TagInput exposes historical taxonomy values and selecting one adds it to the current entry', () => {
+  const harness = createHarness(['Existing'], ['Past', 'Existing', 'Other']);
+  const input = inputNode(harness, 'tag-input-editor');
+  input.props.onFocus();
+
+  const list = findNode(harness.tree, node => node.type === 'div' && node.props.className === 'taxonomy-suggestions');
+  assert.ok(list);
+  const options = Array.isArray(list.props.children) ? list.props.children : [list.props.children];
+  assert.deepEqual(options.map(option => Array.isArray(option.props.children) ? option.props.children.at(-1) : option.props.children), ['Past', 'Other']);
+  options[0].props.onMouseDown({ preventDefault() {} });
+  options[0].props.onClick();
+  assert.deepEqual(harness.changes, [['Existing', 'Past']]);
+  assert.equal(findNode(harness.tree, node => node.type === 'div' && node.props.className === 'taxonomy-suggestions'), null);
+});
+
+test('TagInput supports keyboard selection and keeps selected suggestions out of the list', () => {
+  const harness = createHarness([], ['中文', '其他']);
+  inputNode(harness, 'tag-input-editor').props.onFocus();
+  changeInput(harness, 'tag-input-editor', '中');
+  const arrowEvent = {
+    key: 'ArrowDown',
+    keyCode: 40,
+    nativeEvent: { isComposing: false },
+    preventDefault() {},
+    stopPropagation() {},
+  };
+  inputNode(harness, 'tag-input-editor').props.onKeyDown(arrowEvent);
+  const enterEvent = pressEnter(harness, 'tag-input-editor');
+  assert.equal(enterEvent.defaultPrevented, true);
+  assert.deepEqual(harness.changes, [['中文']]);
+
+  inputNode(harness, 'tag-input-editor').props.onFocus();
+  const list = findNode(harness.tree, node => node.type === 'div' && node.props.className === 'taxonomy-suggestions');
+  const options = Array.isArray(list.props.children) ? list.props.children : [list.props.children];
+  assert.deepEqual(options.map(option => Array.isArray(option.props.children) ? option.props.children.at(-1) : option.props.children), ['其他']);
+});
+
+test('admin taxonomy suggestions are fetched from authenticated taxonomy endpoints and wired to both fields', async () => {
+  const fs = await import('node:fs/promises');
+  const api = await fs.readFile(new URL('../lib/api.ts', import.meta.url), 'utf8');
+  const infrastructure = await fs.readFile(new URL('../app/admin/useAdminEditorInfrastructure.ts', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  assert.match(api, /getAdminTaxonomy/);
+  assert.match(api, /['"]\/admin\/categories['"]/);
+  assert.match(api, /['"]\/admin\/tags['"]/);
+  assert.match(infrastructure, /getAdminTaxonomy\(\)/);
+  assert.match(infrastructure, /taxonomySuggestions/);
+  assert.match(view, /suggestions=\{categorySuggestions\}/);
+  assert.match(view, /suggestions=\{tagSuggestions\}/);
 });

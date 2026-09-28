@@ -39,6 +39,10 @@ export function useAdminSaveAction(options: EntryActionOptions, setUndoToken: Di
         options.setSummary('');
         options.setSlug('');
         options.setJournalTime(null);
+        // 新建内容保存后回到初始默认值，避免刚发布的文章把公开状态或文章类型
+        // 带到下一条空白草稿。
+        options.setKind('note');
+        options.setStatus('draft');
         options.setMessage('已保存，15 秒内可撤销');
         options.editorRef.current?.focus();
       }

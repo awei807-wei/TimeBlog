@@ -27,6 +27,8 @@ export type AdminEditorViewProps = {
   status: EditorStatus;
   categories: string[];
   tags: string[];
+  categorySuggestions: string[];
+  tagSuggestions: string[];
   date: string;
   markdown: string;
   message: string;
@@ -164,7 +166,7 @@ function UploadQueue({ uploads, onCancelUpload, onRetryUpload, onRemoveUpload }:
   return <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <UploadQueueItem key={item.id} item={item} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />)}</ul>;
 }
 
-function EntrySelectors({ date, kind, status, categories, tags, saving, loadingEdit, onDateChange, onKindChange, onStatusChange, onCategoriesChange, onTagsChange }: AdminEditorViewProps) {
+function EntrySelectors({ date, kind, status, categories, tags, categorySuggestions, tagSuggestions, saving, loadingEdit, onDateChange, onKindChange, onStatusChange, onCategoriesChange, onTagsChange }: AdminEditorViewProps) {
   return (
     <div className="writing-inspector-fields">
       <JournalDatePicker value={date} onChange={onDateChange} disabled={saving || loadingEdit} />
@@ -172,8 +174,8 @@ function EntrySelectors({ date, kind, status, categories, tags, saving, loadingE
         <label>类型 <select value={kind} onChange={event => onKindChange(event.target.value)}><option value="note">随记</option><option value="article">文章</option></select></label>
         <label>状态 <select value={status} onChange={event => onStatusChange(event.target.value as EditorStatus)}><option value="draft">草稿</option><option value="public">公开</option><option value="private">私人</option></select></label>
       </div>
-      <TagInput label="分类" values={categories} onChange={onCategoriesChange} placeholder="输入后回车" ariaLabel="分类" />
-      <TagInput label="标签" values={tags} onChange={onTagsChange} placeholder="输入后回车" ariaLabel="标签" prefix="#" />
+      <TagInput label="分类" values={categories} suggestions={categorySuggestions} onChange={onCategoriesChange} placeholder="输入后回车" ariaLabel="分类" />
+      <TagInput label="标签" values={tags} suggestions={tagSuggestions} onChange={onTagsChange} placeholder="输入后回车" ariaLabel="标签" prefix="#" />
     </div>
   );
 }

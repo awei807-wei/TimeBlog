@@ -20,6 +20,8 @@ export function buildAdminEditorViewProps(message: string, infrastructure: Infra
     status: editor.status,
     categories: editor.categories,
     tags: editor.tags,
+    categorySuggestions: infrastructure.taxonomySuggestions.categories,
+    tagSuggestions: infrastructure.taxonomySuggestions.tags,
     date: editor.date,
     markdown: editor.markdown,
     message,

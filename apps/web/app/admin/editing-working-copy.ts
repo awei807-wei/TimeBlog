@@ -83,13 +83,18 @@ export function deserializeWorkingCopyStatus(value: Record<string, unknown>) {
   return deserializeEditorStatus({ status: String(value.status || ''), visibility: String(value.visibility || '') });
 }
 
+/** 只有显式 article 才进入文章路由和文章元数据流程。 */
+export function normalizeEditorKind(value: unknown) {
+  return String(value || '') === 'article' ? 'article' : 'note';
+}
+
 export function applyWorkingCopyFields(working: WorkingCopyResponse, fallbackEntryID: string, notice: string, setters: WorkingCopyEditorSetters) {
   const value = working.payload || {};
   setters.setEntryID(working.entryId || fallbackEntryID);
   setters.setWorkingID(working.id);
   setters.setDraftId(working.clientDraftId);
   setters.setTitle(String(value.title || '')); setters.setSummary(String(value.summary || '')); setters.setSlug(String(value.slug || ''));
-  setters.setCategories(readTaxonomy(value.categories, /,/)); setters.setTags(readTaxonomy(value.tags, /[,\s]+/, true)); setters.setStatus(deserializeWorkingCopyStatus(value)); setters.setKind(String(value.kind || 'note')); setters.setDate(String(value.journalDate || ''));
+  setters.setCategories(readTaxonomy(value.categories, /,/)); setters.setTags(readTaxonomy(value.tags, /[,\s]+/, true)); setters.setStatus(deserializeWorkingCopyStatus(value)); setters.setKind(normalizeEditorKind(value.kind)); setters.setDate(String(value.journalDate || ''));
   setters.setJournalTime(readJournalTimeField(value));
   setters.setMeta(workingCopyMetaFromResponse(working)); setters.setMessage(notice);
 }

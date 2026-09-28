@@ -154,6 +154,7 @@ func (srv *Server) commitWorkingDatabase(w http.ResponseWriter, r *http.Request,
 	if in.Kind == "" {
 		in.Kind = "note"
 	}
+	in.Kind = normalizeEntryKind(in.Kind)
 	if in.Kind == "article" {
 		in.Slug, err = uniqueDatabaseArticleSlug(r.Context(), tx, in.Slug, in.Title, entryID)
 		if err != nil {

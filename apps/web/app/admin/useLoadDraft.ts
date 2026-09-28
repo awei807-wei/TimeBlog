@@ -2,7 +2,7 @@
 
 import { useCallback, type RefObject, type SetStateAction, type Dispatch } from 'react';
 import type { MarkdownEditorHandle } from './editor-contract';
-import { readTaxonomy, type EditorStatusValue } from './editing-working-copy';
+import { normalizeEditorKind, readTaxonomy, type EditorStatusValue } from './editing-working-copy';
 import type { Draft } from './editor-storage';
 import { readJournalTimeField, type JournalTimeValue } from './journal-time-payload';
 
@@ -35,7 +35,7 @@ export function useLoadDraft({ applyMarkdown, editorRef, setDraftId, clearEntry,
     setCategories(readTaxonomy(value.categories, /,/));
     setTags(readTaxonomy(value.tags, /[,\s]+/, true));
     setStatus(value.visibility === 'private' || value.status === 'private' ? 'private' : value.status === 'published' ? 'public' : 'draft');
-    setKind(String(value.kind || 'note'));
+    setKind(normalizeEditorKind(value.kind));
     setDate(String(value.journalDate || ''));
     setJournalTime(readJournalTimeField(value));
     setMessage('已载入草稿');
