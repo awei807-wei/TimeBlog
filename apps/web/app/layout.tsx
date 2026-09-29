@@ -3,6 +3,7 @@ import './article-prose.css';
 import './public-shell.css';
 import './public-pages.css';
 import './public-views.css';
+import './article-transition.css';
 import './admin-editor-layout.css';
 import './admin-editor-editor.css';
 import './admin-editor-tools.css';
@@ -13,7 +14,7 @@ import type { Metadata } from 'next';
 import ServiceWorkerRegister from './ServiceWorkerRegister';
 import AppShell from './AppShell';
 
-const SITE_VERSION = '2026@09·12';
+const SITE_VERSION = '2026@09·13';
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || 'http://localhost:3000'),

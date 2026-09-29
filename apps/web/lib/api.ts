@@ -80,12 +80,22 @@ export function normalizeArticleIdentifier(value: string): string | null {
   }
 }
 
+export class APIError extends Error {
+  readonly status: number;
+
+  constructor(status: number) {
+    super(`API ${status}`);
+    this.name = 'APIError';
+    this.status = status;
+  }
+}
+
 async function getJSON<T>(path: string, init?: RequestInit & { next?: { revalidate?: number } }): Promise<T> {
   const response = await fetch(`${API}${path}`, {
     ...init,
     headers: { Accept: 'application/json', ...(init?.headers || {}) },
   });
-  if (!response.ok) throw new Error(`API ${response.status}`);
+  if (!response.ok) throw new APIError(response.status);
   return response.json() as Promise<T>;
 }
 
@@ -174,10 +184,10 @@ export async function getDay(date: string, signal?: AbortSignal): Promise<{ date
   return getJSON(`/public/days/${encodeURIComponent(date)}`, { cache: 'no-store', signal });
 }
 
-export async function getArticle(slug: string): Promise<PublicEntry> {
+export async function getArticle(slug: string, signal?: AbortSignal): Promise<PublicEntry> {
   const identifier = normalizeArticleIdentifier(slug);
   if (!identifier) throw new Error('Invalid article identifier');
-  return getJSON(`/public/articles/${encodeURIComponent(identifier)}`, { cache: 'no-store' });
+  return getJSON(`/public/articles/${encodeURIComponent(identifier)}`, { cache: 'no-store', signal });
 }
 
 export async function getCalendar(month: string, signal?: AbortSignal): Promise<CalendarResponse> {

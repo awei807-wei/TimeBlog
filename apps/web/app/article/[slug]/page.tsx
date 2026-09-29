@@ -1,23 +1,29 @@
 import Link from 'next/link';
+import { cache } from 'react';
 import { notFound, redirect } from 'next/navigation';
-import { getArticle, normalizeArticleIdentifier, type PublicEntry } from '@/lib/api';
+import { normalizeArticleIdentifier } from '@/lib/api';
+import { loadArticle as fetchArticle } from '@/lib/article-loader';
 import DOMPurify from 'isomorphic-dompurify';
 import { decorateMediaReferences, renderMarkdown } from '@/lib/markdown';
 import EmbedMarkup from '../EmbedMarkup';
+import ArticleTransition from '../ArticleTransition';
 import type { Metadata } from 'next';
 import { ArrowLeft } from 'lucide-react';
 
 const siteUrl = () => process.env.SITE_URL || 'http://localhost:3000';
-
-async function loadArticle(slug: string): Promise<PublicEntry | null> {
-  try { return await getArticle(slug); } catch { return null; }
-}
+// Share one timed request between metadata and content within this render.
+const loadArticle = cache(fetchArticle);
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const requestedIdentifier = normalizeArticleIdentifier(slug);
-  const article = requestedIdentifier ? await loadArticle(slug) : null;
-  if (!requestedIdentifier || !article || article.placeholder) return { title: '文章不存在', robots: { index: false, follow: false } };
+  if (!requestedIdentifier) return { title: '文章不存在', robots: { index: false, follow: false } };
+  const result = await loadArticle(slug);
+  if (result.status !== 'ready') return {
+    title: result.status === 'not-found' ? '文章不存在' : result.status === 'timeout' ? '文章加载超时' : '文章暂时无法加载',
+    robots: { index: false, follow: false },
+  };
+  const { article } = result;
   const title = article.title || '无题';
   const description = article.summary || article.markdown?.replace(/\s+/g, ' ').slice(0, 160) || '菜鸟手记文章';
   const canonicalIdentifier = normalizeArticleIdentifier(article.slug || '') || requestedIdentifier;
@@ -35,8 +41,12 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
   const { slug } = await params;
   const requestedIdentifier = normalizeArticleIdentifier(slug);
   if (!requestedIdentifier) notFound();
-  const article = await loadArticle(slug);
-  if (!article || article.placeholder) notFound();
+  const result = await loadArticle(slug);
+  if (result.status !== 'ready') {
+    if (result.status === 'not-found') notFound();
+    return <ArticleTransition state={result.status} />;
+  }
+  const { article } = result;
   const canonicalIdentifier = normalizeArticleIdentifier(article.slug || '') || requestedIdentifier;
   if (canonicalIdentifier !== requestedIdentifier) redirect(`/article/${encodeURIComponent(canonicalIdentifier)}`);
   const structuredData = {
