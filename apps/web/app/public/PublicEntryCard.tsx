@@ -9,6 +9,7 @@ import type { PublicEntry } from '@/lib/api';
 import { decorateMediaReferences, renderMarkdown } from '@/lib/markdown';
 import { entryHasPreviewMedia } from '@/lib/public-entry-preview';
 import { articleHref, entryExcerpt, entryFullText, primaryCategory } from './public-entry';
+import { columnHref } from './columns';
 
 type Props = {
   entry: PublicEntry;
@@ -16,6 +17,11 @@ type Props = {
   compact?: boolean;
   onTagClick?: (tag: string) => void;
 };
+
+function EntryColumn({ entry }: { entry: PublicEntry }) {
+  const name = entry.categories?.[0];
+  return name ? <Link className="entry-column-link" href={columnHref(name)} aria-label={`阅读${name}栏目`}>{name}</Link> : <span>{primaryCategory(entry)}</span>;
+}
 
 function TagList({ entry, onTagClick }: Pick<Props, 'entry' | 'onTagClick'>) {
   if (!entry.tags?.length) return null;
@@ -170,13 +176,13 @@ export default function PublicEntryCard({ entry, showDate = false, compact = fal
   if (entry.kind !== 'article') {
     const noteStamp = showDate ? [entry.journalDate, entry.journalTime].filter(Boolean).join(' · ') : entry.journalTime || '随记';
     return <article className={`public-entry public-note-entry${compact ? ' is-compact' : ''}`}>
-      <div className="public-note-meta"><time>{noteStamp}</time><span>{primaryCategory(entry)}</span></div>
+      <div className="public-note-meta"><time>{noteStamp}</time><EntryColumn entry={entry} /></div>
       <div className="public-note-copy"><NoteCopy entry={entry} compact={compact}/><TagList entry={entry} onTagClick={onTagClick}/></div>
     </article>;
   }
 
   return <article className={`public-entry public-article-entry${compact ? ' is-compact' : ''}`}>
-    <div className="public-entry-meta"><span className="public-type-pill">长文</span><span>{primaryCategory(entry)}</span>{showDate && <time>{entry.journalDate}</time>}</div>
+    <div className="public-entry-meta"><span className="public-type-pill">长文</span><EntryColumn entry={entry} />{showDate && <time>{entry.journalDate}</time>}</div>
     <h2>{href ? <Link href={href}>{entry.title || '无题'}</Link> : entry.title || '无题'}</h2>
     {!compact && <p>{excerpt || '这篇文章暂时没有摘要。'}</p>}
     <footer><TagList entry={entry} onTagClick={onTagClick}/>{href && <Link className="public-read-more" href={href}>继续阅读 <ArrowUpRight aria-hidden="true"/></Link>}</footer>

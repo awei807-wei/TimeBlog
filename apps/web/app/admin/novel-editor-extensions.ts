@@ -1,8 +1,8 @@
 import { mediaContentUrl } from '@/lib/media-resolver';
 import { API } from '@/lib/api';
 import { isSafeMediaReference } from './markdown-compat';
+import { createNovelSlashCommand } from './novel-slash-command';
 import {
-  Command,
   Placeholder,
   StarterKit,
   TaskItem,
@@ -10,7 +10,6 @@ import {
   TiptapImage,
   TiptapLink,
   createSuggestionItems,
-  renderItems,
   type SuggestionItem,
 } from 'novel';
 import Table from '@tiptap/extension-table';
@@ -105,11 +104,10 @@ export type NovelExtensionOptions = {
  * Tiptap types and makes the editor's supported Markdown surface explicit.
  */
 export function createNovelExtensions({ editorPortalElement, suggestions }: NovelExtensionOptions): any[] {
-  const slashCommand = Command.configure({
+  const slashCommand = createNovelSlashCommand(editorPortalElement).configure({
     suggestion: {
       char: '/',
       items: () => createSuggestionItems(suggestions),
-      render: () => renderItems(editorPortalElement ? { current: editorPortalElement } : null),
     },
   });
 

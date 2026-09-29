@@ -1,0 +1,40 @@
+/* Low specificity keeps existing component transitions and focus styles. */
+:where(button, [role='button'], a[href], summary, [cmdk-item], input[type='submit'], input[type='button'], input[type='reset']) {
+  transition: scale 100ms ease-out, filter 100ms ease-out, background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+/* Cosmetic arrivals only: no exit wait, layout wrapper or navigation lock. */
+.site-route-arrival {
+  animation: site-route-arrival 200ms cubic-bezier(.2, .7, .3, 1);
+}
+
+@keyframes site-route-arrival {
+  from { opacity: .78; translate: 0 3px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+/* This attribute exists only between down/up (or cancellation), never selection.
+   Individual scale composes with existing transforms (floating/centred controls).
+   No transition delay, box-shadow, outline or transform overrides. */
+:is([data-press-feedback], button:active, [role='button']:active, input[type='submit']:active, input[type='button']:active, input[type='reset']:active):not(:disabled):not([disabled]):not([aria-disabled='true']):not([data-disabled]:not([data-disabled='false'])):not([inert] *):not([aria-disabled='true'] *):not(label:has(input:disabled)) {
+  scale: .97;
+  filter: brightness(.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-route-arrival { animation: none; }
+  :is([data-press-feedback], button:active, [role='button']:active, input:active) { scale: none !important; }
+  /* Retain immediate, non-spatial feedback, without inherited transition-all. */
+  [data-press-feedback] { transition: none !important; }
+}
+
+.route-loading { min-height: 320px; animation: site-route-arrival 200ms ease-out; }
+.route-loading > p { color: var(--muted); font-size: 13px; }
+.route-loading-lines { display: grid; gap: 18px; margin-top: 28px; }
+.route-loading-lines span { height: 16px; border-radius: 6px; background: var(--accent-soft); }
+.route-loading-lines span:first-child { width: 45%; height: 30px; margin-bottom: 12px; }
+.route-loading-lines span:last-child { width: 70%; }
+@media (prefers-reduced-motion: reduce) {
+  .route-loading { animation: none; }
+  :where(button, [role='button'], a[href], summary, [cmdk-item], input[type='submit'], input[type='button'], input[type='reset']) { transition: none; }
+}

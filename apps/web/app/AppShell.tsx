@@ -6,6 +6,7 @@ import { CalendarDays, FileText, Home, LogIn, LogOut, PenLine, Search, Settings2
 import { useEffect } from 'react';
 import { SessionProvider, useSession } from './SessionContext';
 import PublicShell from './public/PublicShell';
+import AppMotion from './AppMotion';
 import {
   Sidebar,
   SidebarContent,
@@ -26,7 +27,7 @@ type NavItem = { href: string; label: string; icon: typeof Home; exact?: boolean
 const browseItems: NavItem[] = [
   { href: '/', label: '时间线', icon: Home, exact: true },
   { href: '/calendar', label: '日历', icon: CalendarDays },
-  { href: '/categories', label: '分类', icon: Tags },
+  { href: '/categories', label: '栏目', icon: Tags },
   { href: '/search', label: '搜索', icon: Search },
 ];
 const manageItems: NavItem[] = [
@@ -55,7 +56,7 @@ function AppNavigation() {
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  return <SessionProvider><ShellRoute>{children}</ShellRoute></SessionProvider>;
+  return <SessionProvider><ShellRoute>{children}</ShellRoute><AppMotion /></SessionProvider>;
 }
 
 function ShellRoute({ children }: { children: React.ReactNode }) {

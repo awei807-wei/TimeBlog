@@ -373,9 +373,10 @@ test('Novel editor is the sole Markdown source of truth with a vendor-neutral ha
   assert.match(editor, /<EditorRoot>/);
   assert.match(editor, /<EditorContent/);
   assert.match(editor, /<NovelEditorBubbleMenu/);
-  assert.match(editor, /<NovelEditorSlashMenu/);
+  const slash = await fs.readFile(new URL('../app/admin/novel-slash-command.ts', import.meta.url), 'utf8');
+  assert.match(slash, /new ReactRenderer\(NovelEditorSlashMenu/);
   assert.match(menus, /<EditorBubble/);
-  assert.match(menus, /<EditorCommand/);
+  assert.match(menus, /<CommandMenu/);
   assert.match(editor, /getMarkdown/);
   assert.match(editor, /setMarkdown/);
   assert.match(editor, /insertMarkdown/);

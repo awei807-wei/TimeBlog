@@ -10,7 +10,7 @@ import { useSession } from '../SessionContext';
 const navItems = [
   { href: '/', label: '时间线', matches: (path: string) => path === '/' || path.startsWith('/day/') || path.startsWith('/article/') },
   { href: '/calendar', label: '日历', matches: (path: string) => path === '/calendar' },
-  { href: '/categories', label: '分类', matches: (path: string) => path.startsWith('/categories') || path.startsWith('/tag/') },
+  { href: '/categories', label: '栏目', matches: (path: string) => path.startsWith('/categories') || path.startsWith('/tag/') },
   { href: '/search', label: '搜索', matches: (path: string) => path === '/search' },
 ] as const;
 

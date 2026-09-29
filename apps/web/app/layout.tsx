@@ -10,11 +10,13 @@ import './admin-editor-tools.css';
 import './admin-editor-dialogs.css';
 import './admin-editor-inspector.css';
 import './admin-editor-responsive.css';
+import './columns.css';
+import './site-motion.css';
 import type { Metadata } from 'next';
 import ServiceWorkerRegister from './ServiceWorkerRegister';
 import AppShell from './AppShell';
 
-const SITE_VERSION = '2026@09·13';
+const SITE_VERSION = '2026@09·14';
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || 'http://localhost:3000'),

@@ -9,6 +9,7 @@ import EmbedMarkup from '../EmbedMarkup';
 import ArticleTransition from '../ArticleTransition';
 import type { Metadata } from 'next';
 import { ArrowLeft } from 'lucide-react';
+import { columnHref } from '../../public/columns';
 
 const siteUrl = () => process.env.SITE_URL || 'http://localhost:3000';
 // Share one timed request between metadata and content within this render.
@@ -68,7 +69,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ slug: 
           <div className="public-reader-kicker"><span>ARTICLE</span><time>{article.journalDate}</time></div>
           <h1>{article.title || '无题'}</h1>
           {article.summary && <p>{article.summary}</p>}
-          <div className="public-reader-taxonomy"><span>{article.journalTime || '当日随记'}</span>{article.categories?.map(c => <Link href={`/categories/${encodeURIComponent(c.toLowerCase().replace(/\s+/g, '-'))}`} key={c}>{c}</Link>)}{article.tags?.map(t => <Link href={`/tag/${encodeURIComponent(t)}`} key={t}>#{t}</Link>)}</div>
+          <div className="public-reader-taxonomy"><span>{article.journalTime || '当日随记'}</span>{article.categories?.map(c => <Link href={columnHref(c)} key={c}>{c}</Link>)}{article.tags?.map(t => <Link href={`/tag/${encodeURIComponent(t)}`} key={t}>#{t}</Link>)}</div>
         </header>
         <section className="public-reader-body">{(() => {
           const rendered = article.renderedHtml ? { html: decorateMediaReferences(article.renderedHtml), toc: [] } : renderMarkdown(article.markdown || '');

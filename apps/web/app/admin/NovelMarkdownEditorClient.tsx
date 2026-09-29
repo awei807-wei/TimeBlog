@@ -14,7 +14,7 @@ import { mediaContentUrl } from '@/lib/media-resolver';
 import { isSafeMediaReference, prepareMarkdownForNovel, restoreMarkdownFromNovel, type PreparedMarkdown } from './markdown-compat';
 import { createNovelExtensions } from './novel-editor-extensions';
 import NovelEditorToolbar from './NovelEditorToolbar';
-import { buildNovelSuggestions, NovelEditorBubbleMenu, NovelEditorSlashMenu } from './NovelEditorMenus';
+import { buildNovelSuggestions, NovelEditorBubbleMenu } from './NovelEditorMenus';
 import NovelImageDialog from './NovelImageDialog';
 import NovelLinkDialog from './NovelLinkDialog';
 import type { MarkdownEditorHandle } from './editor-contract';
@@ -210,7 +210,6 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
         >
           <NovelEditorBridge markdown={markdown} editorRef={editorRef} onChangeRef={onChangeRef} onReadyRef={onReadyRef} onNoticeRef={onNoticeRef} sourceRef={sourceRef} dirtyRef={dirtyRef} compatibilityRef={compatibilityRef} onCompatibilityChange={setHasProtectedContent} />
           <NovelEditorBubbleMenu editorPortalElement={editorPortalElement} onOpenLink={openLinkDialog} />
-          <NovelEditorSlashMenu onOpenImage={openImageDialog} />
           {imageDialogOpen && <NovelImageDialog open uploadEnabled={Boolean(onImageUpload)} uploadMessage={`${imageUploadUnavailableMessage || '本地媒体存储暂不可用'}，仍可使用公开图片链接。`} editorPortalElement={editorPortalElement} onOpenChange={setImageDialogOpen} onChooseFile={chooseImageFile} />}
           {linkDialogOpen && <NovelLinkDialog open editorPortalElement={editorPortalElement} onOpenChange={setLinkDialogOpen} />}
         </EditorContent>

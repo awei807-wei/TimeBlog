@@ -1,23 +1,16 @@
-import Link from 'next/link';
-import { ArrowUpRight } from 'lucide-react';
+import type { Metadata } from 'next';
 import { getCategories } from '@/lib/api';
 import SectionIntro from '../public/SectionIntro';
+import { ColumnCards } from '../public/ColumnDirectory';
+import { publicColumns } from '../public/columns';
 
-function categorySlug(name: string) {
-  return name.toLowerCase().replace(/\s+/g, '-');
-}
+export const metadata: Metadata = { title: '栏目', description: '以分类为线索，阅读持续积累的文章与随记。' };
 
 export default async function CategoriesPage() {
-  let categories: Record<string, number> = {};
-  try { categories = (await getCategories()).categories; } catch { /* offline-safe empty state */ }
-  const entries = Object.entries(categories).sort((left, right) => right[1] - left[1]);
-
-  return <main id="main-content" className="public-page">
-    <SectionIntro eyebrow="CATEGORIES" title="都写了些什么" description="按主题整理公开记录。每个分类都是一条持续积累的线索。" />
-    {entries.length ? <section className="public-category-grid" aria-label="公开分类">{entries.map(([name, count], index) => <Link className={`public-category-card tone-${index % 4}`} href={`/categories/${encodeURIComponent(categorySlug(name))}`} key={name}>
-      <span>分类 {String(index + 1).padStart(2, '0')}</span><b>{count} 条</b>
-      <h2>{name}</h2><p>查看归入“{name}”的全部公开随记与文章。</p>
-      <footer><span>进入分类</span><ArrowUpRight aria-hidden="true" /></footer>
-    </Link>)}</section> : <div className="public-empty">还没有公开分类。</div>}
+  const columns = publicColumns((await getCategories()).categories);
+  return <main id="main-content" className="public-page column-directory">
+    <SectionIntro eyebrow="THE COLUMNS" title="每个主题，都是一个栏目" description="同一分类下的文章与随记，汇成一个持续更新的栏目。选一条感兴趣的线索，慢慢读。" />
+    <div className="column-directory-meta"><span>{columns.length} 个公开栏目</span><span>按收录数量排列 · 同一记录可收录于多个栏目</span></div>
+    {columns.length ? <ColumnCards columns={columns} /> : <div className="public-empty">还没有公开栏目。为公开文章或随记添加分类，即可建立对应栏目。</div>}
   </main>;
 }
