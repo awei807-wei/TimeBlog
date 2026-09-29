@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { API } from '@/lib/api';
-import { mediaContentUrl, mediaKind, probeMediaContentType } from '@/lib/media-resolver';
+import { localMediaFallbackUrl, mediaContentUrl, mediaKind, probeMediaContentType } from '@/lib/media-resolver';
 
 export type MediaPreviewMetadata = {
   fileName?: string;
@@ -45,12 +45,16 @@ function resolvedElement(kind: ReturnType<typeof mediaKind>, url: string, label:
     figure.className = 'resolved-image-card';
     const image = document.createElement('img');
     image.className = 'resolved-media resolved-image';
-    image.crossOrigin = 'use-credentials';
+    image.referrerPolicy = 'no-referrer';
     image.src = url;
     image.alt = label;
     image.loading = 'lazy';
     image.decoding = 'async';
-    image.addEventListener('error', () => figure.replaceWith(unavailable(label)), { once: true });
+    image.addEventListener('error', () => {
+      const fallback = localMediaFallbackUrl(image.src, window.location.origin);
+      if (fallback) image.src = fallback;
+      else figure.replaceWith(unavailable(label));
+    });
     figure.append(image);
     if (label) {
       const caption = document.createElement('figcaption');

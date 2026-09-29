@@ -16,7 +16,7 @@ import type { Metadata } from 'next';
 import ServiceWorkerRegister from './ServiceWorkerRegister';
 import AppShell from './AppShell';
 
-const SITE_VERSION = '2026@09·14';
+const SITE_VERSION = '2026@09·15';
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL || 'http://localhost:3000'),

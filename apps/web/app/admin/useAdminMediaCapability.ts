@@ -34,6 +34,7 @@ export function useAdminMediaCapability(refreshSessionCSRF: () => Promise<string
       setMediaCapability({
         checked: true,
         provider: String(body.provider || ''),
+        externalImageUploadEnabled: writable && body.externalPublic?.publishEnabled === true,
         imageUploadEnabled: writable && body.imageUploadEnabled !== false,
         nonImageUploadEnabled: writable && body.nonImageUploadEnabled !== false,
         reason: writable ? '' : String(body.reason || '媒体存储不可写，上传已禁用'),

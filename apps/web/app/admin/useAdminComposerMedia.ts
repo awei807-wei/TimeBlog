@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState, type MutableRefObject, type SetStateAction, type Dispatch, type RefObject } from 'react';
+import { useCallback, useEffect, type MutableRefObject, type SetStateAction, type Dispatch, type RefObject } from 'react';
 import type { MarkdownEditorHandle } from './editor-contract';
 import { responseError } from './admin-errors';
 import { useAdminMediaCapability } from './useAdminMediaCapability';
-import { useMediaUploads, type MediaCapability } from './useMediaUploads';
+import { useMediaUploads } from './useMediaUploads';
 
 type ComposerMediaOptions = {
   editorRef: RefObject<MarkdownEditorHandle | null>;
@@ -18,8 +18,6 @@ type ComposerMediaOptions = {
 };
 
 export function useAdminComposerMedia({ editorRef, markdownRef, csrfRef, csrf, status, refreshSessionCSRF, applyMarkdown, setMessage }: ComposerMediaOptions) {
-  const [uploadPanelOpen, setUploadPanelOpen] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
   const { online, editorReady, mediaCapability, setEditorReady } = useAdminMediaCapability(refreshSessionCSRF);
   const insertMediaReference = useCallback((reference: string) => {
     const editor = editorRef.current;
@@ -40,5 +38,5 @@ export function useAdminComposerMedia({ editorRef, markdownRef, csrfRef, csrf, s
     return () => window.clearTimeout(timer);
   }, [editorReady, mediaCapability.checked, recoverUploads]);
 
-  return { online, editorReady, setEditorReady, mediaCapability, uploadPanelOpen, setUploadPanelOpen, dragActive, setDragActive, recoverUploads, ...uploads };
+  return { online, editorReady, setEditorReady, mediaCapability, recoverUploads, ...uploads };
 }

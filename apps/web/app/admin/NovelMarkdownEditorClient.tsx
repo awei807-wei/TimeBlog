@@ -10,7 +10,7 @@ import {
 } from 'novel';
 import type { JSONContent, Range } from '@tiptap/core';
 import { API } from '@/lib/api';
-import { mediaContentUrl } from '@/lib/media-resolver';
+import { localMediaFallbackUrl, mediaContentUrl } from '@/lib/media-resolver';
 import { isSafeMediaReference, prepareMarkdownForNovel, restoreMarkdownFromNovel, type PreparedMarkdown } from './markdown-compat';
 import { createNovelExtensions } from './novel-editor-extensions';
 import NovelEditorToolbar from './NovelEditorToolbar';
@@ -19,6 +19,8 @@ import NovelImageDialog from './NovelImageDialog';
 import NovelLinkDialog from './NovelLinkDialog';
 import type { MarkdownEditorHandle } from './editor-contract';
 import type { NovelMarkdownEditorProps } from './NovelMarkdownEditor';
+import { captureEditorFiles } from './editor-file-input';
+import { useEditorFileDrop } from './useEditorFileDrop';
 
 type EditorRef = RefObject<MarkdownEditorHandle | null>;
 
@@ -105,16 +107,6 @@ function NovelEditorBridge({ markdown, editorRef, onChangeRef, onReadyRef, onNot
   return null;
 }
 
-function captureFiles(event: React.ClipboardEvent<HTMLDivElement> | React.DragEvent<HTMLDivElement>, onFiles: ((files: File[]) => void) | undefined, onUnavailable: () => void) {
-  const files = 'clipboardData' in event ? Array.from(event.clipboardData.files) : Array.from(event.dataTransfer.files);
-  if (!files.length) return false;
-  event.preventDefault();
-  event.stopPropagation();
-  if (onFiles) onFiles(files);
-  else onUnavailable();
-  return true;
-}
-
 export default function NovelMarkdownEditorClient({ markdown, editorRef, editorPortalElement, onChange, onFiles, onImageUpload, imageUploadUnavailableMessage, onError, onNotice, onReady, disabled = false }: NovelMarkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   const onErrorRef = useRef(onError);
@@ -130,6 +122,7 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
   const [imageDialogOpen, setImageDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const imageInputID = useId();
+  const { dragActive, resetDrag, onDragEnterCapture, onDragOverCapture, onDragLeaveCapture } = useEditorFileDrop(!disabled && Boolean(onFiles));
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
@@ -174,19 +167,25 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
     window.open(mediaContentUrl(source.slice('media://'.length), API), '_blank', 'noopener,noreferrer');
   }, []);
 
+  const handleImageErrorCapture = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !isSafeMediaReference(image.dataset.mediaSource || '')) return;
+    const fallback = localMediaFallbackUrl(image.src, window.location.origin);
+    if (fallback) image.src = fallback;
+  }, []);
+
   const reportMediaUnavailable = useCallback(() => onErrorRef.current?.('媒体存储尚未就绪，暂时无法添加文件'), []);
-  const handlePasteCapture = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => { captureFiles(event, onFilesRef.current, reportMediaUnavailable); }, [reportMediaUnavailable]);
-  const handleDropCapture = useCallback((event: React.DragEvent<HTMLDivElement>) => { captureFiles(event, onFilesRef.current, reportMediaUnavailable); }, [reportMediaUnavailable]);
+  const handlePasteCapture = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => { captureEditorFiles(event, onFilesRef.current, reportMediaUnavailable, disabled); }, [disabled, reportMediaUnavailable]);
+  const handleDropCapture = useCallback((event: React.DragEvent<HTMLDivElement>) => { resetDrag(); captureEditorFiles(event, onFilesRef.current, reportMediaUnavailable, disabled); }, [disabled, resetDrag, reportMediaUnavailable]);
 
   return (
-    <div className="novel-editor-shell" onPasteCapture={handlePasteCapture} onDropCapture={handleDropCapture} onClickCapture={handleMediaLinkClickCapture} onDragOverCapture={event => {
-      if (event.dataTransfer.types.includes('Files')) event.preventDefault();
-    }}>
+    <div className={`novel-editor-shell${dragActive ? ' is-file-dragging' : ''}`} onErrorCapture={handleImageErrorCapture} onPasteCapture={handlePasteCapture} onDropCapture={handleDropCapture} onClickCapture={handleMediaLinkClickCapture} onDragEnterCapture={onDragEnterCapture} onDragOverCapture={onDragOverCapture} onDragLeaveCapture={onDragLeaveCapture}>
+      {dragActive && <div className="novel-file-drop-hint" role="status">松开即可上传附件</div>}
       {hasProtectedContent && <div className="novel-compat-notice" role="status">历史 HTML、脚注或项目指令已安全保留，保存时会恢复原始 Markdown。</div>}
-      <input id={imageInputID} type="file" accept="image/*" hidden onChange={event => {
+      <input id={imageInputID} type="file" accept="image/*" hidden disabled={disabled || !onImageUpload} onChange={event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = '';
-        if (file) {
+        if (file && !disabled) {
           setImageDialogOpen(false);
           void completeImageUpload(file);
         }
@@ -210,7 +209,7 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
         >
           <NovelEditorBridge markdown={markdown} editorRef={editorRef} onChangeRef={onChangeRef} onReadyRef={onReadyRef} onNoticeRef={onNoticeRef} sourceRef={sourceRef} dirtyRef={dirtyRef} compatibilityRef={compatibilityRef} onCompatibilityChange={setHasProtectedContent} />
           <NovelEditorBubbleMenu editorPortalElement={editorPortalElement} onOpenLink={openLinkDialog} />
-          {imageDialogOpen && <NovelImageDialog open uploadEnabled={Boolean(onImageUpload)} uploadMessage={`${imageUploadUnavailableMessage || '本地媒体存储暂不可用'}，仍可使用公开图片链接。`} editorPortalElement={editorPortalElement} onOpenChange={setImageDialogOpen} onChooseFile={chooseImageFile} />}
+          {imageDialogOpen && <NovelImageDialog open uploadEnabled={!disabled && Boolean(onImageUpload)} uploadMessage={`${imageUploadUnavailableMessage || '本地媒体存储暂不可用'}，仍可使用公开图片链接。`} editorPortalElement={editorPortalElement} onOpenChange={setImageDialogOpen} onChooseFile={chooseImageFile} />}
           {linkDialogOpen && <NovelLinkDialog open editorPortalElement={editorPortalElement} onOpenChange={setLinkDialogOpen} />}
         </EditorContent>
       </EditorRoot>

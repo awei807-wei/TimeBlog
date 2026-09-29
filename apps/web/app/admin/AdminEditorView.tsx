@@ -1,7 +1,7 @@
 'use client';
 
-import type { DragEvent, RefObject } from 'react';
-import { AlertCircle, Check, Cloud, CloudOff, FileText, LoaderCircle, Paperclip, Settings2, Trash2, X } from 'lucide-react';
+import type { RefObject } from 'react';
+import { AlertCircle, Check, Cloud, CloudOff, FileText, LoaderCircle, Settings2, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import type { UploadItem } from '@/lib/media-utils';
 import AttachmentPreview from './AttachmentPreview';
@@ -11,7 +11,7 @@ import JournalDatePicker from './JournalDatePicker';
 import NovelMarkdownEditor from './NovelMarkdownEditor';
 import type { MarkdownEditorHandle } from './editor-contract';
 import TagInput from './TagInput';
-import UploadPanel from './UploadPanel';
+import AttachmentButton from './AttachmentButton';
 import type { Draft } from './editor-storage';
 import type { WorkingCopyMeta } from './editing-working-copy';
 
@@ -35,8 +35,6 @@ export type AdminEditorViewProps = {
   saving: boolean;
   loadingEdit: boolean;
   undoToken: string;
-  uploadPanelOpen: boolean;
-  dragActive: boolean;
   mediaInputDisabled: boolean;
   imageUploadDisabled: boolean;
   mediaAvailabilityMessage: string;
@@ -49,7 +47,6 @@ export type AdminEditorViewProps = {
   editorRef: RefObject<MarkdownEditorHandle | null>;
   presentation?: 'page' | 'dialog';
   editorPortalElement?: Element | null;
-  onToggleUploadPanel: () => void;
   onDiscardWorkingCopy: () => void;
   onTitleChange: (value: string) => void;
   onSummaryChange: (value: string) => void;
@@ -60,10 +57,6 @@ export type AdminEditorViewProps = {
   onEditorError: (message: string) => void;
   onEditorNotice: (message: string) => void;
   onEditorReady: (ready: boolean) => void;
-  onDragEnter: (event: DragEvent<HTMLDivElement>) => void;
-  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
-  onDragLeave: (event: DragEvent<HTMLDivElement>) => void;
-  onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onCancelUpload: (item: UploadItem) => void;
   onRetryUpload: (item: UploadItem, file: File) => Promise<void>;
   onRemoveUpload: (item: UploadItem) => void;
@@ -77,7 +70,9 @@ export type AdminEditorViewProps = {
   onLoadDraft: (draft: Draft) => void;
 };
 
-function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, imageUploadDisabled, mediaAvailabilityMessage, onToggleUploadPanel }: AdminEditorViewProps) {
+function EditorToolbar({ mediaInputDisabled, imageUploadDisabled, mediaAvailabilityMessage, imageUploadAvailabilityMessage, saving, loadingEdit, editorPortalElement, onFiles }: AdminEditorViewProps) {
+  const disabled = mediaInputDisabled || saving || loadingEdit;
+  const disabledMessage = saving ? '正在保存，请稍后再试' : loadingEdit ? '正在载入内容，请稍后再试' : mediaAvailabilityMessage;
   const mediaHint = mediaInputDisabled
     ? '本地上传暂不可用 · 仍可插入 HTTPS 图片链接'
     : imageUploadDisabled
@@ -90,19 +85,7 @@ function EditorToolbar({ uploadPanelOpen, mediaInputDisabled, imageUploadDisable
         <small className={mediaInputDisabled ? 'is-unavailable' : ''}>{mediaHint}</small>
       </div>
       <div className="writing-media-actions" aria-label="媒体工具">
-        <button
-          type="button"
-          className={`writing-media-button${uploadPanelOpen ? ' active' : ''}${mediaInputDisabled ? ' upload-disabled' : ''}`}
-          aria-label="添加媒体"
-          aria-disabled={mediaInputDisabled}
-          aria-expanded={uploadPanelOpen}
-          disabled={mediaInputDisabled}
-          title={mediaInputDisabled ? mediaAvailabilityMessage : '上传图片、音频、视频或 PDF'}
-          onClick={onToggleUploadPanel}
-        >
-          <Paperclip aria-hidden="true" />
-          附件
-        </button>
+        <AttachmentButton disabled={disabled} imageUploadDisabled={imageUploadDisabled} disabledMessage={disabledMessage} imageUploadUnavailableMessage={imageUploadAvailabilityMessage} editorPortalElement={editorPortalElement} onFiles={onFiles} />
       </div>
     </div>
   );
@@ -126,18 +109,18 @@ function UploadStatus({ item }: { item: UploadItem }) {
   return <>排队中</>;
 }
 
-function UploadActions({ item, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { item: UploadItem }) {
+function UploadActions({ item, disabled, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { item: UploadItem; disabled: boolean }) {
   return (
     <span className="upload-actions">
       <span className={`tag upload-${item.status}`}><UploadStatus item={item} /></span>
       {item.status === 'uploading' && <button type="button" className="inline-action" onClick={() => onCancelUpload(item)}><X aria-hidden="true" />取消</button>}
       {item.status === 'failed' && (
-        <label className="inline-action">
+        <label className="inline-action" aria-disabled={disabled}>
           {item.needsReselect ? '重选' : '重试'}
-          <input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden onChange={event => {
+          <input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden disabled={disabled} onChange={event => {
             const file = event.target.files?.[0];
-            if (file) void onRetryUpload(item, file);
             event.currentTarget.value = '';
+            if (!disabled && file) void onRetryUpload(item, file);
           }} />
         </label>
       )}
@@ -148,7 +131,7 @@ function UploadActions({ item, onCancelUpload, onRetryUpload, onRemoveUpload }: 
   );
 }
 
-function UploadQueueItem({ item, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { item: UploadItem }) {
+function UploadQueueItem({ item, disabled, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { item: UploadItem; disabled: boolean }) {
   const progress = Math.round((item.progress || 0) * 100);
   return (
     <li>
@@ -156,14 +139,14 @@ function UploadQueueItem({ item, onCancelUpload, onRetryUpload, onRemoveUpload }
         <span className="upload-name">{item.fileName}</span>
         {item.status === 'uploading' && <div className="upload-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div>}
       </div>
-      <UploadActions item={item} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />
+      <UploadActions item={item} disabled={disabled} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />
     </li>
   );
 }
 
-function UploadQueue({ uploads, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'uploads' | 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'>) {
+function UploadQueue({ uploads, disabled, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'uploads' | 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { disabled: boolean }) {
   if (!uploads.length) return null;
-  return <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <UploadQueueItem key={item.id} item={item} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />)}</ul>;
+  return <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <UploadQueueItem key={item.id} item={item} disabled={disabled} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />)}</ul>;
 }
 
 function EntrySelectors({ date, kind, status, categories, tags, categorySuggestions, tagSuggestions, saving, loadingEdit, onDateChange, onKindChange, onStatusChange, onCategoriesChange, onTagsChange }: AdminEditorViewProps) {
@@ -205,6 +188,8 @@ function AdminSidebar({ drafts, onLoadDraft, mediaStillProcessing, saving }: Pic
 }
 
 export default function AdminEditorView(props: AdminEditorViewProps) {
+  const mediaInputDisabled = props.mediaInputDisabled || props.saving || props.loadingEdit;
+  const imageUploadDisabled = props.imageUploadDisabled || props.saving || props.loadingEdit;
   const showNotice = Boolean(props.editingEntryID && props.kind === 'article' && props.workingCopyMeta.publishedStatus === 'published' && props.workingCopyMeta.publishedVisibility === 'public');
   const pageTitle = props.editingEntryID ? '编辑内容' : props.kind === 'article' ? '新建文章' : '写一条随记';
   const connection = (
@@ -234,10 +219,9 @@ export default function AdminEditorView(props: AdminEditorViewProps) {
             <EditingDraftNotice visible={showNotice} articleIdentifier={props.editingEntryID} meta={props.workingCopyMeta} discarding={props.discardingUnpublishedChanges} onDiscard={props.onDiscardWorkingCopy} />
             <ArticleMetadataFields {...props} />
             <EditorToolbar {...props} />
-            <NovelMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} editorPortalElement={props.editorPortalElement} onChange={props.onMarkdownChange} onFiles={props.mediaInputDisabled ? undefined : props.onFiles} onImageUpload={props.imageUploadDisabled ? undefined : props.onImageUpload} imageUploadUnavailableMessage={props.imageUploadAvailabilityMessage} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} disabled={props.saving || props.loadingEdit} />
-            <UploadPanel open={props.uploadPanelOpen} dragActive={props.dragActive} disabled={props.mediaInputDisabled} disabledMessage={props.mediaAvailabilityMessage} onDragEnter={props.onDragEnter} onDragOver={props.onDragOver} onDragLeave={props.onDragLeave} onDrop={props.onDrop} onFiles={files => props.onFiles(Array.from(files))} />
+            <NovelMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} editorPortalElement={props.editorPortalElement} onChange={props.onMarkdownChange} onFiles={mediaInputDisabled ? undefined : props.onFiles} onImageUpload={imageUploadDisabled ? undefined : props.onImageUpload} imageUploadUnavailableMessage={props.imageUploadAvailabilityMessage} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} disabled={props.saving || props.loadingEdit} />
             <AttachmentPreview markdown={props.markdown} uploads={props.uploads} />
-            <UploadQueue uploads={props.uploads} onCancelUpload={props.onCancelUpload} onRetryUpload={props.onRetryUpload} onRemoveUpload={props.onRemoveUpload} />
+            <UploadQueue uploads={props.uploads} disabled={mediaInputDisabled} onCancelUpload={props.onCancelUpload} onRetryUpload={props.onRetryUpload} onRemoveUpload={props.onRemoveUpload} />
           </div>
         </section>
 

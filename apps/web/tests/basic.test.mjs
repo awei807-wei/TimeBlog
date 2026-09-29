@@ -736,15 +736,17 @@ test('Novel captures media paste/drop and keeps page-level attachment controls',
   const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
   const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
+  const picker = await fs.readFile(new URL('../app/admin/AttachmentButton.tsx', import.meta.url), 'utf8');
+  const fileEvents = await fs.readFile(new URL('../app/admin/editor-file-input.ts', import.meta.url), 'utf8');
   assert.match(editor, /onPasteCapture/);
   assert.match(editor, /onDropCapture/);
   assert.match(editor, /event\.stopPropagation\(\)/);
-  assert.match(editor, /onFiles\(files\)/);
-  assert.match(source, /Paperclip/);
+  assert.match(fileEvents, /onFiles\(files\)/);
+  assert.match(picker, /Paperclip/);
   assert.match(source, /Trash2/);
   assert.match(capability, /admin\/media\/capability/);
   assert.match(source, /从当前草稿移除/);
-  assert.match(source, /aria-disabled=\{mediaInputDisabled\}/);
+  assert.match(picker, /aria-disabled=\{disabled\}/);
 });
 
 test('Novel media insertion stays visible in the responsive format toolbar', async () => {
@@ -776,8 +778,8 @@ test('Novel media insertion stays visible in the responsive format toolbar', asy
   assert.match(capability, /const \[editorReady, setEditorReady\]/);
   assert.match(pageMedia, /!media\.editorReady/);
   assert.match(view, /onReady=\{props\.onEditorReady\}/);
-  assert.match(view, /disabled=\{props\.mediaInputDisabled\}/);
-  assert.match(view, /onImageUpload=\{props\.imageUploadDisabled \? undefined : props\.onImageUpload\}/);
+  assert.match(view, /disabled=\{mediaInputDisabled\}/);
+  assert.match(view, /onImageUpload=\{imageUploadDisabled \? undefined : props\.onImageUpload\}/);
   assert.match(view, /图片仍可使用 HTTPS 链接/);
 });
 

@@ -33,7 +33,7 @@
 }
 
 .writing-media-button:hover:not(:disabled),
-.writing-media-button.active { border-color: #c5cdd1; background: var(--accent-soft); color: var(--accent); }
+.writing-media-button[data-state="open"] { border-color: #c5cdd1; background: var(--accent-soft); color: var(--accent); }
 .writing-media-button:disabled { cursor: not-allowed; opacity: .55; }
 .writing-media-button svg { width: 16px; height: 16px; }
 
@@ -66,6 +66,26 @@
 .writing-composer .novel-editor-shell:has(.ProseMirror:focus-visible) {
   border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.writing-composer .novel-editor-shell.is-file-dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.novel-file-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 .novel-editor-loading {
@@ -204,12 +224,9 @@
   .novel-bubble-menu button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
 }
 
-.writing-composer .upload-panel,
 .writing-composer .attachment-preview,
 .writing-composer .upload-list { margin-top: 14px; }
-.writing-composer .upload-dropzone { border-color: #c8d3d8; background: var(--paper); }
 .writing-composer .upload-list li { border: 1px solid var(--line); background: var(--paper); }
-.writing-composer .upload-browse-button,
 .writing-composer .inline-action { min-height: 44px; }
 
 .writing-rail { position: sticky; top: 136px; display: grid; gap: 12px; align-self: start; max-height: none; overflow: visible; padding-bottom: 2px; }

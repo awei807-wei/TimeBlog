@@ -3,6 +3,17 @@ export function mediaContentUrl(mediaId, apiBase = '/api/v1') {
   return `${base}/media/${encodeURIComponent(mediaId)}/content`;
 }
 
+export function localMediaFallbackUrl(source, origin) {
+  try {
+    const target = new URL(source, origin);
+    if (target.origin !== new URL(origin).origin || !/\/media\/[^/]+\/content$/.test(target.pathname) || target.searchParams.get('local') === '1') return null;
+    target.searchParams.set('local', '1');
+    return target.href;
+  } catch {
+    return null;
+  }
+}
+
 export function mediaKind(mimeType = '') {
   const mime = mimeType.toLowerCase().split(';', 1)[0].trim();
   if (mime.startsWith('image/')) return 'image';

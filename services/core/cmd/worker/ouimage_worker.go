@@ -84,22 +84,27 @@ func publishMediaJob(ctx context.Context, db *sql.DB, payload []byte) error {
 	if json.Unmarshal(payload, &p) != nil || p.MediaID == "" {
 		return fmt.Errorf("invalid publish job")
 	}
-	var name, mimeType, storagePath, sha, state string
+	var name, mimeType, storagePath, sha, state, visibility, status string
 	var size int64
-	if err := db.QueryRowContext(ctx, `SELECT original_name,mime_type,size_bytes,COALESCE(storage_path,''),COALESCE(sha256,''),external_publish_status FROM media WHERE id=$1::uuid`, p.MediaID).Scan(&name, &mimeType, &size, &storagePath, &sha, &state); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT original_name,mime_type,size_bytes,COALESCE(storage_path,''),COALESCE(sha256,''),external_publish_status,visibility,status FROM media WHERE id=$1::uuid`, p.MediaID).Scan(&name, &mimeType, &size, &storagePath, &sha, &state, &visibility, &status); err != nil {
 		return err
 	}
 	if state == "published" {
 		return nil
 	}
-	if !ouimage.SupportedMIME(mimeType) || size > ouimage.MaxImageBytes {
-		return fmt.Errorf("媒体不符合外部图床限制")
+	if status != "ready" || !ouimage.CanPublish(visibility, mimeType, size) {
+		return nil
 	}
 	client, _, err := loadWorkerImageClientConfig(ctx, db, p.ConfigRevision)
 	if err != nil {
 		return err
 	}
-	if _, err = db.ExecContext(ctx, `UPDATE media SET external_publish_status='publishing',external_publish_error=NULL WHERE id=$1::uuid AND external_publish_status IN ('pending','failed','publishing')`, p.MediaID); err != nil {
+	claim, err := db.ExecContext(ctx, `UPDATE media SET external_publish_status='publishing',external_publish_error=NULL WHERE id=$1::uuid AND visibility='public' AND status='ready' AND external_publish_status IN ('pending','failed','publishing')`, p.MediaID)
+	if err != nil {
+		return err
+	}
+	rows, err := claim.RowsAffected()
+	if err != nil || rows != 1 {
 		return err
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, 35*time.Second)

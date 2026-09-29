@@ -9,6 +9,7 @@ import type { MarkdownEditorHandle } from './editor-contract';
 export type MediaCapability = {
   checked: boolean;
   provider: string;
+  externalImageUploadEnabled?: boolean;
   imageUploadEnabled: boolean;
   nonImageUploadEnabled: boolean;
   reason: string;
