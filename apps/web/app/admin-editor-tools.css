@@ -128,3 +128,110 @@
     transition: none;
   }
 }
+
+/* Explicit rich-text / Markdown workspace controls. */
+.markdown-editor-workspace {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.markdown-workspace-modebar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper) 68%, var(--surface));
+}
+
+.markdown-workspace-tabs {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.markdown-workspace-tab {
+  display: inline-flex;
+  min-width: 118px;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+}
+
+.markdown-workspace-tab > svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.markdown-workspace-tab > span {
+  display: grid;
+  gap: 1px;
+}
+
+.markdown-workspace-tab strong {
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.markdown-workspace-tab small {
+  color: inherit;
+  font-size: 9px;
+  line-height: 1.2;
+  opacity: .72;
+}
+
+.markdown-workspace-tab[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(35 48 62 / 8%);
+}
+
+.markdown-workspace-tab:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.markdown-workspace-tab:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.markdown-workspace-hint {
+  min-width: 0;
+  max-width: 440px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+.markdown-workspace-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.markdown-workspace-panel > .novel-editor-shell,
+.markdown-workspace-panel > .markdown-source-shell {
+  width: 100%;
+}

@@ -96,6 +96,77 @@
   font-size: 14px;
 }
 
+
+.writing-composer .markdown-source-shell {
+  position: relative;
+  display: flex;
+  height: clamp(460px, 63vh, 820px);
+  height: clamp(460px, 63dvh, 820px);
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.writing-composer .markdown-source-shell:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.writing-composer .markdown-source-shell.is-file-dragging {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.markdown-source-input {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 22px 24px;
+  background: #fbfcfc;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 14px;
+  line-height: 1.75;
+  tab-size: 2;
+  overflow: auto;
+  caret-color: var(--accent);
+}
+
+.markdown-source-input::placeholder {
+  color: color-mix(in srgb, var(--muted) 66%, transparent);
+}
+
+.markdown-source-input[readonly] {
+  cursor: default;
+  opacity: .72;
+}
+
+.markdown-source-status {
+  display: flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.markdown-source-status span:first-child {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .novel-compat-notice {
   padding: 9px 14px;
   border-bottom: 1px solid #ead9ae;

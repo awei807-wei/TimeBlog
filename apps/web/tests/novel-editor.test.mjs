@@ -112,13 +112,23 @@ test('media image rendering preserves empty alt text while allowlisting attribut
   assert.doesNotMatch(extensions, /\.\.\.HTMLAttributes/);
 });
 
-test('Novel exposes an accessible multiline textbox and routes slash images through the shared upload pipeline', async () => {
+test('dual editor exposes accessible rich and Markdown surfaces through the shared upload pipeline', async () => {
+  const workspace = await read('../app/admin/NovelMarkdownEditor.tsx');
   const editor = await read('../app/admin/NovelMarkdownEditorClient.tsx');
+  const sourceEditor = await read('../app/admin/MarkdownSourceEditor.tsx');
   const uploads = await read('../app/admin/useMediaUploads.ts');
 
+  assert.match(workspace, /role="tablist"/);
+  assert.match(workspace, /aria-selected=\{mode === 'rich'\}/);
+  assert.match(workspace, /aria-selected=\{mode === 'markdown'\}/);
   assert.match(editor, /role: 'textbox'/);
-  assert.match(editor, /'aria-label': 'Markdown 正文编辑器'/);
+  assert.match(editor, /'aria-label': '富文本正文编辑器'/);
   assert.match(editor, /'aria-multiline': 'true'/);
+  assert.match(sourceEditor, /<textarea/);
+  assert.match(sourceEditor, /aria-label="Markdown 源码编辑器"/);
+  assert.match(sourceEditor, /value=\{source\}/);
+  assert.match(sourceEditor, /onPasteCapture=\{handlePasteCapture\}/);
+  assert.match(sourceEditor, /insertMarkdown: insertMarkdownAtSelection/);
   assert.match(editor, /await upload\(file\)/);
   assert.doesNotMatch(editor, /setImage\(/);
   assert.match(uploads, /insertMediaReference\(reference\)/);

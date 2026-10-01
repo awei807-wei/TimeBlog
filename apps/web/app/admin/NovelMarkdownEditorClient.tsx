@@ -28,7 +28,7 @@ const EMPTY_DOCUMENT: JSONContent = { type: 'doc', content: [{ type: 'paragraph'
 const EDITOR_PROPS = {
   attributes: {
     role: 'textbox',
-    'aria-label': 'Markdown 正文编辑器',
+    'aria-label': '富文本正文编辑器',
     'aria-multiline': 'true',
   },
 };
