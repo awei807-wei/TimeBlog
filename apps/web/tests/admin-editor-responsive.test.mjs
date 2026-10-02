@@ -55,9 +55,9 @@ test('desktop writing desk locks document scrolling and delegates it to the full
   const responsive = await read('../app/admin-editor-responsive.css');
   const editor = await read('../app/admin-editor-editor.css');
 
-  assert.match(responsive, /@media \(min-width: 1181px\)[\s\S]*html:has\(\.app-content > \.writing-shell\),\s*body:has\(\.app-content > \.writing-shell\)\s*\{[^}]*overflow:\s*hidden;/);
-  assert.match(responsive, /\.app-content > \.writing-shell \.writing-composer\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/);
-  assert.match(responsive, /\.app-content > \.writing-shell \.novel-editor-shell\s*\{[^}]*flex:\s*1 1 0;/);
+  assert.match(responsive, /@media \(min-width: 1024px\)[\s\S]*html:has\(\.app-content > \.writing-page-shell\),\s*body:has\(\.app-content > \.writing-page-shell\)\s*\{[^}]*overflow:\s*hidden;/);
+  assert.match(responsive, /\.writing-page-shell \.writing-composer\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/);
+  assert.match(responsive, /\.writing-page-shell \.novel-editor-shell,[\s\S]*?\{[^}]*flex:\s*1 1 0;/);
   assert.match(editor, /\.novel-editor-provider\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/);
   assert.match(editor, /\.writing-composer \.novel-editor-content\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior-y:\s*contain;[^}]*scrollbar-width:\s*none;/);
   assert.match(editor, /\.novel-editor-content::-webkit-scrollbar\s*\{[^}]*display:\s*none;/);

@@ -1,14 +1,12 @@
-/* Keep the two-column writing desk inside the viewport. Narrow layouts retain
-   document scrolling so publishing controls stacked below remain reachable. */
-@media (min-width: 1181px) {
-  html:has(.app-content > .writing-shell),
-  body:has(.app-content > .writing-shell) {
+/* 桌面锁定工作台高度，三块内容独立滚动；窄屏保持正常页面滚动。 */
+@media (min-width: 1024px) {
+  html:has(.app-content > .writing-page-shell),
+  body:has(.app-content > .writing-page-shell) {
     height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
   }
-
-  .app-main:has(> .app-content > .writing-shell) {
+  .app-main:has(> .app-content > .writing-page-shell) {
     display: flex;
     height: 100vh;
     height: 100dvh;
@@ -16,14 +14,12 @@
     flex-direction: column;
     overflow: hidden;
   }
-
-  .app-main:has(> .app-content > .writing-shell) > .app-content {
+  .app-main:has(> .app-content > .writing-page-shell) > .app-content {
     min-height: 0;
     flex: 1 1 auto;
     overflow: hidden;
   }
-
-  .app-content > .writing-shell {
+  .app-content > .writing-page-shell {
     display: flex;
     height: 100%;
     min-height: 0;
@@ -31,121 +27,98 @@
     overflow: hidden;
     padding-bottom: 24px;
   }
-
-  .app-content > .writing-shell > .writing-page-header {
-    flex: 0 0 auto;
-  }
-
-  .app-content > .writing-shell > .writing-layout {
+  .writing-page-shell > .writing-page-header { flex: none; }
+  .writing-page-shell > .writing-workbench {
     min-height: 0;
-    flex: 1 1 auto;
-    align-items: stretch;
+    flex: 1 1 0;
     overflow: hidden;
   }
-
-  .app-content > .writing-shell .writing-main,
-  .app-content > .writing-shell .writing-composer {
+  .writing-page-shell .writing-layout {
+    min-height: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+  }
+  .writing-page-shell .writing-main,
+  .writing-page-shell .writing-composer {
     height: 100%;
     min-height: 0;
   }
-
-  .app-content > .writing-shell .writing-composer {
+  .writing-page-shell .writing-composer {
     display: flex;
     flex-direction: column;
     overflow: hidden;
   }
-
-  .app-content > .writing-shell .markdown-editor-workspace,
-  .app-content > .writing-shell .markdown-workspace-panel {
-    min-height: 0;
-    flex: 1 1 0;
-  }
-
-  .app-content > .writing-shell .novel-editor-shell {
+  .writing-page-shell .markdown-editor-workspace,
+  .writing-page-shell .markdown-workspace-panel,
+  .writing-page-shell .novel-editor-shell,
+  .writing-page-shell .markdown-source-shell {
     height: auto;
     min-height: 0;
     flex: 1 1 0;
   }
-
-  .app-content > .writing-shell .markdown-source-shell {
-    height: auto;
-    min-height: 0;
-    flex: 1 1 0;
-  }
-
-  .app-content > .writing-shell .writing-rail {
-    position: static;
+  .writing-page-shell .writing-rail,
+  .writing-page-shell .writing-resources {
     min-height: 0;
     max-height: 100%;
-    grid-template-rows: auto minmax(0, 1fr);
-    align-self: stretch;
     overflow: hidden;
   }
-
-  .app-content > .writing-shell .writing-sidebar {
-    min-height: 0;
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .app-content > .writing-shell .writing-drafts {
-    display: flex;
-    min-height: 0;
-    flex-direction: column;
-  }
-
-  .app-content > .writing-shell .writing-drafts .draft-list {
-    min-height: 0;
-    max-height: none;
-    flex: 1 1 auto;
-  }
+  .writing-page-shell .writing-drafts .draft-list { max-height: none; }
 }
 
-@media (max-width: 1180px) {
-  .writing-layout { grid-template-columns: minmax(0, 1fr); }
-  .writing-rail { position: static; grid-template-columns: minmax(260px, .78fr) minmax(0, 1.22fr); max-height: none; overflow: visible; }
-  .writing-sidebar { grid-template-columns: 1fr; }
-  .writing-drafts .draft-list { max-height: 430px; }
+@media (max-width: 1279px) {
+  .writing-workbench-tools { gap: 8px; padding-inline: 10px; }
+  .writing-composer .markdown-editor-workspace { margin-inline: 18px; }
+  .article-fields { margin-inline: 18px; }
 }
+
+@media (max-width: 1023px) {
+  .writing-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "document document" "resources properties"; }
+  .writing-rail { max-height: none; overflow: visible; }
+  .writing-resources .writing-resource-scroll { max-height: 480px; }
+  .writing-drafts .draft-list { max-height: 320px; }
+  .writing-workbench-tools { flex-wrap: wrap; }
+  .writing-tools-label { font-size: 12px; gap: 8px; }
+  .writing-format-tools { order: 3; flex-basis: 100%; }
+  .writing-mode-tools { margin-left: auto; }
+}
+
+.writing-dialog-shell .writing-layout { grid-template-columns: 1fr; grid-template-areas: "document" "properties" "resources"; }
+.writing-dialog-shell .writing-workbench { padding: 10px; }
+.writing-dialog-shell .writing-workbench-tools { flex-wrap: wrap; }
+.writing-dialog-shell .writing-tools-label { font-size: 12px; gap: 8px; }
+.writing-dialog-shell .writing-format-tools { order: 3; flex-basis: 100%; }
+.writing-dialog-shell .writing-mode-tools { margin-left: auto; }
+.writing-dialog-shell .writing-resource-scroll { max-height: 420px; }
 
 @media (max-width: 767px) {
-  .writing-shell { width: 100%; padding: 0 14px max(64px, calc(64px + env(safe-area-inset-bottom))); }
-  .writing-dialog-shell { padding: 0 12px max(72px, calc(72px + env(safe-area-inset-bottom))); }
+  .writing-shell { width: 100%; padding: 0 12px max(64px, calc(64px + env(safe-area-inset-bottom))); }
+  .writing-dialog-shell { padding-inline: 0; }
   .app-content > .writing-shell { padding-top: 0; }
-  .writing-page-header { position: relative; top: auto; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; align-items: flex-start; margin-bottom: 16px; padding: 22px 0 15px; background: transparent; backdrop-filter: none; }
-  .writing-header-actions { width: 100%; min-width: 0; justify-content: space-between; }
-  .writing-page-title p, .writing-status { display: none; }
+  .writing-page-header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; padding: 18px 0 14px; }
+  .writing-page-title h1 { font-size: 23px; }
+  .writing-header-actions { width: 100%; min-width: 0; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+  .writing-status { order: 3; width: 100%; max-width: none; text-align: left; overflow-wrap: anywhere; }
+  .writing-save-actions { margin-left: auto; }
   .writing-save-button, .writing-undo-button { min-height: 44px; padding-inline: 12px; }
-  .writing-composer { padding: 14px; border-radius: 12px; }
-  .writing-editor-heading small { max-width: 230px; }
-  .writing-composer .novel-editor-shell { height: clamp(420px, 62vh, 760px); height: clamp(420px, 62dvh, 760px); }
+  .writing-workbench { padding: 8px; border-radius: 12px; gap: 8px; }
+  .writing-workbench-tools { padding: 8px; gap: 8px; }
+  .writing-tools-label { font-size: 11px; gap: 5px; }
+  .writing-workbench-tools .markdown-workspace-tab { padding-inline: 8px; }
+  .writing-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "document" "properties" "resources"; gap: 8px; }
+  .writing-rail { grid-template-columns: 1fr; }
+  .writing-composer .markdown-editor-workspace { margin: 14px 12px 16px; }
+  .article-fields { margin: 16px 12px 10px; }
+  .writing-composer .working-copy-notice { margin: 12px; }
+  .writing-composer .novel-editor-shell,
   .writing-composer .markdown-source-shell { height: clamp(420px, 62vh, 760px); height: clamp(420px, 62dvh, 760px); }
   .writing-composer .novel-editor-content { padding: 0; font-size: 16px; }
-  .markdown-source-input { padding: 18px 16px; font-size: 13px; }
+  .markdown-source-input { padding: 12px 8px; font-size: 13px; }
   .writing-composer .writing-media-button,
   .writing-composer .upload-browse-button,
   .writing-composer .inline-action { min-width: 44px; min-height: 44px; }
   .writing-inspector > summary,
   .writing-selector-row select,
   .writing-inspector .journal-date-group { min-height: 44px; }
-  .writing-rail { grid-template-columns: 1fr; }
-  .writing-inspector { order: 1; }
-  .writing-sidebar { order: 2; }
-  .writing-drafts .draft-list { max-height: 420px; }
-}
-
-@media (max-width: 520px) {
-  .writing-page-header { gap: 12px; }
-  .writing-page-title h1 { font-size: 24px; }
-  .writing-header-actions { align-items: stretch; }
-  .writing-save-actions { margin-left: auto; }
-  .writing-undo-button { display: none; }
-  .writing-save-button { min-width: 72px; }
-  .writing-editor-heading { align-items: flex-start; }
-  .writing-editor-heading small { display: none; }
-  .markdown-workspace-modebar { align-items: stretch; flex-direction: column; gap: 8px; }
-  .markdown-workspace-tabs { width: 100%; }
-  .markdown-workspace-tab { min-width: 0; flex: 1 1 50%; justify-content: center; }
-  .markdown-workspace-hint { max-width: none; padding: 0 3px 2px; text-align: left; }
   .writing-composer .novel-command-menu { width: min(320px, calc(100vw - 24px)); max-height: min(420px, 50dvh); }
 }
 
@@ -157,7 +130,6 @@
   .writing-inspector .tag-input-editor,
   .writing-inspector .taxonomy-tag-edit { min-height: 44px; height: 44px; }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .writing-save-button,
   .writing-undo-button,

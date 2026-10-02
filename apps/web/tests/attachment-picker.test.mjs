@@ -30,7 +30,7 @@ async function moduleURL(url) {
     let resolved;
     // Keep the view, toolbar, queue and AttachmentButton real. Its unrelated
     // editor/date/taxonomy/draft children have their own independent suites.
-    if (url.pathname.endsWith('/AdminEditorView.tsx') && (specifier === 'next/link' || (specifier.startsWith('.') && specifier !== './AttachmentButton'))) {
+    if ((/\/(AdminEditorView|AdminEditorResources)\.tsx$/.test(url.pathname)) && (specifier === 'next/link' || (specifier.startsWith('.') && !['./AttachmentButton', './AdminEditorResources'].includes(specifier)))) {
       resolved = emptyComponent;
     } else if (specifier.startsWith('.') || specifier.startsWith('@/')) {
       const base = specifier.startsWith('@/') ? new URL(`../${specifier.slice(2)}`, import.meta.url) : new URL(specifier, url);
@@ -282,9 +282,10 @@ test('old upload panel and its exclusive state/callbacks are removed while share
   const paths = ['AdminEditorView.tsx', 'useAdminComposerInteractions.ts', 'useAdminPageMediaState.ts', 'admin-editor-view-model.ts', 'useAdminComposerMedia.ts'];
   const sources = await Promise.all(paths.map(path => read(`../app/admin/${path}`)));
   for (const source of sources) assert.doesNotMatch(source, /UploadPanel|uploadPanelOpen|setUploadPanelOpen|dragActive|setDragActive|onToggleUploadPanel|onDragEnter|onDragOver|onDragLeave|onDrop/);
-  const [view, interactions, , model] = sources;
-  assert.match(view, /<AttachmentButton[^>]*onFiles=\{onFiles\}/);
-  assert.match(view, /<AttachmentPreview markdown=\{props\.markdown\} uploads=\{props\.uploads\}/);
+  const [, interactions, , model] = sources;
+  const resources = await read('../app/admin/AdminEditorResources.tsx');
+  assert.match(resources, /<AttachmentButton[^>]*onFiles=\{props\.onFiles\}/);
+  assert.match(resources, /<AttachmentPreview markdown=\{props\.markdown\} uploads=\{props\.uploads\}/);
   assert.match(model, /onFiles: mediaState\.interactions\.onFiles/);
   assert.match(interactions, /!mediaInputDisabled && files\.length/);
   assert.match(await read('../app/admin/page.tsx'), /<AdminEditorView/);

@@ -1,17 +1,14 @@
 'use client';
 
-import type { RefObject } from 'react';
-import { AlertCircle, Check, Cloud, CloudOff, FileText, LoaderCircle, Settings2, Trash2, X } from 'lucide-react';
-import Link from 'next/link';
+import { useState, type RefObject } from 'react';
+import { Cloud, CloudOff, FileText, Settings2, SlidersHorizontal } from 'lucide-react';
 import type { UploadItem } from '@/lib/media-utils';
-import AttachmentPreview from './AttachmentPreview';
-import DraftTray from './DraftTray';
+import AdminEditorResources from './AdminEditorResources';
 import EditingDraftNotice from './EditingDraftNotice';
 import JournalDatePicker from './JournalDatePicker';
 import NovelMarkdownEditor from './NovelMarkdownEditor';
 import type { MarkdownEditorHandle } from './editor-contract';
 import TagInput from './TagInput';
-import AttachmentButton from './AttachmentButton';
 import type { Draft } from './editor-storage';
 import type { WorkingCopyMeta } from './editing-working-copy';
 
@@ -70,27 +67,6 @@ export type AdminEditorViewProps = {
   onLoadDraft: (draft: Draft) => void;
 };
 
-function EditorToolbar({ mediaInputDisabled, imageUploadDisabled, mediaAvailabilityMessage, imageUploadAvailabilityMessage, saving, loadingEdit, editorPortalElement, onFiles }: AdminEditorViewProps) {
-  const disabled = mediaInputDisabled || saving || loadingEdit;
-  const disabledMessage = saving ? '正在保存，请稍后再试' : loadingEdit ? '正在载入内容，请稍后再试' : mediaAvailabilityMessage;
-  const mediaHint = mediaInputDisabled
-    ? '本地上传暂不可用 · 仍可插入 HTTPS 图片链接'
-    : imageUploadDisabled
-      ? `${mediaAvailabilityMessage} · 图片仍可使用 HTTPS 链接`
-      : `${mediaAvailabilityMessage} · 图片支持上传或 HTTPS 链接`;
-  return (
-    <div className="writing-editor-heading">
-      <div>
-        <span className="writing-section-label">正文</span>
-        <small className={mediaInputDisabled ? 'is-unavailable' : ''}>{mediaHint}</small>
-      </div>
-      <div className="writing-media-actions" aria-label="媒体工具">
-        <AttachmentButton disabled={disabled} imageUploadDisabled={imageUploadDisabled} disabledMessage={disabledMessage} imageUploadUnavailableMessage={imageUploadAvailabilityMessage} editorPortalElement={editorPortalElement} onFiles={onFiles} />
-      </div>
-    </div>
-  );
-}
-
 function ArticleMetadataFields({ kind, title, summary, slug, onTitleChange, onSummaryChange, onSlugChange }: AdminEditorViewProps) {
   if (kind !== 'article') return null;
   return (
@@ -100,53 +76,6 @@ function ArticleMetadataFields({ kind, title, summary, slug, onTitleChange, onSu
       <input className="summary-input slug-input" value={slug} onChange={event => onSlugChange(event.target.value)} placeholder="文章地址 slug（可选）" aria-label="文章地址" />
     </div>
   );
-}
-
-function UploadStatus({ item }: { item: UploadItem }) {
-  if (item.status === 'ready') return <><Check aria-hidden="true" />已完成</>;
-  if (item.status === 'uploading') return <><LoaderCircle className="spin" aria-hidden="true" />上传中</>;
-  if (item.status === 'failed') return <><AlertCircle aria-hidden="true" />失败</>;
-  return <>排队中</>;
-}
-
-function UploadActions({ item, disabled, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { item: UploadItem; disabled: boolean }) {
-  return (
-    <span className="upload-actions">
-      <span className={`tag upload-${item.status}`}><UploadStatus item={item} /></span>
-      {item.status === 'uploading' && <button type="button" className="inline-action" onClick={() => onCancelUpload(item)}><X aria-hidden="true" />取消</button>}
-      {item.status === 'failed' && (
-        <label className="inline-action" aria-disabled={disabled}>
-          {item.needsReselect ? '重选' : '重试'}
-          <input type="file" accept="image/*,audio/*,video/*,application/pdf" hidden disabled={disabled} onChange={event => {
-            const file = event.target.files?.[0];
-            event.currentTarget.value = '';
-            if (!disabled && file) void onRetryUpload(item, file);
-          }} />
-        </label>
-      )}
-      <button type="button" className="inline-action remove-media" onClick={() => onRemoveUpload(item)} aria-label={`从当前草稿移除 ${item.fileName}`}>
-        <Trash2 aria-hidden="true" />移除附件
-      </button>
-    </span>
-  );
-}
-
-function UploadQueueItem({ item, disabled, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { item: UploadItem; disabled: boolean }) {
-  const progress = Math.round((item.progress || 0) * 100);
-  return (
-    <li>
-      <div className="upload-item-main">
-        <span className="upload-name">{item.fileName}</span>
-        {item.status === 'uploading' && <div className="upload-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div>}
-      </div>
-      <UploadActions item={item} disabled={disabled} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />
-    </li>
-  );
-}
-
-function UploadQueue({ uploads, disabled, onCancelUpload, onRetryUpload, onRemoveUpload }: Pick<AdminEditorViewProps, 'uploads' | 'onCancelUpload' | 'onRetryUpload' | 'onRemoveUpload'> & { disabled: boolean }) {
-  if (!uploads.length) return null;
-  return <ul className="upload-list" aria-label="媒体上传队列">{uploads.map(item => <UploadQueueItem key={item.id} item={item} disabled={disabled} onCancelUpload={onCancelUpload} onRetryUpload={onRetryUpload} onRemoveUpload={onRemoveUpload} />)}</ul>;
 }
 
 function EntrySelectors({ date, kind, status, categories, tags, categorySuggestions, tagSuggestions, saving, loadingEdit, onDateChange, onKindChange, onStatusChange, onCategoriesChange, onTagsChange }: AdminEditorViewProps) {
@@ -174,68 +103,84 @@ function SaveActions({ markdown, saving, loadingEdit, mediaStillProcessing, edit
   );
 }
 
-function AdminSidebar({ drafts, onLoadDraft, mediaStillProcessing, saving }: Pick<AdminEditorViewProps, 'drafts' | 'onLoadDraft' | 'mediaStillProcessing' | 'saving'>) {
-  const navigationDisabled = mediaStillProcessing || saving;
-  const manageLinkContent = <><FileText aria-hidden="true" />管理全部内容</>;
+
+function WritingHeader(props: AdminEditorViewProps) {
+  const pageTitle = props.editingEntryID ? '编辑内容' : props.kind === 'article' ? '新建文章' : '写一条随记';
   return (
-    <aside className="writing-sidebar" aria-label="写作辅助">
-      <DraftTray drafts={drafts} onLoadDraft={onLoadDraft} disabled={mediaStillProcessing} />
-      {navigationDisabled
-        ? <span className="writing-manage-link" aria-disabled="true">{manageLinkContent}</span>
-        : <Link className="writing-manage-link" href="/admin/entries">{manageLinkContent}</Link>}
+    <header className={`writing-page-header${props.presentation === 'dialog' ? ' is-dialog' : ''}`}>
+      {props.presentation !== 'dialog' && <div className="writing-page-title">
+        <span className="writing-eyebrow">菜鸟手记 / 写作工作台</span>
+        <h1>{pageTitle}</h1>
+      </div>}
+      <div className="writing-header-actions">
+        <span className={`writing-connection ${props.online ? 'is-online' : 'is-offline'}`}>
+          {props.online ? <Cloud aria-hidden="true" /> : <CloudOff aria-hidden="true" />}
+          {props.online ? '在线' : '离线'}
+        </span>
+        <div className="writing-status" role="status">{props.message || (props.loadingEdit ? '正在载入内容…' : '所有更改会自动暂存')}</div>
+        <SaveActions {...props} />
+      </div>
+    </header>
+  );
+}
+
+function WritingDocument({ toolbarElement, modeElement, ...props }: AdminEditorViewProps & { toolbarElement: HTMLElement | null; modeElement: HTMLElement | null }) {
+  const mediaInputDisabled = props.mediaInputDisabled || props.saving || props.loadingEdit;
+  const imageUploadDisabled = props.imageUploadDisabled || props.saving || props.loadingEdit;
+  const showNotice = Boolean(props.editingEntryID && props.kind === 'article' && props.workingCopyMeta.publishedStatus === 'published' && props.workingCopyMeta.publishedVisibility === 'public');
+  return (
+    <section className="writing-main" aria-label="内容编辑区">
+      <div className="writing-composer">
+        <div className="writing-document-heading"><span><FileText aria-hidden="true" />文档</span><small>{props.kind === 'article' ? '文章' : '随记'}</small></div>
+        <EditingDraftNotice visible={showNotice} articleIdentifier={props.editingEntryID} meta={props.workingCopyMeta} discarding={props.discardingUnpublishedChanges} onDiscard={props.onDiscardWorkingCopy} />
+        <ArticleMetadataFields {...props} />
+        <NovelMarkdownEditor
+          markdown={props.markdown} editorRef={props.editorRef} editorPortalElement={props.editorPortalElement}
+          toolbarElement={toolbarElement} modeElement={modeElement}
+          onChange={props.onMarkdownChange} onFiles={mediaInputDisabled ? undefined : props.onFiles}
+          onImageUpload={imageUploadDisabled ? undefined : props.onImageUpload}
+          imageUploadUnavailableMessage={props.imageUploadAvailabilityMessage}
+          onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady}
+          disabled={props.saving || props.loadingEdit}
+        />
+      </div>
+    </section>
+  );
+}
+
+function WritingInspector(props: AdminEditorViewProps) {
+  return (
+    <aside className="writing-rail" aria-label="文章属性">
+      <details className="writing-inspector" open>
+        <summary><span><Settings2 aria-hidden="true" />属性</span><small>{props.status === 'public' ? '公开' : props.status === 'private' ? '私人' : '草稿'}</small></summary>
+        <EntrySelectors {...props} />
+        <p className="writing-inspector-note">私人内容仅自己可见，不会出现在公开时间线和搜索中。</p>
+      </details>
     </aside>
   );
 }
 
+/** 复用同一写作数据链，组合顶部工具和资源、文档、属性工作区。 */
 export default function AdminEditorView(props: AdminEditorViewProps) {
-  const mediaInputDisabled = props.mediaInputDisabled || props.saving || props.loadingEdit;
-  const imageUploadDisabled = props.imageUploadDisabled || props.saving || props.loadingEdit;
-  const showNotice = Boolean(props.editingEntryID && props.kind === 'article' && props.workingCopyMeta.publishedStatus === 'published' && props.workingCopyMeta.publishedVisibility === 'public');
-  const pageTitle = props.editingEntryID ? '编辑内容' : props.kind === 'article' ? '新建文章' : '写一条随记';
-  const connection = (
-    <span className={`writing-connection ${props.online ? 'is-online' : 'is-offline'}`}>
-      {props.online ? <Cloud aria-hidden="true" /> : <CloudOff aria-hidden="true" />}
-      {props.online ? '在线' : '离线'}
-    </span>
-  );
+  const [toolbarElement, setToolbarElement] = useState<HTMLDivElement | null>(null);
+  const [modeElement, setModeElement] = useState<HTMLDivElement | null>(null);
   const content = (
     <>
-      <header className={`writing-page-header${props.presentation === 'dialog' ? ' is-dialog' : ''}`}>
-        {props.presentation !== 'dialog' && <div className="writing-page-title">
-          {connection}
-          <h1>{pageTitle}</h1>
-          <p>内容会自动保存在本机草稿中，准备好后再决定是否公开。</p>
-        </div>}
-        <div className="writing-header-actions">
-          {props.presentation === 'dialog' && connection}
-          <div className="writing-status" aria-live="polite">{props.message || (props.loadingEdit ? '正在载入内容…' : '所有更改会自动暂存')}</div>
-          <SaveActions {...props} />
+      <WritingHeader {...props} />
+      <div className="writing-workbench">
+        <div className="writing-workbench-tools" aria-label="编辑工具">
+          <span className="writing-tools-label"><SlidersHorizontal aria-hidden="true" />编辑工具</span>
+          <div className="writing-format-tools" ref={setToolbarElement} />
+          <div className="writing-mode-tools" ref={setModeElement} />
         </div>
-      </header>
-
-      <div className="writing-layout">
-        <section className="writing-main" aria-label="内容编辑区">
-          <div className="writing-composer">
-            <EditingDraftNotice visible={showNotice} articleIdentifier={props.editingEntryID} meta={props.workingCopyMeta} discarding={props.discardingUnpublishedChanges} onDiscard={props.onDiscardWorkingCopy} />
-            <ArticleMetadataFields {...props} />
-            <EditorToolbar {...props} />
-            <NovelMarkdownEditor markdown={props.markdown} editorRef={props.editorRef} editorPortalElement={props.editorPortalElement} onChange={props.onMarkdownChange} onFiles={mediaInputDisabled ? undefined : props.onFiles} onImageUpload={imageUploadDisabled ? undefined : props.onImageUpload} imageUploadUnavailableMessage={props.imageUploadAvailabilityMessage} onError={props.onEditorError} onNotice={props.onEditorNotice} onReady={props.onEditorReady} disabled={props.saving || props.loadingEdit} />
-            <AttachmentPreview markdown={props.markdown} uploads={props.uploads} />
-            <UploadQueue uploads={props.uploads} disabled={mediaInputDisabled} onCancelUpload={props.onCancelUpload} onRetryUpload={props.onRetryUpload} onRemoveUpload={props.onRemoveUpload} />
-          </div>
-        </section>
-
-        <div className="writing-rail">
-          <details className="writing-inspector" open>
-            <summary><span><Settings2 aria-hidden="true" />发布设置</span><small>{props.status === 'public' ? '公开' : props.status === 'private' ? '私人' : '草稿'}</small></summary>
-            <EntrySelectors {...props} />
-            <p className="writing-inspector-note">私人内容不会出现在公开时间线、搜索和正文接口中。</p>
-          </details>
-          <AdminSidebar drafts={props.drafts} onLoadDraft={props.onLoadDraft} mediaStillProcessing={props.mediaStillProcessing} saving={props.saving} />
+        <div className="writing-layout">
+          <WritingDocument {...props} toolbarElement={toolbarElement} modeElement={modeElement} />
+          <WritingInspector {...props} />
+          <AdminEditorResources {...props} />
         </div>
       </div>
     </>
   );
   if (props.presentation === 'dialog') return <div className="writing-shell writing-dialog-shell">{content}</div>;
-  return <main id="main-content" className="writing-shell">{content}</main>;
+  return <main id="main-content" className="writing-shell writing-page-shell">{content}</main>;
 }

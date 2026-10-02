@@ -1,80 +1,39 @@
-/* Writing workbench. Keep the editor surface independent from public-site styles. */
-
+/* 写作工作台：顶部统一工具，资源、文档、属性各司其职。 */
 .writing-shell {
-  width: min(100%, 1240px);
+  width: min(100%, 1680px);
   max-width: 100%;
   min-width: 0;
   margin: 0 auto;
-  padding: 0 28px max(72px, calc(72px + env(safe-area-inset-bottom)));
+  padding: 0 24px max(72px, calc(72px + env(safe-area-inset-bottom)));
 }
 
 .writing-page-header {
-  position: sticky;
-  top: 0;
-  z-index: 18;
   display: flex;
   min-width: 0;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 28px;
-  min-height: 112px;
-  margin-bottom: 24px;
-  padding: 22px 0 18px;
-  border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--paper) 92%, transparent);
-  backdrop-filter: blur(14px);
-}
-
-.writing-page-header.is-dialog {
-  min-height: 0;
-  margin-bottom: 16px;
-  padding: 12px 0;
+  min-height: 100px;
   align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 2px;
 }
 
-.writing-page-header.is-dialog .writing-header-actions {
-  width: 100%;
-}
-
-.writing-page-title {
-  min-width: 0;
-}
-
-.writing-page-title h1 {
-  margin: 6px 0 4px;
-  font-size: clamp(26px, 3vw, 36px);
-  line-height: 1.2;
-  letter-spacing: -.035em;
-}
-
-.writing-page-title p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.55;
-}
+.writing-page-header.is-dialog { min-height: 0; padding: 12px 0; }
+.writing-page-header.is-dialog .writing-header-actions { width: 100%; }
+.writing-page-title { min-width: 0; }
+.writing-eyebrow { color: var(--muted); font-size: 11px; letter-spacing: .06em; }
+.writing-page-title h1 { margin: 5px 0 0; font-size: 25px; line-height: 1.3; letter-spacing: -.035em; }
 
 .writing-connection {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 650;
 }
-
-.writing-connection svg {
-  width: 14px;
-  height: 14px;
-}
-
-.writing-connection.is-online {
-  color: #607d68;
-}
-
-.writing-connection.is-offline {
-  color: #9a603f;
-}
+.writing-connection svg { width: 15px; height: 15px; }
+.writing-connection.is-online { color: #52705d; }
+.writing-connection.is-offline { color: #9a603f; }
 
 .writing-header-actions {
   display: flex;
@@ -83,157 +42,117 @@
   justify-content: flex-end;
   gap: 16px;
 }
-
-.writing-status {
-  max-width: 270px;
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: right;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.writing-save-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-}
-
+.writing-status { max-width: 300px; color: var(--muted); font-size: 11px; line-height: 1.6; text-align: right; }
+.writing-save-actions { display: flex; flex: none; align-items: center; gap: 8px; }
 .writing-save-button,
 .writing-undo-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  padding: 0 16px;
+  padding: 0 18px;
+  border: 1px solid var(--line);
   border-radius: 8px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
   white-space: nowrap;
+  transition: background 160ms ease, transform 120ms ease;
 }
+.writing-save-button { min-width: 88px; border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.writing-save-button:hover:not(:disabled) { background: var(--accent); border-color: var(--accent); }
+.writing-save-button:disabled { cursor: not-allowed; opacity: .38; }
+.writing-undo-button { background: var(--surface); color: var(--muted); }
+.writing-save-button:active:not(:disabled),
+.writing-undo-button:active { transform: translateY(1px); }
 
-.writing-save-button {
-  min-width: 88px;
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--surface);
-}
-
-.writing-save-button:hover:not(:disabled) {
-  opacity: .86;
-}
-
-.writing-save-button:disabled {
-  cursor: not-allowed;
-  opacity: .38;
-}
-
-.writing-undo-button {
+.writing-workbench {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
   border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--muted);
+  border-radius: 18px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 28%, var(--paper)), var(--paper));
 }
 
-.writing-undo-button:hover {
-  border-color: #c5c9c9;
-  color: var(--ink);
+.writing-workbench-tools {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  min-height: 68px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-soft) 75%, var(--paper));
 }
+.writing-tools-label { display: flex; flex: none; align-items: center; gap: 8px; color: var(--accent); font-size: 12px; font-weight: 700; }
+.writing-tools-label svg { width: 16px; height: 16px; }
+.writing-format-tools { min-width: 0; flex: 1 1 0; }
+.writing-mode-tools { flex: 0 0 auto; }
+.writing-format-tools:empty::after { content: '正在准备编辑工具…'; color: var(--muted); font-size: 12px; }
+.writing-workbench-tools .novel-toolbar { position: relative; top: auto; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.writing-workbench-tools .novel-toolbar-scroll { padding: 0; }
+.writing-workbench-tools .novel-toolbar-scroll-hint { background: linear-gradient(to right, transparent, var(--accent-soft)); }
+.writing-workbench-tools .markdown-workspace-modebar { margin: 0; padding: 0; border: 0; }
+.writing-workbench-tools .markdown-workspace-hint { display: none; }
+.writing-workbench-tools .markdown-workspace-tab { min-height: 44px; padding: 6px 10px; }
+.writing-workbench-tools .markdown-workspace-tab small { display: none; }
+.writing-workbench-tools .markdown-workspace-tabs { gap: 2px; background: var(--surface); }
+.writing-source-tools { display: flex; align-items: center; gap: 10px; color: var(--accent); font-size: 12px; }
+.writing-source-tools svg { width: 18px; height: 18px; flex: none; }
+.writing-source-tools small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
 
 .writing-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 292px;
-  gap: 22px;
-  align-items: start;
-}
-
-.writing-main {
   min-width: 0;
+  grid-template-columns: clamp(176px, 15vw, 216px) minmax(0, 1fr) clamp(224px, 19vw, 272px);
+  grid-template-areas: "resources document properties";
+  gap: 12px;
+  align-items: stretch;
 }
+.writing-main { grid-area: document; min-width: 0; }
+.writing-rail { grid-area: properties; }
+.writing-composer { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 
-.writing-composer {
-  min-width: 0;
-  max-width: 100%;
-  padding: 24px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface);
-}
-
-.article-fields {
-  display: grid;
-  gap: 0;
-  margin: -2px 0 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--line);
-}
-
-.writing-composer .title-input,
-.writing-composer .summary-input {
-  width: 100%;
+.writing-document-heading,
+.writing-panel-heading {
+  display: flex;
+  flex: none;
+  min-height: 54px;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  outline: none;
-  background: transparent;
-}
-
-.writing-composer .title-input {
-  min-height: 52px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
   color: var(--ink);
-  font-family: ui-serif, "Songti SC", "Noto Serif CJK SC", serif;
-  font-size: clamp(27px, 4vw, 38px);
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: -.035em;
+  font-size: 13px;
+  font-weight: 650;
 }
+.writing-document-heading { justify-content: space-between; }
+.writing-document-heading > span { display: inline-flex; align-items: center; gap: 8px; }
+.writing-document-heading svg,
+.writing-panel-heading svg { width: 16px; height: 16px; color: var(--accent); }
+.writing-document-heading small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.article-fields { display: grid; flex: none; gap: 6px; margin: 22px 24px 14px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.writing-composer .title-input,
+.writing-composer .summary-input { width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; outline: none; background: transparent; }
+.writing-composer .title-input { min-height: 44px; color: var(--ink); font-family: "Noto Serif CJK SC", "Songti SC", serif; font-size: clamp(24px, 2.2vw, 34px); font-weight: 600; line-height: 1.35; letter-spacing: -.025em; }
+.writing-composer .summary-input { min-height: 32px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.writing-composer .slug-input { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.writing-composer .markdown-editor-workspace { margin: 16px 24px 22px; }
+.writing-composer .article-fields + .markdown-editor-workspace { margin-top: 0; }
+.writing-workbench .writing-composer .novel-editor-shell,
+.writing-workbench .writing-composer .markdown-source-shell { border-color: transparent; border-radius: 4px; }
+.writing-composer .working-copy-notice { margin: 16px 24px 0; }
 
-.writing-composer .summary-input {
-  min-height: 38px;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.writing-composer .slug-input {
-  margin-top: 5px;
-  color: #95999b;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-}
-
-.writing-composer .title-input:focus-visible,
-.writing-composer .summary-input:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
-  outline-offset: 4px;
-  border-radius: 6px;
-}
-
-.writing-page-header button:focus-visible,
-.writing-composer button:focus-visible,
-.writing-composer select:focus-visible,
-.writing-inspector > summary:focus-visible,
-.writing-drafts button:focus-visible,
-.writing-manage-link:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
+.writing-shell :is(button, select, input, summary, a):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent);
   outline-offset: 3px;
 }
-
-.writing-editor-heading {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 42px;
-  margin-bottom: 10px;
-}
-
-.writing-editor-heading > div:first-child {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
-}
+.dark .writing-connection.is-online { color: #a1bea9; }
+.dark .writing-connection.is-offline { color: #dfaa86; }
+.dark .markdown-source-input { background: var(--surface); }

@@ -59,9 +59,10 @@ interface DraftTrayProps {
   drafts: Draft[];
   onLoadDraft: (draft: Draft) => void;
   disabled?: boolean;
+  disabledReason?: string;
 }
 
-export default function DraftTray({ drafts, onLoadDraft, disabled = false }: DraftTrayProps) {
+export default function DraftTray({ drafts, onLoadDraft, disabled = false, disabledReason = '附件上传完成后可切换草稿' }: DraftTrayProps) {
   const [expanded, setExpanded] = useState(false);
   const visibleDrafts = expanded ? drafts : drafts.slice(0, 6);
   return (
@@ -74,7 +75,7 @@ export default function DraftTray({ drafts, onLoadDraft, disabled = false }: Dra
           <ul className="draft-list">
             {visibleDrafts.map(draft => (
               <li key={draft.id}>
-                <button type="button" disabled={disabled} title={disabled ? '附件上传完成后可切换草稿' : undefined} onClick={() => onLoadDraft(draft)}>
+                <button type="button" disabled={disabled} title={disabled ? disabledReason : undefined} onClick={() => onLoadDraft(draft)}>
                   <span className="draft-card-meta"><b>{draftKind(draft)}</b><time>{new Date(draft.updatedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>
                   <strong>{draftName(draft)}</strong>
                   <small>{draftExcerpt(draft)}</small>

@@ -1,0 +1,9 @@
+.app-main.writing-preview { width: 100%; margin: 0; padding: 0; }
+.writing-preview-notice { display: flex; flex: none; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 26px; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 11px; }
+.writing-preview-notice > span { display: inline-flex; align-items: center; gap: 7px; }
+.writing-preview-notice svg { width: 14px; height: 14px; }
+.writing-preview-notice button { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--accent); font-size: 11px; }
+@media (max-width: 767px) {
+  .writing-preview-notice { padding-inline: 14px; }
+  .writing-preview-notice .writing-preview-detail { display: none; }
+}

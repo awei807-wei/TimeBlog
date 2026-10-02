@@ -189,7 +189,7 @@ test('version panel returns to the in-page content list', async () => {
 test('content management exposes a safe edit entry and editor uses the update working copy', async () => {
   const fs = await import('node:fs/promises');
   const list = await fs.readFile(new URL('../app/admin/entries/page.tsx', import.meta.url), 'utf8');
-  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const editorState = await fs.readFile(new URL('../app/admin/useAdminEditorState.ts', import.meta.url), 'utf8');
   const entryActions = await fs.readFile(new URL('../app/admin/admin-entry-actions.ts', import.meta.url), 'utf8');
   const workingCopy = await fs.readFile(new URL('../app/admin/useAdminWorkingCopy.ts', import.meta.url), 'utf8');
@@ -209,7 +209,7 @@ test('content management exposes a safe edit entry and editor uses the update wo
 
 test('public article editing exposes unpublished working copies and a guarded restore path', async () => {
   const fs = await import('node:fs/promises');
-  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const autosave = await fs.readFile(new URL('../app/admin/useDraftAutosave.ts', import.meta.url), 'utf8');
   const autosaveSync = await fs.readFile(new URL('../app/admin/useDraftAutosaveSync.ts', import.meta.url), 'utf8');
   const workingHook = await fs.readFile(new URL('../app/admin/useAdminWorkingCopy.ts', import.meta.url), 'utf8');
@@ -359,9 +359,9 @@ test('admin sidebar has a mobile trigger and maps theme tokens for desktop and m
 
 test('writing workspace exposes rich text and lossless Markdown surfaces behind one handle', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const actions = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
-  const workspace = await fs.readFile(new URL('../app/admin/NovelMarkdownEditor.tsx', import.meta.url), 'utf8');
+  const workspace = await fs.readFile(new URL('../app/admin/NovelMarkdownEditor.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/EditorModeSwitch.tsx', import.meta.url), 'utf8');
   const richEditor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const sourceEditor = await fs.readFile(new URL('../app/admin/MarkdownSourceEditor.tsx', import.meta.url), 'utf8');
   const menus = await fs.readFile(new URL('../app/admin/NovelEditorMenus.tsx', import.meta.url), 'utf8');
@@ -372,8 +372,8 @@ test('writing workspace exposes rich text and lossless Markdown surfaces behind 
   assert.match(attachment, /!\/\^image/);
   assert.doesNotMatch(source, /renderMarkdown\(markdown\)/);
   assert.match(workspace, /role="tablist"/);
-  assert.match(workspace, /<strong>富文本<\/strong>/);
-  assert.match(workspace, /<strong>Markdown<\/strong>/);
+  assert.match(workspace, /value === 'rich' \? '富文本' : 'Markdown'/);
+  assert.match(workspace, /role="tab"/);
   assert.match(workspace, /mode === 'rich'/);
   assert.match(workspace, /<MarkdownSourceEditor/);
   assert.match(richEditor, /<EditorRoot>/);
@@ -402,7 +402,7 @@ test('writing workspace exposes rich text and lossless Markdown surfaces behind 
 
 test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes bounded tag drafts', async () => {
   const fs = await import('node:fs/promises');
-  const page = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const page = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const extensions = await fs.readFile(new URL('../app/admin/novel-editor-extensions.ts', import.meta.url), 'utf8');
   const compat = await fs.readFile(new URL('../app/admin/markdown-compat.ts', import.meta.url), 'utf8');
@@ -433,8 +433,8 @@ test('writer keeps legacy HTML recoverable, uses a real placeholder, and exposes
   assert.match(tags, /import \{ X \} from 'lucide-react'/);
   assert.match(tags, /<X aria-hidden="true" \/>/);
   assert.match(page, /<JournalDatePicker value=\{date\} onChange=\{onDateChange\}/);
-  assert.ok(page.split('\n').length < 400);
-  assert.match(page, /<DraftTray drafts=\{drafts\} onLoadDraft=\{onLoadDraft\}/);
+  assert.ok((await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8')).split('\n').length < 400);
+  assert.match(page, /<DraftTray drafts=\{props\.drafts\} onLoadDraft=\{props\.onLoadDraft\}/);
   assert.match(draftTray, /export const MAX_DRAFTS = 20/);
   assert.match(draftTray, /b\.updatedAt\.localeCompare\(a\.updatedAt\) \|\| b\.id\.localeCompare\(a\.id\)/);
   assert.match(draftTray, /dbDelete\(DRAFT_STORE, draft\.id\)/);
@@ -489,19 +489,19 @@ test('tag input commits mobile Enter in its boundary and preserves IME, empty, a
 
 test('writing workbench keeps focus visible and bounds responsive editor scrolling', async () => {
   const fs = await import('node:fs/promises');
-  const cssFiles = ['admin-editor-layout.css', 'admin-editor-editor.css', 'admin-editor-inspector.css', 'admin-editor-responsive.css'];
+  const cssFiles = ['admin-editor-layout.css', 'admin-editor-editor.css', 'admin-editor-inspector.css', 'admin-editor-resources.css', 'admin-editor-responsive.css'];
   const cssParts = await Promise.all(cssFiles.map(name => fs.readFile(new URL(`../app/${name}`, import.meta.url), 'utf8')));
   const css = cssParts.join('\n');
   for (const [index, part] of cssParts.entries()) {
     assert.ok(part.split('\n').length < 400, `${cssFiles[index]} must stay below the CSS split threshold`);
   }
-  assert.match(css, /\.writing-composer \.title-input:focus-visible,[\s\S]*outline: 3px solid/);
+  assert.match(css, /\.writing-shell :is\(button, select, input, summary, a\):focus-visible[\s\S]*outline: 3px solid/);
   assert.match(css, /\.writing-composer \.novel-editor-shell:has\(\.ProseMirror:focus-visible\)\s*\{[^}]*border-color:[^;]+;[^}]*box-shadow:\s*0 0 0 3px/);
   assert.doesNotMatch(css, /\.novel-editor-content \.ProseMirror:focus-visible/);
   assert.match(css, /\.novel-command-menu[\s\S]*min-height: 44px/);
-  assert.match(css, /\.writing-rail[\s\S]*align-self: start[\s\S]*overflow: visible/);
+  assert.match(css, /\.writing-rail[\s\S]*align-self: stretch[\s\S]*overflow: visible/);
   assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.writing-page-header[\s\S]*display: grid/);
-  assert.match(css, /@media \(max-width: 520px\)[\s\S]*\.writing-save-actions[\s\S]*margin-left: auto/);
+  assert.match(css, /@media \(max-width: 767px\)[\s\S]*\.writing-save-actions[\s\S]*margin-left: auto/);
   assert.match(css, /@media \(pointer: coarse\)[\s\S]*\.writing-inspector \.taxonomy-tag-remove[\s\S]*width: 44px;[\s\S]*height: 44px;/);
 });
 
@@ -745,7 +745,7 @@ test('Novel compatibility protects unsupported HTML, footnotes and project direc
 
 test('Novel captures media paste/drop and keeps page-level attachment controls', async () => {
   const fs = await import('node:fs/promises');
-  const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const source = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const picker = await fs.readFile(new URL('../app/admin/AttachmentButton.tsx', import.meta.url), 'utf8');
@@ -766,15 +766,15 @@ test('Novel media insertion stays visible in the responsive format toolbar', asy
   const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
   const pageMedia = await fs.readFile(new URL('../app/admin/useAdminPageMediaState.ts', import.meta.url), 'utf8');
   const capability = await fs.readFile(new URL('../app/admin/useAdminMediaCapability.ts', import.meta.url), 'utf8');
-  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
-  const wrapper = await fs.readFile(new URL('../app/admin/NovelMarkdownEditor.tsx', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
+  const wrapper = await fs.readFile(new URL('../app/admin/NovelMarkdownEditor.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/EditorModeSwitch.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const toolbar = await fs.readFile(new URL('../app/admin/NovelEditorToolbar.tsx', import.meta.url), 'utf8');
   const imageDialog = await fs.readFile(new URL('../app/admin/NovelImageDialog.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(wrapper, /Mdx|MDX|ViewMode/);
   assert.doesNotMatch(editor, /mdx|MDX|viewMode/);
   assert.doesNotMatch(view, /editor-toolbar/);
-  assert.match(editor, /slotBefore=\{<NovelEditorToolbar/);
+  assert.match(editor, /slotBefore=\{toolbarElement \? createPortal\(toolbar, toolbarElement\) : toolbar/);
   assert.match(editor, /openImageDialog/);
   assert.match(editor, /onImageUploadRef/);
   assert.match(toolbar, /role="toolbar"/);
@@ -790,7 +790,7 @@ test('Novel media insertion stays visible in the responsive format toolbar', asy
   assert.match(capability, /const \[editorReady, setEditorReady\]/);
   assert.match(pageMedia, /!media\.editorReady/);
   assert.match(view, /onReady=\{props\.onEditorReady\}/);
-  assert.match(view, /disabled=\{mediaInputDisabled\}/);
+  assert.match(view, /disabled=\{disabled\}/);
   assert.match(view, /onImageUpload=\{imageUploadDisabled \? undefined : props\.onImageUpload\}/);
   assert.match(view, /图片仍可使用 HTTPS 链接/);
 });
@@ -799,7 +799,7 @@ test('media uploads insert canonical Markdown while Novel resolves image preview
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/useAdminComposerMedia.ts', import.meta.url), 'utf8');
   const saveAction = await fs.readFile(new URL('../app/admin/useAdminSaveAction.ts', import.meta.url), 'utf8');
-  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const editor = await fs.readFile(new URL('../app/admin/NovelMarkdownEditorClient.tsx', import.meta.url), 'utf8');
   const extensions = await fs.readFile(new URL('../app/admin/novel-editor-extensions.ts', import.meta.url), 'utf8');
   const uploads = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
@@ -834,7 +834,7 @@ test('media links keep safe hrefs while standard links retain strict activation'
 test('editor reuses one CSRF token across upload and save, surfaces API details, and cancels active attachments', async () => {
   const fs = await import('node:fs/promises');
   const source = await fs.readFile(new URL('../app/admin/useAdminSession.ts', import.meta.url), 'utf8');
-  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8');
+  const view = await fs.readFile(new URL('../app/admin/AdminEditorView.tsx', import.meta.url), 'utf8') + await fs.readFile(new URL('../app/admin/AdminEditorResources.tsx', import.meta.url), 'utf8');
   const uploadSource = await fs.readFile(new URL('../app/admin/useMediaUploads.ts', import.meta.url), 'utf8');
   assert.match(source, /const csrfRef = useRef\(''\)/);
   assert.match(source, /const refreshSessionCSRF = useCallback/);

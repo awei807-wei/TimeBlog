@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import type * as React from 'react';
+import { createPortal } from 'react-dom';
 import {
   EditorContent,
   EditorRoot,
@@ -107,7 +108,7 @@ function NovelEditorBridge({ markdown, editorRef, onChangeRef, onReadyRef, onNot
   return null;
 }
 
-export default function NovelMarkdownEditorClient({ markdown, editorRef, editorPortalElement, onChange, onFiles, onImageUpload, imageUploadUnavailableMessage, onError, onNotice, onReady, disabled = false }: NovelMarkdownEditorProps) {
+function useNovelEditorRuntime({ markdown, onChange, onFiles, onImageUpload, onError, onNotice, onReady, disabled = false }: NovelMarkdownEditorProps) {
   const onChangeRef = useRef(onChange);
   const onErrorRef = useRef(onError);
   const onNoticeRef = useRef(onNotice);
@@ -134,15 +135,36 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
     if (compatibilityRef.current.replacements.length) onNoticeRef.current?.('部分历史 Markdown 语法以保护标记保留，保存时会恢复原文。');
   }, []);
 
+  return { onChangeRef, onErrorRef, onNoticeRef, onReadyRef, onFilesRef, onImageUploadRef,
+    sourceRef, dirtyRef, compatibilityRef, hasProtectedContent, setHasProtectedContent,
+    imageDialogOpen, setImageDialogOpen, linkDialogOpen, setLinkDialogOpen, imageInputID,
+    dragActive, resetDrag, onDragEnterCapture, onDragOverCapture, onDragLeaveCapture };
+}
+
+function handleMediaLinkClickCapture(event: React.MouseEvent<HTMLDivElement>) {
+  const anchor = (event.target as HTMLElement).closest('a');
+  const source = anchor?.dataset.mediaSource || anchor?.getAttribute('href') || '';
+  if (!anchor || !isSafeMediaReference(source)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  window.open(mediaContentUrl(source.slice('media://'.length), API), '_blank', 'noopener,noreferrer');
+}
+
+function handleImageErrorCapture(event: React.SyntheticEvent<HTMLDivElement>) {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement) || !isSafeMediaReference(image.dataset.mediaSource || '')) return;
+  const fallback = localMediaFallbackUrl(image.src, window.location.origin);
+  if (fallback) image.src = fallback;
+}
+
+function useNovelMediaActions(runtime: ReturnType<typeof useNovelEditorRuntime>, disabled: boolean) {
+  const { setImageDialogOpen, setLinkDialogOpen, imageInputID, onImageUploadRef, onErrorRef, onFilesRef, resetDrag } = runtime;
   const openImageDialog = useCallback((editor: EditorInstance, range?: Range) => {
     if (range) editor.chain().focus().deleteRange(range).run();
     setImageDialogOpen(true);
-  }, []);
-  const openLinkDialog = useCallback(() => setLinkDialogOpen(true), []);
+  }, [setImageDialogOpen]);
+  const openLinkDialog = useCallback(() => setLinkDialogOpen(true), [setLinkDialogOpen]);
   const chooseImageFile = useCallback(() => document.getElementById(imageInputID)?.click(), [imageInputID]);
-  const suggestions = useMemo(() => buildNovelSuggestions(openImageDialog), [openImageDialog]);
-  const extensions = useMemo(() => createNovelExtensions({ editorPortalElement, suggestions }), [editorPortalElement, suggestions]);
-
   const completeImageUpload = useCallback(async (file: File) => {
     const upload = onImageUploadRef.current;
     if (!upload) {
@@ -150,34 +172,30 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
       return;
     }
     try {
-      // The shared upload pipeline inserts a temporary media:// reference
-      // before the network request and replaces that mapped placeholder later.
+      // 共用上传链先插入临时 media:// 引用，再替换为正式媒体引用。
       await upload(file);
     } catch (error) {
       onErrorRef.current?.(error instanceof Error ? error.message : '图片上传失败');
     }
-  }, []);
+  }, [onImageUploadRef, onErrorRef]);
 
-  const handleMediaLinkClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const anchor = (event.target as HTMLElement).closest('a');
-    const source = anchor?.dataset.mediaSource || anchor?.getAttribute('href') || '';
-    if (!anchor || !isSafeMediaReference(source)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    window.open(mediaContentUrl(source.slice('media://'.length), API), '_blank', 'noopener,noreferrer');
-  }, []);
+  const reportMediaUnavailable = useCallback(() => onErrorRef.current?.('媒体存储尚未就绪，暂时无法添加文件'), [onErrorRef]);
+  const handlePasteCapture = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => { captureEditorFiles(event, onFilesRef.current, reportMediaUnavailable, disabled); }, [disabled, onFilesRef, reportMediaUnavailable]);
+  const handleDropCapture = useCallback((event: React.DragEvent<HTMLDivElement>) => { resetDrag(); captureEditorFiles(event, onFilesRef.current, reportMediaUnavailable, disabled); }, [disabled, onFilesRef, resetDrag, reportMediaUnavailable]);
 
-  const handleImageErrorCapture = useCallback((event: React.SyntheticEvent<HTMLDivElement>) => {
-    const image = event.target;
-    if (!(image instanceof HTMLImageElement) || !isSafeMediaReference(image.dataset.mediaSource || '')) return;
-    const fallback = localMediaFallbackUrl(image.src, window.location.origin);
-    if (fallback) image.src = fallback;
-  }, []);
+  return { openImageDialog, openLinkDialog, chooseImageFile, completeImageUpload, handlePasteCapture, handleDropCapture };
+}
 
-  const reportMediaUnavailable = useCallback(() => onErrorRef.current?.('媒体存储尚未就绪，暂时无法添加文件'), []);
-  const handlePasteCapture = useCallback((event: React.ClipboardEvent<HTMLDivElement>) => { captureEditorFiles(event, onFilesRef.current, reportMediaUnavailable, disabled); }, [disabled, reportMediaUnavailable]);
-  const handleDropCapture = useCallback((event: React.DragEvent<HTMLDivElement>) => { resetDrag(); captureEditorFiles(event, onFilesRef.current, reportMediaUnavailable, disabled); }, [disabled, resetDrag, reportMediaUnavailable]);
+/** 保持编辑器实例与 Markdown 桥接稳定，只将工具呈现到外部工作台。 */
+export default function NovelMarkdownEditorClient({ markdown, editorRef, editorPortalElement, toolbarElement, onChange, onFiles, onImageUpload, imageUploadUnavailableMessage, onError, onNotice, onReady, disabled = false }: NovelMarkdownEditorProps) {
+  const runtime = useNovelEditorRuntime({ markdown, editorRef, onChange, onFiles, onImageUpload, onError, onNotice, onReady, disabled });
+  const { onChangeRef, onNoticeRef, onReadyRef, sourceRef, dirtyRef, compatibilityRef, hasProtectedContent, setHasProtectedContent,
+    imageDialogOpen, setImageDialogOpen, linkDialogOpen, setLinkDialogOpen, imageInputID, dragActive, onDragEnterCapture, onDragOverCapture, onDragLeaveCapture } = runtime;
+  const { openImageDialog, openLinkDialog, chooseImageFile, completeImageUpload, handlePasteCapture, handleDropCapture } = useNovelMediaActions(runtime, disabled);
+  const suggestions = useMemo(() => buildNovelSuggestions(openImageDialog), [openImageDialog]);
+  const extensions = useMemo(() => createNovelExtensions({ editorPortalElement, suggestions }), [editorPortalElement, suggestions]);
 
+  const toolbar = <NovelEditorToolbar disabled={disabled} imageDialogOpen={imageDialogOpen} linkDialogOpen={linkDialogOpen} onOpenImage={openImageDialog} onOpenLink={openLinkDialog} />;
   return (
     <div className={`novel-editor-shell${dragActive ? ' is-file-dragging' : ''}`} onErrorCapture={handleImageErrorCapture} onPasteCapture={handlePasteCapture} onDropCapture={handleDropCapture} onClickCapture={handleMediaLinkClickCapture} onDragEnterCapture={onDragEnterCapture} onDragOverCapture={onDragOverCapture} onDragLeaveCapture={onDragLeaveCapture}>
       {dragActive && <div className="novel-file-drop-hint" role="status">松开即可上传附件</div>}
@@ -197,7 +215,7 @@ export default function NovelMarkdownEditorClient({ markdown, editorRef, editorP
           initialContent={EMPTY_DOCUMENT}
           editorProps={EDITOR_PROPS}
           editorContainerProps={EDITOR_CONTAINER_PROPS}
-          slotBefore={<NovelEditorToolbar disabled={disabled} imageDialogOpen={imageDialogOpen} linkDialogOpen={linkDialogOpen} onOpenImage={openImageDialog} onOpenLink={openLinkDialog} />}
+          slotBefore={toolbarElement ? createPortal(toolbar, toolbarElement) : toolbar}
           immediatelyRender={false}
           editable={!disabled}
           onUpdate={({ editor }) => {

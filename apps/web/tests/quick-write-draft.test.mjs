@@ -67,13 +67,13 @@ test('session loss keeps authored text mounted until local persistence succeeds'
 
 test('uploading media disables both dialog dismissal and local draft switches', async () => {
   const dialog = await read('../app/admin/QuickWriteDialog.tsx');
-  const view = await read('../app/admin/AdminEditorView.tsx');
+  const view = await read('../app/admin/AdminEditorView.tsx') + await read('../app/admin/AdminEditorResources.tsx');
   const tray = await read('../app/admin/DraftTray.tsx');
 
   assert.match(dialog, /blockOutsideClose = controller\.mediaStillProcessing \|\| controller\.saving \|\| closing/);
   assert.match(dialog, /onEscapeKeyDown/);
   assert.match(dialog, /onPointerDownOutside/);
-  assert.match(view, /disabled=\{mediaStillProcessing\}/);
+  assert.match(view, /disabled=\{navigationDisabled\}/);
   assert.match(tray, /disabled=\{disabled\}/);
 });
 
@@ -86,7 +86,7 @@ test('a completed close keeps the quick writer mounted, pauses hidden persistenc
   const flush = await read('../app/admin/useDraftFlush.ts');
   const outbox = await read('../app/admin/useDraftOutbox.ts');
   const uploads = await read('../app/admin/useMediaUploads.ts');
-  const view = await read('../app/admin/AdminEditorView.tsx');
+  const view = await read('../app/admin/AdminEditorView.tsx') + await read('../app/admin/AdminEditorResources.tsx');
 
   assert.doesNotMatch(home, /if \(!nextOpen\) setQuickWriteMounted\(false\)/);
   assert.match(home, /onOpenChange=\{setQuickWriteOpen\}/);
@@ -101,7 +101,7 @@ test('a completed close keeps the quick writer mounted, pauses hidden persistenc
   assert.match(dialog, /if \(sessionInvalid\) \{\s*onSessionInvalid\?\.\(\);\s*\} else \{\s*setCloseMessage\('\'\);\s*onOpenChange\(false\);\s*\}/);
   assert.match(dialog, /<AdminEditorView \{\.\.\.controller\} saving=\{controller\.saving \|\| closing\}/);
   assert.match(dialog, /className="quick-write-dialog-scroll" inert=\{closing \|\| undefined\} aria-busy=\{closing \|\| undefined\}/);
-  assert.match(view, /navigationDisabled = mediaStillProcessing \|\| saving/);
+  assert.match(view, /navigationDisabled = props\.saving \|\| props\.loadingEdit \|\| props\.mediaStillProcessing/);
   assert.match(view, /aria-disabled="true"/);
   assert.doesNotMatch(view, /<Link className="writing-manage-link" href="\/admin\/entries">[\s\S]*navigationDisabled/);
   assert.match(uploads, /useEffect\(\(\) => \{\s*unmountedRef\.current = false;[\s\S]*return \(\) => \{\s*unmountedRef\.current = true;[\s\S]*controller\.abort\(\)/);

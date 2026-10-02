@@ -69,7 +69,7 @@ test('visible toolbar and image dialog expose touch-safe local and external inse
   const toolsCSS = await read('../app/admin-editor-tools.css');
   const dialogsCSS = await read('../app/admin-editor-dialogs.css');
 
-  assert.match(editor, /slotBefore=\{<NovelEditorToolbar/);
+  assert.match(editor, /slotBefore=\{toolbarElement \? createPortal\(toolbar, toolbarElement\) : toolbar/);
   assert.match(editor, /<NovelImageDialog/);
   assert.match(toolbar, /role="toolbar"/);
   assert.match(toolbar, /onPointerDown=\{event => event\.preventDefault\(\)\}/);
@@ -113,14 +113,14 @@ test('media image rendering preserves empty alt text while allowlisting attribut
 });
 
 test('dual editor exposes accessible rich and Markdown surfaces through the shared upload pipeline', async () => {
-  const workspace = await read('../app/admin/NovelMarkdownEditor.tsx');
+  const workspace = await read('../app/admin/NovelMarkdownEditor.tsx') + await read('../app/admin/EditorModeSwitch.tsx');
   const editor = await read('../app/admin/NovelMarkdownEditorClient.tsx');
   const sourceEditor = await read('../app/admin/MarkdownSourceEditor.tsx');
   const uploads = await read('../app/admin/useMediaUploads.ts');
 
   assert.match(workspace, /role="tablist"/);
-  assert.match(workspace, /aria-selected=\{mode === 'rich'\}/);
-  assert.match(workspace, /aria-selected=\{mode === 'markdown'\}/);
+  assert.match(workspace, /\['rich', 'markdown'\] as const/);
+  assert.match(workspace, /aria-selected=\{mode === value\}/);
   assert.match(editor, /role: 'textbox'/);
   assert.match(editor, /'aria-label': '富文本正文编辑器'/);
   assert.match(editor, /'aria-multiline': 'true'/);

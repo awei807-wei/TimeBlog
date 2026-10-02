@@ -56,6 +56,8 @@ function AppNavigation() {
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  if (process.env.NODE_ENV === 'development' && pathname === '/preview/writing.html') return <>{children}</>;
   return <SessionProvider><ShellRoute>{children}</ShellRoute><AppMotion /></SessionProvider>;
 }
 

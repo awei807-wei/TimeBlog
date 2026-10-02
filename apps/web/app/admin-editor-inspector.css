@@ -8,6 +8,22 @@
   background: var(--surface);
 }
 
+.writing-rail > .writing-inspector {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  border-radius: 8px;
+}
+
+.writing-inspector > summary {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 54px;
+  background: var(--surface);
+}
+
 .writing-inspector > summary {
   display: flex;
   min-height: 44px;
@@ -210,174 +226,4 @@
   color: var(--muted);
   font-size: 10px;
   line-height: 1.6;
-}
-
-.writing-sidebar {
-  display: grid;
-  gap: 10px;
-}
-
-.writing-drafts > header {
-  padding: 15px 16px 12px;
-}
-
-.writing-drafts > header > div {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.writing-drafts h2 {
-  margin: 0;
-  font-size: 13px;
-}
-
-.writing-drafts header span {
-  color: var(--muted);
-  font-size: 9px;
-}
-
-.writing-drafts .draft-list {
-  display: grid;
-  gap: 0;
-  max-height: min(48vh, 490px);
-  margin: 0;
-  overflow-y: auto;
-  padding: 0;
-  border-top: 1px solid var(--line);
-  list-style: none;
-}
-
-.writing-drafts .draft-list li + li {
-  border-top: 1px solid var(--line);
-}
-
-.writing-drafts .draft-list button {
-  width: 100%;
-  min-height: 44px;
-  display: grid;
-  gap: 5px;
-  padding: 12px 15px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.writing-drafts .draft-list button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-soft) 62%, var(--surface));
-}
-
-.writing-drafts .draft-list button:disabled {
-  cursor: not-allowed;
-  opacity: .55;
-}
-
-.draft-card-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--muted);
-  font-size: 9px;
-}
-
-.draft-card-meta b {
-  color: var(--accent);
-  font-weight: 600;
-}
-
-.draft-card-meta time {
-  font-variant-numeric: tabular-nums;
-}
-
-.writing-drafts .draft-list strong {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.4;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.writing-drafts .draft-list small {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 10px;
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.draft-expand {
-  width: 100%;
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 12px;
-  border: 0;
-  border-top: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 10px;
-}
-
-.draft-expand:hover {
-  color: var(--ink);
-}
-
-.draft-expand svg {
-  width: 14px;
-  height: 14px;
-}
-
-.draft-empty {
-  margin: 0;
-  padding: 3px 16px 17px;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.65;
-}
-
-.writing-manage-link {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.writing-manage-link:hover {
-  border-color: #c4cdd1;
-  background: var(--surface);
-  color: var(--ink);
-}
-
-.writing-manage-link svg {
-  width: 15px;
-  height: 15px;
-}
-
-.writing-composer .working-copy-notice {
-  margin-bottom: 22px;
-}
-
-.dark .writing-page-header {
-  background: color-mix(in srgb, var(--paper) 90%, transparent);
-}
-
-.dark .writing-save-button {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--paper);
 }
