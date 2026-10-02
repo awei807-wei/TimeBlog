@@ -44,16 +44,38 @@ function SheetOverlay({
   )
 }
 
+function useSheetFocusRestoration({ onOpenAutoFocus, onCloseAutoFocus }: React.ComponentProps<typeof SheetPrimitive.Content>) {
+  const previousFocus = React.useRef<HTMLElement | null>(null)
+  return {
+    onOpenAutoFocus: (event: Event) => {
+      previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      onOpenAutoFocus?.(event)
+    },
+    onCloseAutoFocus: (event: Event) => {
+      onCloseAutoFocus?.(event)
+      // 受控抽屉的打开按钮可能不在 SheetTrigger 中，需保留实际触发位置。
+      const target = previousFocus.current
+      if (!event.defaultPrevented && target?.isConnected && target !== document.body) {
+        event.preventDefault()
+        target.focus({ preventScroll: true })
+      }
+    },
+  }
+}
+
 function SheetContent({
   className,
   children,
   side = "right",
   showCloseButton = true,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  const focusRestoration = useSheetFocusRestoration({ onOpenAutoFocus, onCloseAutoFocus })
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -72,6 +94,7 @@ function SheetContent({
           className
         )}
         {...props}
+        {...focusRestoration}
       >
         {children}
         {showCloseButton && (

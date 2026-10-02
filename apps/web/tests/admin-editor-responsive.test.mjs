@@ -29,6 +29,9 @@ test('admin writing view keeps the primary workbench reachable on narrow screens
   assert.match(responsive, /@media \(max-width: 767px\)[\s\S]*\.writing-composer \.novel-editor-content\s*\{[^}]*padding:\s*0;/);
   assert.match(css, /\.novel-command-menu[\s\S]*min-height:\s*44px/);
   assert.match(inspector, /\.writing-selector-row select[\s\S]*min-height:\s*44px/);
+  assert.match(inspector, /\.writing-inspector-fields\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(inspector, /\.writing-inspector \.taxonomy-field\s*\{[^}]*grid-column:\s*1 \/ -1/);
+  assert.match(responsive, /@media \(min-width: 768px\) and \(max-width: 1023px\)[\s\S]*grid-template-areas:\s*"document" "properties" "resources"/);
   assert.match(responsive, /\.writing-inspector \.taxonomy-tag-remove[\s\S]*width:\s*44px[\s\S]*height:\s*44px/);
   assert.match(layout, /max\(72px, calc\(72px \+ env\(safe-area-inset-bottom\)\)\)/);
 
@@ -42,6 +45,7 @@ test('admin writing view keeps the primary workbench reachable on narrow screens
 test('admin mobile shell delegates drawer behavior to the existing Sheet state', async () => {
   const appShell = await read('../app/AppShell.tsx');
   const css = await read('../app/globals.css');
+  const sheet = await read('../app/components/ui/sheet.tsx');
 
   assert.match(appShell, /<SidebarTrigger[^>]+aria-label="打开管理导航"/);
   assert.match(appShell, /className="mobile-shell-header"/);
@@ -49,13 +53,17 @@ test('admin mobile shell delegates drawer behavior to the existing Sheet state',
   assert.match(css, /\[data-sidebar="sidebar"\]\[data-mobile="true"\]\[data-state="closed"\][\s\S]*translateX\(-100%\)/);
   assert.match(css, /safe-area-inset-top/);
   assert.match(css, /@media \(min-width: 768px\)[\s\S]*\.app-main \{ padding-left: 32px; \}/);
+  assert.match(sheet, /previousFocus\.current = document.activeElement/);
+  assert.match(sheet, /onCloseAutoFocus\?\.\(event\)/);
+  assert.match(sheet, /!event.defaultPrevented && target\?\.isConnected/);
+  assert.match(sheet, /target.focus\(\{ preventScroll: true \}\)/);
 });
 
 test('desktop writing desk locks document scrolling and delegates it to the full-width editor pane', async () => {
   const responsive = await read('../app/admin-editor-responsive.css');
   const editor = await read('../app/admin-editor-editor.css');
 
-  assert.match(responsive, /@media \(min-width: 1024px\)[\s\S]*html:has\(\.app-content > \.writing-page-shell\),\s*body:has\(\.app-content > \.writing-page-shell\)\s*\{[^}]*overflow:\s*hidden;/);
+  assert.match(responsive, /@media \(min-width: 1280px\)[\s\S]*html:has\(\.app-content > \.writing-page-shell\),\s*body:has\(\.app-content > \.writing-page-shell\)\s*\{[^}]*overflow:\s*hidden;/);
   assert.match(responsive, /\.writing-page-shell \.writing-composer\s*\{[^}]*display:\s*flex;[^}]*overflow:\s*hidden;/);
   assert.match(responsive, /\.writing-page-shell \.novel-editor-shell,[\s\S]*?\{[^}]*flex:\s*1 1 0;/);
   assert.match(editor, /\.novel-editor-provider\s*\{[^}]*display:\s*flex;[^}]*width:\s*100%;[^}]*min-height:\s*0;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/);

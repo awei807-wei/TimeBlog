@@ -41,6 +41,24 @@ test('local HTML preview is development-only and does not mount business hooks',
   assert.match(proxy, /matcher: '\/preview\/writing.html'/);
 });
 
+test('preview keeps the real administration navigation without simulating a session', async () => {
+  const shell = await read('../app/AppShell.tsx');
+  const preview = await read('../app/preview/writing.html/WritingPreview.tsx');
+  for (const [href, label] of [
+    ['/', '时间线'], ['/calendar', '日历'], ['/categories', '栏目'], ['/search', '搜索'],
+    ['/admin', '写作'], ['/admin/entries', '内容管理'], ['/admin/settings', '设置'],
+  ]) {
+    assert.ok(shell.includes(`href: '${href}', label: '${label}'`));
+  }
+  assert.match(shell, /return <AdminWorkspaceShell preview>\{children\}<\/AdminWorkspaceShell>/);
+  assert.match(shell, /<AdminWorkspaceShell session=\{session\}>/);
+  assert.match(shell, /preview \|\| authenticated/);
+  assert.match(shell, /prefetch=\{preview \? false : undefined\}/);
+  assert.match(shell, /本地预览，未连接账户/);
+  assert.doesNotMatch(shell, /pathname === '\/preview\/writing.html'\) return <>/);
+  assert.doesNotMatch(preview, /className="app-main/);
+});
+
 test('Next.js debugging eval is allowed only in development, never production', async () => {
   const { default: config } = await import('../next.config.mjs');
   const original = process.env.NODE_ENV;

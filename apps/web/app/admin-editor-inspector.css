@@ -69,6 +69,7 @@
 .writing-inspector-fields {
   display: grid;
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   gap: 15px;
   padding: 16px;
 }
@@ -78,6 +79,8 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+
+.writing-inspector .taxonomy-field { grid-column: 1 / -1; }
 
 .writing-selector-row label,
 .writing-inspector .taxonomy-field {

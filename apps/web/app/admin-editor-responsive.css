@@ -1,5 +1,5 @@
 /* 桌面锁定工作台高度，三块内容独立滚动；窄屏保持正常页面滚动。 */
-@media (min-width: 1024px) {
+@media (min-width: 1280px) {
   html:has(.app-content > .writing-page-shell),
   body:has(.app-content > .writing-page-shell) {
     height: 100%;
@@ -71,7 +71,7 @@
   .article-fields { margin-inline: 18px; }
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1279px) {
   .writing-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "document document" "resources properties"; }
   .writing-rail { max-height: none; overflow: visible; }
   .writing-resources .writing-resource-scroll { max-height: 480px; }
@@ -89,6 +89,12 @@
 .writing-dialog-shell .writing-format-tools { order: 3; flex-basis: 100%; }
 .writing-dialog-shell .writing-mode-tools { margin-left: auto; }
 .writing-dialog-shell .writing-resource-scroll { max-height: 420px; }
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .writing-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "document" "properties" "resources"; }
+  .writing-page-header { flex-wrap: wrap; gap: 12px; }
+  .writing-header-actions { flex-wrap: wrap; }
+}
 
 @media (max-width: 767px) {
   .writing-shell { width: 100%; padding: 0 12px max(64px, calc(64px + env(safe-area-inset-bottom))); }

@@ -56,12 +56,12 @@ function usePreviewEditor() {
 export default function WritingPreview() {
   const { props, reset } = usePreviewEditor();
   return (
-    <div className="app-main writing-preview">
+    <>
       <div className="writing-preview-notice">
         <span><Monitor aria-hidden="true" />本地布局预览<span className="writing-preview-detail"> · 不连接生产服务，刷新后重置</span></span>
         <button type="button" onClick={reset}><RotateCcw aria-hidden="true" />恢复示例</button>
       </div>
       <div className="app-content"><AdminEditorView {...props} /></div>
-    </div>
+    </>
   );
 }
