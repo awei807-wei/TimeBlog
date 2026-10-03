@@ -993,7 +993,7 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   assert.match(worker, /event\.request\.destination === 'image'/);
   assert.match(worker, /response\.ok && url\.origin === self\.location\.origin/);
   assert.match(worker, /startsWith\('\/private-media\/'\)/);
-  assert.match(worker, /timeline-shell-v6/);
+  assert.match(worker, /timeline-shell-v7/);
   assert.match(worker, /if \(url\.pathname\.startsWith\('\/search'\)\)/);
   assert.match(worker, /event\.respondWith\(fetch\(event\.request\)\)/);
   assert.match(worker, /CACHE_INVALIDATE/);
@@ -1064,7 +1064,7 @@ test('Service Worker keeps every search request network-only', async () => {
   for (const mode of ['navigate', 'cors']) {
     let responsePromise;
     listeners.fetch({
-      request: { method: 'GET', mode, destination: '', url: `https://blog.example.test/search?q=${mode}` },
+      request: { method: 'GET', mode, destination: '', headers: new Headers(), url: `https://blog.example.test/search?q=${mode}` },
       respondWith: value => { responsePromise = value; },
       waitUntil: () => undefined,
     });

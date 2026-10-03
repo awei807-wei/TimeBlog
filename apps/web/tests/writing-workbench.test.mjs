@@ -38,7 +38,7 @@ test('local HTML preview is development-only and does not mount business hooks',
   assert.match(preview, /刷新后重置/);
   assert.match(proxy, /process.env.NODE_ENV !== 'development'/);
   assert.match(proxy, /status: 404/);
-  assert.match(proxy, /matcher: '\/preview\/writing.html'/);
+  assert.match(proxy, /matcher: \['\/preview\/writing.html', '\/sw.js'\]/);
 });
 
 test('preview keeps the real administration navigation without simulating a session', async () => {

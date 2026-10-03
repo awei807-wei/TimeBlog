@@ -1,7 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
+import { DEVELOPMENT_SERVICE_WORKER } from './lib/development-service-worker';
 
-/** 在开始流式响应前阻止生产访问开发预览，确保真实的 HTTP 404。 */
-export function proxy() {
+/** 隔离开发预览，并让旧开发 worker 通过原地址升级退出。 */
+export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === '/sw.js') {
+    if (process.env.NODE_ENV !== 'development') return NextResponse.next();
+    return new NextResponse(DEVELOPMENT_SERVICE_WORKER, {
+      headers: { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' },
+    });
+  }
   if (process.env.NODE_ENV !== 'development') {
     return new NextResponse('页面不存在', {
       status: 404,
@@ -11,4 +18,4 @@ export function proxy() {
   return NextResponse.next();
 }
 
-export const config = { matcher: '/preview/writing.html' };
+export const config = { matcher: ['/preview/writing.html', '/sw.js'] };

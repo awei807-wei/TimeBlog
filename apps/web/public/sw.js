@@ -1,7 +1,14 @@
-const CACHE = 'timeline-shell-v6';
+const CACHE_PREFIX = 'timeline-shell-';
+const CACHE = 'timeline-shell-v7';
 const APP_SHELL = ['/','/manifest.webmanifest','/robots.txt'];
-self.addEventListener('install', event => { event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_SHELL))); self.skipWaiting(); });
-self.addEventListener('activate', event => { event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim())); });
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(
+    keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE).map(key => caches.delete(key))
+  )).then(() => self.clients.claim()));
+});
 self.addEventListener('message', event => {
   if (!event.data || event.data.type !== 'CACHE_INVALIDATE' || event.data.scope !== 'public-content') return;
   event.waitUntil((async () => {
@@ -21,46 +28,74 @@ self.addEventListener('message', event => {
     clients.forEach(client => client.postMessage({ type: 'CACHE_INVALIDATED', scope: 'public-content', entryId: event.data.entryId, reason: event.data.reason }));
   })());
 });
+
+function isCacheable(response) {
+  return response.ok && !/(?:^|,)\s*(?:no-store|private)\b/i.test(response.headers.get('Cache-Control') || '');
+}
+
+function isImmutable(response) {
+  return response && isCacheable(response) && /(?:^|,)\s*immutable\b/i.test(response.headers.get('Cache-Control') || '');
+}
+
+function storeResponse(event, cache, response) {
+  const url = new URL(event.request.url);
+  if (response.ok && url.origin === self.location.origin && isCacheable(response)) {
+    event.waitUntil(cache.put(event.request, response.clone()));
+  }
+  return response;
+}
+
+async function immutableAsset(event) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(event.request);
+  if (isImmutable(cached)) return cached;
+  const response = await fetch(event.request);
+  if (isImmutable(response)) storeResponse(event, cache, response);
+  return response;
+}
+
+async function networkFirst(event, navigation = false) {
+  const cache = await caches.open(CACHE);
+  try {
+    return storeResponse(event, cache, await fetch(event.request));
+  } catch (error) {
+    const cached = await cache.match(event.request) || (navigation ? await cache.match('/') : undefined);
+    if (cached) return cached;
+    throw error;
+  }
+}
+
+async function cachedImage(event) {
+  const cache = await caches.open(CACHE);
+  const cached = await cache.match(event.request);
+  const network = fetch(event.request).then(response => storeResponse(event, cache, response));
+  if (!cached) return network;
+  event.waitUntil(network.catch(() => cached));
+  return cached;
+}
+
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/login') || url.pathname.startsWith('/recovery') || url.pathname.startsWith('/private-media/')) return;
+  const headers = event.request.headers;
+  if (url.origin !== self.location.origin || event.request.cache === 'no-store') return;
+  if (url.searchParams.has('_rsc') || headers.get('RSC') === '1' || headers.has('Next-Router-Prefetch') || headers.get('Accept')?.includes('text/x-component')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin') || url.pathname.startsWith('/login') || url.pathname.startsWith('/recovery') || url.pathname.startsWith('/private-media/') || url.pathname.startsWith('/preview/')) return;
   if (url.pathname.startsWith('/search')) {
     event.respondWith(fetch(event.request));
     return;
   }
+  if (url.pathname.startsWith('/_next/')) {
+    if (url.pathname.startsWith('/_next/static/')) event.respondWith(immutableAsset(event));
+    return;
+  }
   if (event.request.mode === 'navigate') {
-    event.respondWith((async () => {
-      try {
-        const response = await fetch(event.request);
-        if (response.ok && url.origin === self.location.origin) {
-          const copy = response.clone();
-          event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy)));
-        }
-        return response;
-      } catch {
-        return (await caches.match(event.request)) || caches.match('/');
-      }
-    })());
+    event.respondWith(networkFirst(event, true));
     return;
   }
   if (event.request.destination === 'image') {
-    event.respondWith((async () => {
-      const cached = await caches.match(event.request);
-      const network = fetch(event.request).then(response => {
-        if (response.ok && url.origin === self.location.origin) {
-          const copy = response.clone();
-          event.waitUntil(caches.open(CACHE).then(cache => cache.put(event.request, copy)));
-        }
-        return response;
-      }).catch(() => undefined);
-      if (cached) {
-        void network;
-        return cached;
-      }
-      return (await network) || caches.match('/');
-    })());
+    event.respondWith(cachedImage(event));
     return;
   }
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => { const copy = response.clone(); if (response.ok && url.origin === self.location.origin) caches.open(CACHE).then(cache => cache.put(event.request, copy)); return response; })));
+  event.respondWith(networkFirst(event));
 });
