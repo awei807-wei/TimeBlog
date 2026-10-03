@@ -59,6 +59,17 @@ test('preview keeps the real administration navigation without simulating a sess
   assert.doesNotMatch(preview, /className="app-main/);
 });
 
+test('管理侧栏外层无阴影，移动导航抽屉保留浮层阴影', async () => {
+  const css = await read('../app/globals.css');
+  const sidebarRules = [...css.matchAll(/\.app-sidebar\s*\{([^}]+)\}/g)];
+  assert.ok(sidebarRules.length > 0);
+  const shadows = sidebarRules.flatMap(([, declarations]) =>
+    [...declarations.matchAll(/box-shadow:\s*([^;]+);/g)].map(([, value]) => value.trim()),
+  );
+  assert.deepEqual(shadows, ['none']);
+  assert.match(css, /\[data-sidebar="sidebar"\]\[data-mobile="true"\]\s*\{[^}]*box-shadow:\s*0 18px 45px/);
+});
+
 test('Next.js debugging eval is allowed only in development, never production', async () => {
   const { default: config } = await import('../next.config.mjs');
   const original = process.env.NODE_ENV;
