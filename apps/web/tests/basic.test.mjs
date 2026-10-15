@@ -131,9 +131,15 @@ test('settings actions are non-submit controls and endpoint probe does not remou
   assert.match(settingsSource, /runEndpointProbe/);
   assert.match(settingsSource, /probeState\.phase === 'testing'/);
   assert.match(settingsSource, /external_image_host\/test/);
+  assert.match(settingsSource, /smtp_relay\/test/);
   assert.match(settingsSource, /Token/);
   assert.match(settingsSource, /stablePublicUrls/);
   assert.match(settingsSource, /syncDeletes/);
+  assert.match(settingsSource, /smtp-host/);
+  assert.match(settingsSource, /smtp-port/);
+  assert.match(settingsSource, /smtp-username/);
+  assert.match(settingsSource, /smtp-password/);
+  assert.match(settingsSource, /smtp-advance-days/);
 });
 
 test('settings center keeps real capabilities in dedicated routes with an entries compatibility link', async () => {

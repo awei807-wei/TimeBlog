@@ -213,7 +213,7 @@ func validateNASConfig(config nasBackupConfig) error {
 
 func (srv *Server) integrationSettingsEndpoint(w http.ResponseWriter, r *http.Request) {
 	name := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/integrations/"), "/")
-	if name != externalImageHostName && name != nasBackupName {
+	if name != externalImageHostName && name != nasBackupName && name != smtpRelayName {
 		problem(w, http.StatusNotFound, "集成配置不存在")
 		return
 	}
@@ -230,19 +230,25 @@ func (srv *Server) integrationSettingsEndpoint(w http.ResponseWriter, r *http.Re
 			problem(w, 500, "读取集成配置失败")
 			return
 		}
-		if name == externalImageHostName {
+		switch name {
+		case externalImageHostName:
 			jsonResponse(w, 200, imageHostResponse(record))
-		} else {
+		case nasBackupName:
 			jsonResponse(w, 200, nasBackupResponse(record))
+		case smtpRelayName:
+			jsonResponse(w, 200, smtpRelayResponse(record))
 		}
 	case http.MethodPatch:
 		if !srv.checkMutation(w, r) {
 			return
 		}
-		if name == externalImageHostName {
+		switch name {
+		case externalImageHostName:
 			srv.updateExternalImageHost(w, r)
-		} else {
+		case nasBackupName:
 			srv.updateNASBackup(w, r)
+		case smtpRelayName:
+			srv.updateSMTPRelay(w, r)
 		}
 	default:
 		problem(w, http.StatusMethodNotAllowed, "方法不允许")

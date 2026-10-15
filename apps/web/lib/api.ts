@@ -37,6 +37,10 @@ export type NASBackupConfig = {
   enabled: boolean; sourceHost: string; sourcePath: string; destinationPath: string; retentionDays: number;
   applyStatus: 'pending_export'; status: string; statusMessage?: string; lastTestedAt?: string | null; updatedAt?: string;
 };
+export type SMTPRelayConfig = {
+  enabled: boolean; sourceHost?: string; host: string; port: number; username: string; fromEmail: string; toEmail: string; advanceDays: number[];
+  passwordConfigured: boolean; passwordMasked: '' | '********'; status: string; statusMessage?: string; lastTestedAt?: string | null; updatedAt?: string;
+};
 export type RuntimeStatus = {
   updatedAt: string;
   media: { provider: 'local_private'; writable: boolean; imageUploadEnabled: boolean; nonImageUploadEnabled: boolean; maxUploadBytes: number };
@@ -259,6 +263,10 @@ export async function getExternalImageHostConfig(): Promise<ExternalImageHostCon
 
 export async function getNASBackupConfig(): Promise<NASBackupConfig> {
   return getJSON('/admin/integrations/nas_backup', { cache: 'no-store' });
+}
+
+export async function getSMTPRelayConfig(): Promise<SMTPRelayConfig> {
+  return getJSON('/admin/integrations/smtp_relay', { cache: 'no-store' });
 }
 
 export async function getAuthSessions(): Promise<{ sessions: AuthSession[] }> {

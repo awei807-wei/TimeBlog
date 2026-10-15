@@ -379,6 +379,12 @@ func runJob(ctx context.Context, db *sql.DB, workerID string) error {
 	if err := purgeExpiredTrash(ctx, db); err != nil {
 		log.Printf("purge expired trash error: %v", err)
 	}
+	if time.Since(lastAssetNotificationCheck) >= 15*time.Minute {
+		lastAssetNotificationCheck = time.Now()
+		if err := checkDigitalAssetNotifications(ctx, db); err != nil {
+			log.Printf("check digital asset notifications error: %v", err)
+		}
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

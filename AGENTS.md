@@ -10,7 +10,7 @@ TimeBlog（站点名“菜鸟手记”）是个人时间线与博客系统。公
 
 生产站点：`https://blog.cainiao.me`。项目仓库：`git@github.com:awei807-wei/TimeBlog.git`。
 
-当前站点版本：`2026@10·5`。版本格式为“年份@月份·当月修改序号”；同月每次用户可见改动递增末位序号，跨月后从 `1` 重新计数。显示实现位于 `apps/web/app/layout.tsx`，文档与页面必须保持一致。
+当前站点版本：`2026@10·6`。版本格式为“年份@月份·当月修改序号”；同月每次用户可见改动递增末位序号，跨月后从 `1` 重新计数。显示实现位于 `apps/web/app/layout.tsx`，文档与页面必须保持一致。
 
 ## 技术栈
 
@@ -210,6 +210,7 @@ node --test deploy/webdav-retention.test.mjs
 
 ## 最近变更
 
+- 2026-10-15：新增数字资产到期通用 SMTP 邮件提醒支持，包含 011 数据库迁移（扩展 integration_settings CHECK 约束与新建 digital_asset_notifications 表）、后端通用 SMTP 客户端与连通性测试探测接口、Worker 循环资产到期检测与防重记录、前端管理端集成设置 SMTP 配置面板；版本更新为 `2026@10·6`。
 - 2026-10-15：新增 LaTeX 数学公式兼容支持，涵盖后端 Goldmark/bluemonday 解析与安全放行、前端 KaTeX 动态渲染与 fallback 占位、文章与随手记 EmbedMarkup 解析链，以及写作工作台 Novel 兼容性与斜杠命令插入；版本更新为 `2026@10·5`。
 - 2026-10-03：取消管理侧栏 `data-slot="sidebar-container"` 外层阴影，保留内部面板与手机导航抽屉样式；版本更新为 `2026@10·4`。
 
