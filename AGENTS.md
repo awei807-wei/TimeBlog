@@ -132,13 +132,18 @@ systemd timer
 ### 生产 VPS
 
 - SSH 别名：`ssh bero`。
-- 当前 SSH 配置解析为：`root@193.111.30.194`；主机名为 `shiyi`。
+- 当前 SSH 配置解析为：`Host bero -> Hostname 94.103.170.23`（历史备用或旧 IP `193.111.30.194`）；主机名为 `shiyi`。
 - 项目目录：`/home/shiyi/TimeBlog`。
 - 运行方式：Docker Compose；Docker 29.6.2 已安装。
 - 生产运行配置：`/home/shiyi/TimeBlog/deploy/.env`，权限应保持 `0600`；禁止读取后粘贴到对话、日志或 Git。
 - Caddy 已在 VPS 独立运行，核心 Compose 不应重新创建 Caddy。
 - 健康检查：`/health/live`、`/health/ready`、站点首页。
 - 默认不要在 VPS 执行源码构建、`docker compose down -v`、卷清理或无审计的 Docker prune。
+- **GitHub Actions Release 部署 Secrets 配置（Settings -> Secrets and variables -> Actions）**：
+  - `VPS_HOST`：`94.103.170.23`（生产 VPS 真实 IP）
+  - `VPS_USER`：`shiyi`（**必须为 `shiyi`**，因 `/home/shiyi/TimeBlog/deploy/releases` 属主 UID 为 1000，Release 脚本校验要求运行身份与属主一致；不要填 `root`）
+  - `VPS_SSH_PRIVATE_KEY`：本地免密私钥正文（如 `~/.ssh/id_ed25519`，含首尾 BEGIN/END 标记）
+  - `VPS_KNOWN_HOSTS`：`94.103.170.23` 对应的已知主机公钥指纹条目（可从本地 `~/.ssh/known_hosts` 提取）
 
 ### 备份、NAS 与外部服务
 
