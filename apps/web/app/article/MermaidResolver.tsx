@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import DOMPurify from 'isomorphic-dompurify';
-import MediaResolver from './MediaResolver';
+import LatexResolver from './LatexResolver';
 import { decodeMermaidBase64 } from '../../lib/mermaid-utils';
 
 export default function MermaidResolver({ html }: { html: string }) {
@@ -47,5 +47,5 @@ export default function MermaidResolver({ html }: { html: string }) {
     return () => { cancelled = true; };
   }, [html]);
 
-  return <div ref={rootRef}><MediaResolver html={html} /></div>;
+  return <div ref={rootRef}><LatexResolver html={html} /></div>;
 }

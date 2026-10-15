@@ -12,6 +12,7 @@ import {
   ListOrdered,
   Minus,
   Quote,
+  Sigma,
   Table2,
   Type,
 } from 'lucide-react';
@@ -102,6 +103,7 @@ export function buildNovelSuggestions(onOpenImage: ImageRequest): SuggestionItem
     { title: '标题', description: '二级标题', icon: <Heading2 aria-hidden="true" />, searchTerms: ['heading'], command: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleHeading({ level: 2 }).run() },
     { title: '引用', description: '突出一段话', icon: <Quote aria-hidden="true" />, searchTerms: ['quote'], command: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleBlockquote().run() },
     { title: '代码块', description: '保留等宽格式', icon: <Code2 aria-hidden="true" />, searchTerms: ['code'], command: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleCodeBlock().run() },
+    { title: '数学公式', description: '插入 LaTeX 公式块', icon: <Sigma aria-hidden="true" />, searchTerms: ['math', 'latex', 'formula', '公式'], command: ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('\n\n$$\n\\int_0^1 x^2 dx = \\frac{1}{3}\n$$\n\n').run() },
     { title: '表格', description: '插入两行两列', icon: <Table2 aria-hidden="true" />, searchTerms: ['table'], command: ({ editor, range }) => editor.chain().focus().deleteRange(range).insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run() },
     { title: '分隔线', description: '分隔两个段落', icon: <Minus aria-hidden="true" />, searchTerms: ['rule', 'divider'], command: ({ editor, range }) => editor.chain().focus().deleteRange(range).setHorizontalRule().run() },
   ];

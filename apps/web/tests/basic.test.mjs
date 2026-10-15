@@ -6,6 +6,7 @@ import { decorateMediaReferences, renderMarkdown } from '../lib/markdown.js';
 import { mediaContentUrl, mediaKind, probeMediaContentType } from '../lib/media-resolver.js';
 import { mergeTimelineDays } from '../lib/timeline.js';
 import { decodeMermaidBase64 } from '../lib/mermaid-utils.js';
+import { decodeLatexBase64, encodeLatexBase64 } from '../lib/latex-utils.js';
 import { embedSource, isSupportedEmbedProvider } from '../lib/embed-utils.js';
 import { runEndpointProbe } from '../lib/integration-probe.js';
 import { entryHasPreviewMedia } from '../lib/public-entry-preview.js';
@@ -970,10 +971,25 @@ test('Mermaid decoder accepts standard and raw base64url and rejects malformed p
   assert.throws(() => decodeMermaidBase64('A'), /invalid Mermaid base64 length/);
 });
 
+test('LaTeX encoder and decoder round-trip correctly and reject invalid base64', () => {
+  const source = '\\int_0^1 x^2 dx = \\frac{1}{3}';
+  const encoded = encodeLatexBase64(source);
+  assert.equal(decodeLatexBase64(encoded), source);
+  assert.throws(() => decodeLatexBase64('not valid!'), /invalid LaTeX base64/);
+  assert.throws(() => decodeLatexBase64('A'), /invalid LaTeX base64 length/);
+
+  // Markdown fallback rendering creates valid latex placeholders
+  const rendered = renderMarkdown('行内公式 $E = mc^2$ 以及块级公式：\n\n$$\nx_1 + x_2\n$$\n\n```latex\n\\alpha + \\beta\n```').html;
+  assert.match(rendered, /class="latex-placeholder"/);
+  assert.match(rendered, /data-display="false"/);
+  assert.match(rendered, /data-display="true"/);
+});
+
 test('controlled embed, Mermaid and service worker contracts remain explicit', async () => {
   const fs = await import('node:fs/promises');
   const embed = await fs.readFile(new URL('../app/article/EmbedResolver.tsx', import.meta.url), 'utf8');
   const mermaid = await fs.readFile(new URL('../app/article/MermaidResolver.tsx', import.meta.url), 'utf8');
+  const latex = await fs.readFile(new URL('../app/article/LatexResolver.tsx', import.meta.url), 'utf8');
   const markup = await fs.readFile(new URL('../app/article/EmbedMarkup.tsx', import.meta.url), 'utf8');
   const sidebar = await fs.readFile(new URL('../app/components/ui/sidebar.tsx', import.meta.url), 'utf8');
   const adminLayout = await fs.readFile(new URL('../app/admin/layout.tsx', import.meta.url), 'utf8');
@@ -988,6 +1004,11 @@ test('controlled embed, Mermaid and service worker contracts remain explicit', a
   assert.match(mermaid, /foreignobject/);
   assert.match(mermaid, /classList\.add\('mermaid-error'\)/);
   assert.match(mermaid, /图表暂时无法渲染/);
+  assert.match(mermaid, /LatexResolver/);
+  assert.match(latex, /decodeLatexBase64/);
+  assert.match(latex, /katex\.renderToString/);
+  assert.match(latex, /DOMPurify\.sanitize/);
+  assert.match(latex, /mathMl: true/);
   assert.match(markup, /data-provider=/);
   assert.match(markup, /data-embed-url=/);
   assert.match(worker, /event\.request\.destination === 'image'/);

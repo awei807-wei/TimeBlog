@@ -327,3 +327,28 @@
     padding-inline: 0.85em;
   }
 }
+
+/* LaTeX math block and inline typography */
+.article-prose .latex-rendered.latex-display {
+  display: block;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 1.2em 0;
+  padding: 0.5em 0;
+  text-align: center;
+}
+
+.article-prose .latex-rendered.latex-inline {
+  display: inline-block;
+  margin: 0 0.15em;
+  vertical-align: -0.1em;
+}
+
+.article-prose .latex-placeholder {
+  display: inline-block;
+}
+
+div.latex-placeholder {
+  display: block;
+  margin: 1em 0;
+}

@@ -10,12 +10,12 @@ TimeBlog（站点名“菜鸟手记”）是个人时间线与博客系统。公
 
 生产站点：`https://blog.cainiao.me`。项目仓库：`git@github.com:awei807-wei/TimeBlog.git`。
 
-当前站点版本：`2026@10·4`。版本格式为“年份@月份·当月修改序号”；同月每次用户可见改动递增末位序号，跨月后从 `1` 重新计数。显示实现位于 `apps/web/app/layout.tsx`，文档与页面必须保持一致。
+当前站点版本：`2026@10·5`。版本格式为“年份@月份·当月修改序号”；同月每次用户可见改动递增末位序号，跨月后从 `1` 重新计数。显示实现位于 `apps/web/app/layout.tsx`，文档与页面必须保持一致。
 
 ## 技术栈
 
 - **前端**：Next.js 16.3.4、React 19.1.1、TypeScript 5.9、Tailwind CSS 4、React Aria Components、Radix UI、Lucide React。
-- **编辑器与内容**：Novel 1.0.2、Tiptap 2.27.3、tiptap-markdown 0.8.10、Markdown 持久化、Goldmark 服务端渲染、DOMPurify/BlueMonday 清洗、Mermaid。
+- **编辑器与内容**：Novel 1.0.2、Tiptap 2.27.3、tiptap-markdown 0.8.10、Markdown 持久化、Goldmark 服务端渲染、DOMPurify/BlueMonday 清洗、Mermaid、KaTeX。
 - **后端**：Go 1.26 单模块；API 与后台 Worker 共用核心代码和同一个 Core 镜像。
 - **数据层**：PostgreSQL 16；`pgx/v5`；SQL 迁移位于 `services/core/db/migrations/`。
 - **认证**：管理员密码 + TOTP；HttpOnly Session Cookie；写操作使用 CSRF Token；敏感配置使用独立加密密钥。
@@ -131,7 +131,7 @@ systemd timer
 
 ### 生产 VPS
 
-- SSH 别名：`ssh vps1`。
+- SSH 别名：`ssh bero`。
 - 当前 SSH 配置解析为：`root@193.111.30.194`；主机名为 `shiyi`。
 - 项目目录：`/home/shiyi/TimeBlog`。
 - 运行方式：Docker Compose；Docker 29.6.2 已安装。
@@ -210,6 +210,7 @@ node --test deploy/webdav-retention.test.mjs
 
 ## 最近变更
 
+- 2026-10-15：新增 LaTeX 数学公式兼容支持，涵盖后端 Goldmark/bluemonday 解析与安全放行、前端 KaTeX 动态渲染与 fallback 占位、文章与随手记 EmbedMarkup 解析链，以及写作工作台 Novel 兼容性与斜杠命令插入；版本更新为 `2026@10·5`。
 - 2026-10-03：取消管理侧栏 `data-slot="sidebar-container"` 外层阴影，保留内部面板与手机导航抽屉样式；版本更新为 `2026@10·4`。
 
 - 2026-10-03：修复旧 Service Worker 缓存开发脚本引起的 hydration 与脚本初始化错误；开发环境不注册缓存 worker，并通过原 `/sw.js` 地址让旧客户端清理本站缓存、注销并恢复预览。正式缓存升级至 v7，排除预览、RSC 和可变 Next 脚本，保留版本化静态资源与公开页面的离线能力；版本更新为 `2026@10·3`。

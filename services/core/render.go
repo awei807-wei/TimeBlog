@@ -48,8 +48,8 @@ var htmlPolicy = func() *bluemonday.Policy {
 	// media:// references are deliberately represented as inert spans. The
 	// browser client resolves them only after the media endpoint authorizes
 	// access, so Markdown rendering never emits a media URL or executable tag.
-	p.AllowAttrs("class", "data-media-id", "data-media-label").OnElements("span")
-	p.AllowAttrs("class", "data-mermaid", "data-provider", "data-embed-url").OnElements("div")
+	p.AllowAttrs("class", "data-media-id", "data-media-label", "data-latex", "data-display").OnElements("span")
+	p.AllowAttrs("class", "data-mermaid", "data-provider", "data-embed-url", "data-latex", "data-display").OnElements("div")
 	p.AllowAttrs("class").OnElements("pre", "code", "span")
 	p.AllowAttrs("id").Matching(regexp.MustCompile(`^[\p{L}\p{N}_:-]+$`)).OnElements("h1", "h2", "h3", "h4", "h5", "h6", "sup", "li")
 	return p
@@ -87,7 +87,144 @@ func (s *unicodeHeadingIDs) Put(value []byte) {
 	}
 }
 
+func normalizeLatexDirectives(md string) string {
+	var sb strings.Builder
+	n := len(md)
+	i := 0
+	for i < n {
+		if (i == 0 || md[i-1] == '\n') && (strings.HasPrefix(md[i:], "```") || strings.HasPrefix(md[i:], "~~~")) {
+			fence := md[i : i+3]
+			sb.WriteString(fence)
+			i += 3
+			for i < n {
+				if md[i-1] == '\n' && strings.HasPrefix(md[i:], fence) {
+					sb.WriteString(fence)
+					i += 3
+					for i < n && md[i] != '\n' {
+						sb.WriteByte(md[i])
+						i++
+					}
+					break
+				}
+				sb.WriteByte(md[i])
+				i++
+			}
+			continue
+		}
+		if md[i] == '`' {
+			start := i
+			for i < n && md[i] == '`' {
+				i++
+			}
+			ticks := md[start:i]
+			sb.WriteString(ticks)
+			idx := strings.Index(md[i:], ticks)
+			if idx >= 0 {
+				sb.WriteString(md[i : i+idx+len(ticks)])
+				i += idx + len(ticks)
+			} else {
+				sb.WriteString(md[i:])
+				i = n
+			}
+			continue
+		}
+		if md[i] == '\\' && i+1 < n && md[i+1] == '$' {
+			sb.WriteString("\\$")
+			i += 2
+			continue
+		}
+		if strings.HasPrefix(md[i:], "$$") {
+			closeIdx := strings.Index(md[i+2:], "$$")
+			if closeIdx >= 0 {
+				content := md[i+2 : i+2+closeIdx]
+				trimmed := strings.TrimSpace(content)
+				if trimmed != "" {
+					encoded := base64.RawURLEncoding.EncodeToString([]byte(trimmed))
+					sb.WriteString("\n\n[latex-display](https://latex.invalid/display?code=" + encoded + ")\n\n")
+					i = i + 2 + closeIdx + 2
+					continue
+				}
+			}
+		}
+		if md[i] == '$' && i+1 < n && md[i+1] != ' ' && md[i+1] != '\t' && md[i+1] != '\n' && md[i+1] != '$' {
+			lineEnd := strings.IndexByte(md[i+1:], '\n')
+			searchLimit := n
+			if lineEnd >= 0 {
+				searchLimit = i + 1 + lineEnd
+			}
+			found := -1
+			for j := i + 1; j < searchLimit; j++ {
+				if md[j] == '\\' && j+1 < searchLimit {
+					j++
+					continue
+				}
+				if md[j] == '$' {
+					if md[j-1] != ' ' && md[j-1] != '\t' {
+						found = j
+					}
+					break
+				}
+			}
+			if found > i+1 {
+				content := md[i+1 : found]
+				encoded := base64.RawURLEncoding.EncodeToString([]byte(content))
+				sb.WriteString("[latex-inline](https://latex.invalid/inline?code=" + encoded + ")")
+				i = found + 1
+				continue
+			}
+		}
+		sb.WriteByte(md[i])
+		i++
+	}
+	return sb.String()
+}
+
+var renderedLatexLinkPattern = regexp.MustCompile(`<a href="https://latex\.invalid/(display|inline)\?code=([A-Za-z0-9_-]+)">latex-(display|inline)</a>`)
+var latexCodeBlockPattern = regexp.MustCompile(`(?s)<pre><code class="language-(latex|math)">(.*?)</code></pre>`)
+
+func normalizeRenderedLatex(html string) string {
+	html = latexCodeBlockPattern.ReplaceAllStringFunc(html, func(block string) string {
+		match := latexCodeBlockPattern.FindStringSubmatch(block)
+		if len(match) < 3 {
+			return block
+		}
+		source := stdhtml.UnescapeString(match[2])
+		encoded := base64.RawURLEncoding.EncodeToString([]byte(strings.TrimSpace(source)))
+		return `<div class="latex-placeholder" data-latex="` + stdhtml.EscapeString(encoded) + `" data-display="true"><pre><code>` + match[2] + `</code></pre></div>`
+	})
+
+	wrappedDisplay := regexp.MustCompile(`(?s)<p>\s*<a href="https://latex\.invalid/display\?code=([A-Za-z0-9_-]+)">latex-display</a>\s*</p>`)
+	html = wrappedDisplay.ReplaceAllStringFunc(html, func(token string) string {
+		match := wrappedDisplay.FindStringSubmatch(token)
+		code := match[1]
+		decodedBytes, err := base64.RawURLEncoding.DecodeString(code)
+		raw := ""
+		if err == nil {
+			raw = stdhtml.EscapeString(string(decodedBytes))
+		}
+		return `<div class="latex-placeholder" data-latex="` + code + `" data-display="true"><pre><code>` + raw + `</code></pre></div>`
+	})
+
+	html = renderedLatexLinkPattern.ReplaceAllStringFunc(html, func(token string) string {
+		match := renderedLatexLinkPattern.FindStringSubmatch(token)
+		kind := match[1]
+		code := match[2]
+		decodedBytes, err := base64.RawURLEncoding.DecodeString(code)
+		raw := ""
+		if err == nil {
+			raw = stdhtml.EscapeString(string(decodedBytes))
+		}
+		if kind == "display" {
+			return `<div class="latex-placeholder" data-latex="` + code + `" data-display="true"><pre><code>` + raw + `</code></pre></div>`
+		}
+		return `<span class="latex-placeholder" data-latex="` + code + `" data-display="false"><code>$` + raw + `$</code></span>`
+	})
+
+	return html
+}
+
 func renderMarkdown(md string) (string, string) {
+	md = normalizeLatexDirectives(md)
 	md = normalizeEmbedDirectives(md)
 	mediaToken := regexp.MustCompile(`media://([A-Za-z0-9._~-]+)`)
 	// Use a private, non-fetchable origin while Goldmark parses links/images;
@@ -99,6 +236,7 @@ func renderMarkdown(md string) (string, string) {
 		return "", stripMarkdown(md)
 	}
 	html := rendered.String()
+	html = normalizeRenderedLatex(html)
 	html = normalizeMermaidBlocks(html)
 	html = normalizeRenderedEmbeds(html)
 	html = highlightRenderedCode(html)
@@ -124,7 +262,7 @@ func highlightRenderedCode(html string) string {
 			return block
 		}
 		language := strings.ToLower(match[1])
-		if _, ok := supportedHighlightLanguages[language]; !ok || language == "mermaid" {
+		if _, ok := supportedHighlightLanguages[language]; !ok || language == "mermaid" || language == "latex" || language == "math" {
 			return block
 		}
 		code := match[2]
@@ -226,6 +364,8 @@ func embedProviderHost(provider, host string) bool {
 
 func stripMarkdown(v string) string {
 	v = regexp.MustCompile("(?s)```.*?```").ReplaceAllString(v, "")
+	v = regexp.MustCompile(`(?s)\$\$.*?\$\$`).ReplaceAllString(v, "")
+	v = regexp.MustCompile(`\$([^\$\n]+)\$`).ReplaceAllString(v, "$1")
 	v = regexp.MustCompile(`!\[[^]]*\]\([^)]*\)`).ReplaceAllString(v, "")
 	v = regexp.MustCompile(`\[([^]]+)\]\([^)]*\)`).ReplaceAllString(v, "$1")
 	v = strings.TrimSpace(regexp.MustCompile(`[*_~`+"`"+`>#-]`).ReplaceAllString(v, ""))

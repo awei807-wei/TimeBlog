@@ -45,7 +45,7 @@ const defaultKeywordLanguages = new Set(['go', 'golang', 'js', 'javascript', 'ts
 /** Highlight the same safe token classes emitted by the backend renderer. */
 function highlightCode(code, language) {
   const normalized = language.toLowerCase();
-  if (!highlightLanguages.has(normalized) || normalized === 'mermaid') return code;
+  if (!highlightLanguages.has(normalized) || normalized === 'mermaid' || normalized === 'latex' || normalized === 'math') return code;
   const keywords = highlightKeywords[normalized] || (defaultKeywordLanguages.has(normalized) ? highlightKeywords.default : []);
   if (!keywords.length) return code.replace(/(&quot;[^&]*&quot;|&#39;[^&#39;]*&#39;)/g, '<span class="tok-string">$1</span>');
   const keywordPattern = keywords.map(keyword => keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
@@ -55,10 +55,24 @@ function highlightCode(code, language) {
     : `<span class="tok-keyword">${match}</span>`);
 }
 
+function encodeLatexInline(source) {
+  const bytes = new TextEncoder().encode(source);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
 export function renderInline(value) {
   let output = escapeHtml(value);
   const mediaPlaceholders = [];
   const holdMedia = html => { const index = mediaPlaceholders.push(html) - 1; return `\u0000MEDIA${index}\u0000`; };
+  // Replace inline math $...$ before backticks/emphasis (negative lookbehind/lookahead for spaces and dollar)
+  output = output.replace(/(^|[^\\])\$([^\s$](?:[^$\n]*?[^\s$])?)\$/g, (_, prefix, math) => {
+    const raw = math.replaceAll('&amp;', '&').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&#39;', "'");
+    const encoded = encodeLatexInline(raw);
+    return `${prefix}${holdMedia(`<span class="latex-placeholder" data-latex="${encoded}" data-display="false"><code>$${escapeHtml(raw)}$</code></span>`)}`;
+  });
+  output = output.replace(/\\(\$)/g, '$1');
   output = output.replace(/`([^`]+)`/g, '<code>$1</code>');
   output = output.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
     const label = alt || '未命名媒体';
@@ -124,11 +138,52 @@ export function renderMarkdown(markdown) {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
     if (line.startsWith('```')) {
-      if (inCode) { const language = escapeHtml(codeLanguage); const code = highlightCode(escapeHtml(codeLines.join('\n')), codeLanguage); const highlighted = highlightLanguages.has(codeLanguage.toLowerCase()) && codeLanguage.toLowerCase() !== 'mermaid' ? ' highlighted' : ''; html.push(`<pre><code class="language-${language}${highlighted}">${code}</code></pre>`); inCode = false; codeLanguage = ''; codeLines = []; }
-      else { flushParagraph(); inCode = true; codeLanguage = line.slice(3).trim().replace(/[^A-Za-z0-9_-]/g, ''); }
+      if (inCode) {
+        const language = escapeHtml(codeLanguage);
+        const lowerLang = codeLanguage.toLowerCase();
+        if (lowerLang === 'latex' || lowerLang === 'math') {
+          const raw = codeLines.join('\n').trim();
+          const encoded = encodeLatexInline(raw);
+          html.push(`<div class="latex-placeholder" data-latex="${encoded}" data-display="true"><pre><code>${escapeHtml(raw)}</code></pre></div>`);
+        } else {
+          const code = highlightCode(escapeHtml(codeLines.join('\n')), codeLanguage);
+          const highlighted = highlightLanguages.has(lowerLang) && lowerLang !== 'mermaid' ? ' highlighted' : '';
+          html.push(`<pre><code class="language-${language}${highlighted}">${code}</code></pre>`);
+        }
+        inCode = false; codeLanguage = ''; codeLines = [];
+      } else {
+        flushParagraph();
+        inCode = true;
+        codeLanguage = line.slice(3).trim().replace(/[^A-Za-z0-9_-]/g, '');
+      }
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
+    if (line.trim().startsWith('$$')) {
+      flushParagraph();
+      const trimmed = line.trim();
+      if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+        const raw = trimmed.slice(2, -2).trim();
+        const encoded = encodeLatexInline(raw);
+        html.push(`<div class="latex-placeholder" data-latex="${encoded}" data-display="true"><pre><code>${escapeHtml(raw)}</code></pre></div>`);
+        continue;
+      }
+      const mathLines = [];
+      if (trimmed.length > 2) mathLines.push(trimmed.slice(2));
+      i += 1;
+      while (i < lines.length && !lines[i].trim().endsWith('$$')) {
+        mathLines.push(lines[i]);
+        i += 1;
+      }
+      if (i < lines.length) {
+        const closingLine = lines[i].trim();
+        if (closingLine.length > 2) mathLines.push(closingLine.slice(0, -2));
+      }
+      const raw = mathLines.join('\n').trim();
+      const encoded = encodeLatexInline(raw);
+      html.push(`<div class="latex-placeholder" data-latex="${encoded}" data-display="true"><pre><code>${escapeHtml(raw)}</code></pre></div>`);
+      continue;
+    }
     const heading = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (heading) { flushParagraph(); const title = heading[2].trim(); const id = idByTitle.get(title) || slugifyHeading(title); html.push(`<h${heading[1].length} id="${escapeHtml(id)}">${renderInline(title)}</h${heading[1].length}>`); continue; }
     const table = renderTable(lines, i);

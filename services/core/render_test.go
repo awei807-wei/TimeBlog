@@ -54,3 +54,26 @@ func TestRenderExternalImageKeepsHTTPSAndRemovesUnsafeProtocols(t *testing.T) {
 		t.Fatalf("unsafe image protocol survived sanitization: %s", html)
 	}
 }
+func TestRenderLatexFormulasAndCodeBlocksAreSafePlaceholders(t *testing.T) {
+	md := "行内公式 $E = mc^2$ 以及下标 $x_1 + x_2$。\n\n$$\\int_0^1 x^2 dx = \\frac{1}{3}$$\n\n普通价格 $5 与 $10 不应被误判。\n\n```latex\n\\alpha + \\beta\n```\n\n```math\n\\gamma + \\delta\n```\n\n带有恶意代码的公式：$<script>alert(1)</script>$"
+	html, stripped := renderMarkdown(md)
+
+	if !strings.Contains(html, `class="latex-placeholder"`) {
+		t.Fatalf("expected latex placeholders in html: %s", html)
+	}
+	if !strings.Contains(html, `data-display="false"`) || !strings.Contains(html, `data-display="true"`) {
+		t.Fatalf("expected both inline and display latex placeholders: %s", html)
+	}
+	if strings.Contains(html, `<em>1 + x</em>`) {
+		t.Fatalf("latex subscript was broken by markdown emphasis: %s", html)
+	}
+	if strings.Contains(html, "<script") {
+		t.Fatalf("unsafe script survived in latex: %s", html)
+	}
+	if !strings.Contains(html, "$5 与 $10") {
+		t.Fatalf("ordinary currency was corrupted: %s", html)
+	}
+	if strings.Contains(stripped, "$$") {
+		t.Fatalf("stripped markdown should not contain $$: %s", stripped)
+	}
+}

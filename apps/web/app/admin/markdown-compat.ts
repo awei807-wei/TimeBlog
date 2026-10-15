@@ -36,6 +36,7 @@ const COMMENT_PATTERN = /<!--[\s\S]*?-->/;
 const FENCE_PATTERN = /^\s{0,3}(`{3,}|~{3,})(.*)$/;
 const DIRECTIVE_OPEN_PATTERN = /^\s*:::+\S.*$/;
 const DIRECTIVE_CLOSE_PATTERN = /^\s*:::+\s*$/;
+const LATEX_DISPLAY_PATTERN = /^\s{0,3}\$\$/;
 
 function tokenFor(namespace: number, index: number) {
   return `${TOKEN_PREFIX}${namespace}-${index}${TOKEN_SUFFIX}`;
@@ -269,6 +270,20 @@ function scanSpecialRange(lines: MarkdownLine[], maskedLines: MarkdownLine[], in
   }
   if (DIRECTIVE_OPEN_PATTERN.test(lines[index].text)) {
     const end = findDirectiveEnd(lines, index);
+    return { end, range: { start: lines[index].start, end: lines[end].end } };
+  }
+  if (LATEX_DISPLAY_PATTERN.test(lines[index].text)) {
+    let end = index;
+    const trimmed = lines[index].text.trim();
+    if (trimmed.length > 4 && trimmed.endsWith('$$')) {
+      return { end, range: { start: lines[index].start, end: lines[end].end } };
+    }
+    for (let j = index + 1; j < lines.length; j += 1) {
+      if (lines[j].text.trim().endsWith('$$')) {
+        end = j;
+        break;
+      }
+    }
     return { end, range: { start: lines[index].start, end: lines[end].end } };
   }
   if (index + 1 < lines.length && alignedTableDelimiter(lines[index + 1].text)) {
